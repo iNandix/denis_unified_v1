@@ -1,0 +1,78 @@
+version: 1
+layer: level3
+description: "Contratos específicos para Cognitive Router metacognitivo"
+
+contracts:
+  - id: L3.ROUTER.FALLBACK_LEGACY
+    title: "Router cognitivo siempre tiene fallback a legacy"
+    description: "Cada decisión del router debe poder fallback a execute() legacy sin pérdida de funcionalidad"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.orchestration.cognitive_router"
+      method: "validate_fallback_legacy"
+
+  - id: L3.ROUTER.METRICS_REQUIRED
+    title: "Cada decisión de routing debe metricarse"
+    description: "Toda llamada a route_decision debe emitir métricas a Redis"
+    severity: medium
+    mutable: false
+    validation:
+      type: event
+      channel: "denis:cognitive_router:decisions"
+
+  - id: L3.ROUTER.CONFIDENCE_THRESHOLD
+    title: "Router debe reportar confidence score"
+    description: "Cada predicción debe incluir confidence score entre 0 y 1"
+    severity: medium
+    mutable: true
+    constraint:
+      min_confidence: 0.0
+      max_confidence: 1.0
+
+  - id: L3.ROUTER.LATENCY_BUDGET
+    title: "Routing decision tiene budget de latencia"
+    description: "Selección de tool debe completar en < 50ms"
+    severity: low
+    mutable: true
+    constraint:
+      max_latency_ms: 50
+
+  - id: L3.ROUTER.FAILURE_ANALYSIS
+    title: "Fallos deben auto-analizarse"
+    description: "Cuando un tool falla, router debe registrar modo de fallo"
+    severity: medium
+    mutable: false
+    validation:
+      type: event
+      channel: "denis:cognitive_router:failures"
+
+  - id: L3.ROUTER.LEARNING_FEEDBACK
+    title: "Router debe incorporar feedback de decisiones"
+    description: "Decisiones correctas/incorrectas deben alimentar aprendizaje"
+    severity: medium
+    mutable: true
+    validation:
+      type: redis_key
+      key_pattern: "denis:cognitive_router:feedback:*"
+
+  - id: L3.ROUTER.TOOL_DISCOVERY
+    title: "Router debe descubrir tools disponibles"
+    description: "Antes de rutear, debe verificar qué tools están disponibles"
+    severity: medium
+    mutable: false
+    validation:
+      type: function
+      method: "validate_tool_availability"
+
+  - id: L3.ROUTER.PROPERTY_INTEGRITY
+    title: "Propiedades cuánticas deben respetarse"
+    description: "Si un tool tiene low_amplitude, router debe considerarlo"
+    severity: medium
+    mutable: true
+    validation:
+      type: neo4j_query
+      query: "MATCH (t:Tool) WHERE t.amplitude < 0.3 RETURN t.name"
+
+changes: []

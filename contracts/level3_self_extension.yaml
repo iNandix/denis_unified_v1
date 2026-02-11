@@ -1,0 +1,95 @@
+version: 1
+layer: level3
+description: "Contratos específicos para Self-Extension Engine metacognitivo"
+
+contracts:
+  - id: L3.EXT.HUMAN_APPROVAL_REQUIRED
+    title: "Toda extensión requiere aprobación humana"
+    description: "Ninguna auto-extensión puede deployarse sin approval explícito"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.autopoiesis.self_extension_engine"
+      method: "validate_human_approval"
+
+  - id: L3.EXT.SANDBOX_VALIDATION
+    title: "Toda extensión debe pasar validación en sandbox"
+    description: "Antes de proponer, debe ejecutar en entorno aislado"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      method: "validate_sandbox_execution"
+
+  - id: L3.EXT.CODE_QUALITY_THRESHOLD
+    title: "Código generado debe pasar quality gate"
+    description: "Linting, typing, y tests básicos deben pasar"
+    severity: medium
+    mutable: true
+    constraint:
+      min_quality_score: 0.7
+
+  - id: L3.EXT.STYLE_CONSISTENCY
+    title: "Código generado debe seguir estilo existente"
+    description: "Imports, naming, estructura debe coincidir con codebase"
+    severity: medium
+    mutable: true
+    validation:
+      type: function
+      method: "validate_style_consistency"
+
+  - id: L3.EXT.DEPENDENCY_MANAGEMENT
+    title: "Nuevas dependencias deben ser explícitas"
+    description: "Si extension necesita new dependency, debe listarse"
+    severity: medium
+    mutable: false
+    validation:
+      type: function
+      method: "validate_dependencies"
+
+  - id: L3.EXT.REVERSIBILITY
+    title: "Toda extensión debe ser reversible"
+    description: "Debe existir rollback plan antes de approval"
+    severity: high
+    mutable: false
+    validation:
+      type: function
+      method: "validate_reversibility"
+
+  - id: L3.EXT.ONLY_EXTEND_NO_MODIFY
+    title: "Auto-extensión solo añade, no modifica"
+    description: "No puede sobrescribir código existente, solo añadir"
+    severity: critical
+    mutable: false
+    constraint:
+      mode: "add_only"
+
+  - id: L3.EXT.CONTRACT_COMPLIANCE
+    title: "Nueva extensión debe respetar contratos existentes"
+    description: "No puede violar Level 0-2 contratos"
+    severity: critical
+    mutable: false
+    validation:
+      type: neo4j_query
+      query: "MATCH (c:Contract) WHERE c.severity = 'critical' RETURN c.id"
+
+  - id: L3.EXT.PROPERTY_INTEGRITY
+    title: "No puede modificar propiedades cuánticas existentes"
+    description: "Solo puede añadir nuevas properties a nodos"
+    severity: medium
+    mutable: false
+    validation:
+      type: neo4j_query
+      query: "MATCH (n) WHERE n.amplitude < 0.5 RETURN n.node_id"
+
+  - id: L3.EXT.AUDIT_TRAIL
+    title: "Toda extensión debe tener audit trail"
+    description: "Quién, qué, cuándo, por qué debe registrarse"
+    severity: medium
+    mutable: false
+    validation:
+      type: redis_key
+      key_pattern: "denis:self_extension:audit:*"
+
+changes: []
