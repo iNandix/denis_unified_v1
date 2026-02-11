@@ -259,12 +259,14 @@ para generar código coherente con el estilo existente.
 ```
 
 **Tareas:**
-- `[ ]` `CapabilityGapDetector`: analiza errores/latencias/patrones
-- `[ ]` `ExtensionTemplateEngine`: templates para nuevos módulos
-- `[ ]` `BehaviorHandbook`: extrae patrones de código existente
-- `[ ]` `CodeGenerator`: genera código (usa LLM interno o templates)
-- `[ ]` `DependencyResolver`: resuelve imports/recursos necesarios
-- `[ ]` `StyleConsistencyChecker`: verifica que el código generado siga el estilo
+- `[x]` `CapabilityGapDetector`: analiza errores/latencias/patrones
+- `[x]` `ExtensionTemplateEngine`: templates para nuevos módulos
+- `[x]` `BehaviorHandbook`: extrae patrones de código existente
+- `[x]` `CodeGenerator`: genera código (usa LLM interno o templates)
+- `[x]` `DependencyResolver`: resuelve imports/recursos necesarios
+- `[x]` `StyleConsistencyChecker`: verifica que el código generado siga el estilo
+
+**Estado (segunda vuelta):** `CERRADO` (`2026-02-11`)
 
 **Integración:**
 - Lee errores de logs (Redis)
@@ -698,9 +700,10 @@ contracts:
 - `[ ]` decisiones L2 justificadas
 
 ### FASE 4: Self-Extension
-- `[ ]` gaps detectados correctamente
-- `[ ]` código generado compila
-- `[ ]` approval humans successful
+- `[x]` gaps detectados correctamente
+- `[x]` código generado compila
+- `[x]` approval humans successful
+- `[x]` pentest de gate bloquea bypasses (`phase4_gate_pentest.json`)
 
 ### FASE 5: Cognitive Router
 - `[ ]` predicción > 80% accuracy

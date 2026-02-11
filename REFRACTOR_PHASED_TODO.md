@@ -313,7 +313,7 @@ Estado:
 | FASE 1: Perception | FASE 1 completada | **CERRADO (2da vuelta)** | `cortex/metacognitive_perception.py` |
 | FASE 2: Propagation | FASE 2 completada | **CERRADO (2da vuelta)** | `quantum/propagation_engine.py` |
 | FASE 3: Active Metagraph | FASE 3 completada | **CERRADO (2da vuelta)** | `metagraph/active_metagraph.py` |
-| **FASE 4: Self-Extension** | **FASE 4 completada** | **IMPLEMENTADO** | `capability_detector.py`, `extension_generator.py`, `behavior_handbook.py` |
+| **FASE 4: Self-Extension** | **FASE 4 completada** | **CERRADO (2da vuelta)** | `autopoiesis/self_extension_engine.py`, `phase4_gate_pentest.json` |
 | **FASE 5: Cognitive Router** | **FASE 5 completada** | **IMPLEMENTADO** | `orchestration/cognitive_router.py` |
 | FASE 6: API | FASE 6 pendiente | Esperando | - |
 | FASE 7: Self-Aware Inference | FASE 7 pendiente | Esperando | - |
@@ -323,6 +323,7 @@ Estado:
 ### FASE 4 metacognitiva completada
 
 **Componentes:**
+- `autopoiesis/self_extension_engine.py` - Orquestación E2E con gate estricto
 - `autopoiesis/capability_detector.py` - Detecta gaps de capacidad
 - `autopoiesis/extension_generator.py` - Genera código para extensiones
 - `autopoiesis/behavior_handbook.py` - Extrae patrones de código existente
@@ -339,6 +340,8 @@ Estado:
 - `[x]` ExtensionGenerator - Templates: basic_tool, cortex_adapter, memory_augment
 - `[x]` BehaviorHandbook - Extrae patrones del código existente
 - `[x]` Quality scoring basado en handbook
+- `[x]` Gate estricto: sandbox+quality+style+dependencies+reversibility antes de approval/deploy
+- `[x]` Pentest imparcial Phase-4 (`phase4_gate_pentest.json`) con bypasses bloqueados
 
 **Verificación:**
 ```bash
