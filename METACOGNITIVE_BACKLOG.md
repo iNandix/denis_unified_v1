@@ -92,15 +92,13 @@ contracts:
 
 ### TICKET F3: Active Metagraph
 **Depende:** TICKET F2  
-**Archivos:**
-- `metagraph/active_metagraph.py`
-- `metagraph/contract_enforcer.py`
+**Archivo:** `metagraph/active_metagraph.py`
 
 **Features:**
-- L1PatternDetector - detecta patrones
-- L1Reorganizer - propone reorganizaciones
-- L2PrincipleEngine - mantiene principios
-- L2Governance - decide aprobar/rechazar
+- `[x]` `PatternDetector` - detecta orphan, cycles, hubs, temporal_drift
+- `[x]` `Reorganizer` - genera propuestas de reorganización
+- `[x]` `PrincipleEngine` - mantiene principios L2
+- `[x]` `Governance` - decide aprobar/rechazar propuestas
 
 ---
 
