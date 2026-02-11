@@ -15,9 +15,32 @@
       "check": "perceive_hass",
       "result": {
         "adapter": "home_assistant",
-        "entity_id": "ha:light.sample",
-        "error": "ha_async_client_unavailable",
-        "status": "error"
+        "entity_id": "light.led_mesa_1",
+        "state": {
+          "attributes": {
+            "friendly_name": "LED MESA 1",
+            "max_color_temp_kelvin": 9000,
+            "max_mireds": 500,
+            "min_color_temp_kelvin": 2000,
+            "min_mireds": 111,
+            "supported_color_modes": [
+              "color_temp",
+              "hs"
+            ],
+            "supported_features": 32
+          },
+          "context": {
+            "id": "01KH18BQ6EEX6DTGRV901QGFZ9",
+            "parent_id": null,
+            "user_id": null
+          },
+          "entity_id": "light.led_mesa_1",
+          "last_changed": "2026-02-09T13:09:55.022670+00:00",
+          "last_reported": "2026-02-09T13:09:55.022670+00:00",
+          "last_updated": "2026-02-09T13:09:55.022670+00:00",
+          "state": "unavailable"
+        },
+        "status": "ok"
       }
     },
     {
@@ -26,26 +49,28 @@
         "adapter": "infrastructure",
         "checks": {
           "ping": {
-            "cmd": "ping -c 1 -W 1 10.10.10.1",
+            "cmd": "ping -c 1 -W 1 100.86.69.108",
             "exit_code": 0,
             "ok": true,
             "stderr": "",
-            "stdout": "PING 10.10.10.1 (10.10.10.1) 56(84) bytes of data.\n64 bytes from 10.10.10.1: icmp_seq=1 ttl=64 time=0.017 ms\n\n--- 10.10.10.1 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 0.017/0.017/0.017/0.000 ms"
+            "stdout": "PING 100.86.69.108 (100.86.69.108) 56(84) bytes of data.\n64 bytes from 100.86.69.108: icmp_seq=1 ttl=64 time=0.023 ms\n\n--- 100.86.69.108 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 0.023/0.023/0.023/0.000 ms"
           },
           "ssh_uname": {
-            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 10.10.10.1 'uname -a'",
+            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 100.86.69.108 'uname -a'",
             "exit_code": 255,
             "ok": false,
-            "stderr": "jotah@10.10.10.1: Permission denied (publickey,password).",
+            "stderr": "jotah@100.86.69.108: Permission denied (publickey,password).",
             "stdout": ""
           }
         },
         "entity_id": "node1",
         "state": {
-          "host": "10.10.10.1",
+          "host": "100.86.69.108",
           "ping_ok": true,
           "ssh_ok": false,
-          "ssh_uname": ""
+          "ssh_uname": "",
+          "static_host": "10.10.10.1",
+          "tailscale_ip": "100.86.69.108"
         },
         "status": "ok"
       }
@@ -56,14 +81,14 @@
         "adapter": "infrastructure",
         "checks": {
           "ping": {
-            "cmd": "ping -c 1 -W 1 10.10.10.2",
+            "cmd": "ping -c 1 -W 1 100.93.192.27",
             "exit_code": 0,
             "ok": true,
             "stderr": "",
-            "stdout": "PING 10.10.10.2 (10.10.10.2) 56(84) bytes of data.\n64 bytes from 10.10.10.2: icmp_seq=1 ttl=64 time=0.189 ms\n\n--- 10.10.10.2 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 0.189/0.189/0.189/0.000 ms"
+            "stdout": "PING 100.93.192.27 (100.93.192.27) 56(84) bytes of data.\n64 bytes from 100.93.192.27: icmp_seq=1 ttl=64 time=0.682 ms\n\n--- 100.93.192.27 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 0.682/0.682/0.682/0.000 ms"
           },
           "ssh_uname": {
-            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 10.10.10.2 'uname -a'",
+            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 100.93.192.27 'uname -a'",
             "exit_code": 0,
             "ok": true,
             "stderr": "",
@@ -72,10 +97,76 @@
         },
         "entity_id": "node2",
         "state": {
-          "host": "10.10.10.2",
+          "host": "100.93.192.27",
           "ping_ok": true,
           "ssh_ok": true,
-          "ssh_uname": "Linux nodo2 6.8.0-51-generic #52-Ubuntu SMP PREEMPT_DYNAMIC Thu Dec  5 13:09:44 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux"
+          "ssh_uname": "Linux nodo2 6.8.0-51-generic #52-Ubuntu SMP PREEMPT_DYNAMIC Thu Dec  5 13:09:44 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux",
+          "static_host": "10.10.10.2",
+          "tailscale_ip": "100.93.192.27"
+        },
+        "status": "ok"
+      }
+    },
+    {
+      "check": "perceive_node3",
+      "result": {
+        "adapter": "infrastructure",
+        "checks": {
+          "ping": {
+            "cmd": "ping -c 1 -W 1 10.10.10.3",
+            "exit_code": 1,
+            "ok": false,
+            "stderr": "",
+            "stdout": "PING 10.10.10.3 (10.10.10.3) 56(84) bytes of data.\n\n--- 10.10.10.3 ping statistics ---\n1 packets transmitted, 0 received, 100% packet loss, time 0ms"
+          },
+          "ssh_uname": {
+            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 10.10.10.3 'uname -a'",
+            "exit_code": 255,
+            "ok": false,
+            "stderr": "ssh: connect to host 10.10.10.3 port 22: No route to host",
+            "stdout": ""
+          }
+        },
+        "entity_id": "node3",
+        "state": {
+          "host": "10.10.10.3",
+          "ping_ok": false,
+          "ssh_ok": false,
+          "ssh_uname": "",
+          "static_host": "10.10.10.3",
+          "tailscale_ip": null
+        },
+        "status": "error"
+      }
+    },
+    {
+      "check": "perceive_nodomac",
+      "result": {
+        "adapter": "infrastructure",
+        "checks": {
+          "ping": {
+            "cmd": "ping -c 1 -W 1 100.117.11.87",
+            "exit_code": 0,
+            "ok": true,
+            "stderr": "",
+            "stdout": "PING 100.117.11.87 (100.117.11.87) 56(84) bytes of data.\n64 bytes from 100.117.11.87: icmp_seq=1 ttl=64 time=3.23 ms\n\n--- 100.117.11.87 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 3.227/3.227/3.227/0.000 ms"
+          },
+          "ssh_uname": {
+            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 100.117.11.87 'uname -a'",
+            "exit_code": 0,
+            "ok": true,
+            "stderr": "",
+            "stdout": "Linux nodoMac 6.8.0-94-generic #96~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Jan 16 13:19:05 UTC 2 x86_64 x86_64 x86_64 GNU/Linux"
+          }
+        },
+        "entity_id": "nodomac",
+        "state": {
+          "host": "100.117.11.87",
+          "ping_ok": true,
+          "ssh_ok": true,
+          "ssh_uname": "Linux nodoMac 6.8.0-94-generic #96~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Jan 16 13:19:05 UTC 2 x86_64 x86_64 x86_64 GNU/Linux",
+          "static_host": "192.168.1.65",
+          "tailscale_ip": "100.117.11.87"
         },
         "status": "ok"
       }
@@ -83,9 +174,12 @@
   ],
   "mode": "execute",
   "registry_active": [
-    "ha:light.sample",
+    "light.led_mesa_1",
+    "light.led_mesa_2",
     "node1",
-    "node2"
+    "node2",
+    "node3",
+    "nodomac"
   ],
   "status": "ok"
 }

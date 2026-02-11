@@ -15,7 +15,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from denis_unified_v1.cortex.adapters.home_assistant_adapter import HomeAssistantAdapter
-from denis_unified_v1.cortex.adapters.infrastructure_adapter import InfrastructureAdapter
+from denis_unified_v1.cortex.adapters.infrastructure_adapter import (
+    InfrastructureAdapter,
+)
 from denis_unified_v1.cortex.entity_registry import EntityRegistry
 from denis_unified_v1.cortex.world_interface import CortexWorldInterface, WorldEntity
 
@@ -30,9 +32,16 @@ async def run_smoke(execute: bool) -> dict[str, Any]:
     cortex.register_adapter("infra", infra_adapter)
 
     entities = [
-        WorldEntity(entity_id="ha:light.sample", category="home_assistant", source="hass"),
+        WorldEntity(
+            entity_id="light.led_mesa_1", category="home_assistant", source="hass"
+        ),
+        WorldEntity(
+            entity_id="light.led_mesa_2", category="home_assistant", source="hass"
+        ),
         WorldEntity(entity_id="node1", category="infrastructure", source="infra"),
         WorldEntity(entity_id="node2", category="infrastructure", source="infra"),
+        WorldEntity(entity_id="node3", category="infrastructure", source="infra"),
+        WorldEntity(entity_id="nodomac", category="infrastructure", source="infra"),
     ]
     for ent in entities:
         registry.upsert(
@@ -54,14 +63,17 @@ async def run_smoke(execute: bool) -> dict[str, Any]:
     try:
         if not execute:
             output["checks"].append(
-                {"check": "dry_run", "result": "No external calls executed in dry-run mode."}
+                {
+                    "check": "dry_run",
+                    "result": "No external calls executed in dry-run mode.",
+                }
             )
             return output
 
         output["checks"].append(
             {
                 "check": "perceive_hass",
-                "result": await cortex.perceive("ha:light.sample", domain="light"),
+                "result": await cortex.perceive("light.led_mesa_1", domain="light"),
             }
         )
         output["checks"].append(
@@ -69,6 +81,12 @@ async def run_smoke(execute: bool) -> dict[str, Any]:
         )
         output["checks"].append(
             {"check": "perceive_node2", "result": await cortex.perceive("node2")}
+        )
+        output["checks"].append(
+            {"check": "perceive_node3", "result": await cortex.perceive("node3")}
+        )
+        output["checks"].append(
+            {"check": "perceive_nodomac", "result": await cortex.perceive("nodomac")}
         )
         return output
     finally:
