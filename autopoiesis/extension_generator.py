@@ -13,6 +13,7 @@ from enum import Enum
 import hashlib
 import json
 import os
+import re
 from typing import Any
 
 import redis
@@ -232,7 +233,7 @@ class {class_name}:
     def augment_node(self, node_id: str, properties: dict[str, Any]) -> dict[str, Any]:
         try:
             with self._get_driver().session() as session:
-                result = session.run("\"\"
+                result = session.run(\"\"\"
                     MATCH (n)
                     WHERE n.node_id = $node_id OR id(n) = toInteger($node_id)
                     SET n += $properties, n.updated_at = datetime()
@@ -267,6 +268,15 @@ class ExtensionGenerator:
         self._templates_used: list[str] = []
         self._extensions_generated: int = 0
 
+    def _to_module_name(self, name: str) -> str:
+        module = name.replace("-", "_").replace(" ", "_").lower()
+        module = re.sub(r"[^a-z0-9_]+", "_", module).strip("_")
+        if not module:
+            module = "generated_extension"
+        if module[0].isdigit():
+            module = f"ext_{module}"
+        return module
+
     def _load_handbook_patterns(self) -> dict[str, Any]:
         return _load_behavior_handbook()
 
@@ -284,16 +294,16 @@ class ExtensionGenerator:
         return style.get("class_prefix", "") + "".join(class_words)
 
     def _generate_file_name(self, name: str) -> str:
-        return name.replace(" ", "_").lower() + ".py"
+        return self._to_module_name(name) + ".py"
 
-    def _generate_test(self, class_name: str, name: str) -> str:
-        file_name = name.replace(" ", "_").lower()
+    def _generate_tool_test(self, class_name: str, name: str) -> str:
+        module_name = self._to_module_name(name)
         return f'''\"\"\"
 Tests for {name}
 \"\"\"
 
-import pytest
-from {file_name} import {class_name}
+import asyncio
+from {module_name} import {class_name}
 
 
 class Test{class_name}:
@@ -304,12 +314,33 @@ class Test{class_name}:
         assert self.processor.name == "{name}"
 
     def test_execute_success(self):
-        result = self.processor.execute({{"test": True}})
+        result = asyncio.run(self.processor.execute({{"test": True}}))
         assert result["status"] == "success"
 '''
 
+    def _generate_memory_processor_test(self, class_name: str, name: str) -> str:
+        module_name = self._to_module_name(name)
+        return f'''\"\"\"
+Tests for {name}
+\"\"\"
+
+from {module_name} import {class_name}
+
+
+class Test{class_name}:
+    def setup_method(self):
+        self.processor = {class_name}()
+
+    def test_initialization(self):
+        assert self.processor is not None
+
+    def test_expected_methods(self):
+        assert hasattr(self.processor, "augment_node")
+        assert hasattr(self.processor, "query")
+'''
+
     def _generate_doc(self, name: str, description: str, class_name: str) -> str:
-        file_name = name.replace(" ", "_").lower()
+        file_name = self._to_module_name(name)
         return f"""# {name}
 
 {description}
@@ -351,7 +382,7 @@ result = processor.execute({{"input": "data"}})
         class_name = self._generate_class_name(name, style)
         code = ToolTemplates.basic_tool(name, class_name, description)
         imports = ["from __future__ import annotations", "from typing import Any"]
-        test_code = self._generate_test(class_name, name)
+        test_code = self._generate_tool_test(class_name, name)
         doc_code = self._generate_doc(name, description, class_name)
 
         extension = GeneratedExtension(
@@ -397,7 +428,7 @@ result = processor.execute({{"input": "data"}})
         class_name = self._generate_class_name(name, style)
         code = MemoryProcessorTemplates.memory_augment(name, class_name, description)
         imports = ["from __future__ import annotations", "from typing", "from neo4j"]
-        test_code = self._generate_test(class_name, name)
+        test_code = self._generate_memory_processor_test(class_name, name)
         doc_code = self._generate_doc(name, description, class_name)
 
         extension = GeneratedExtension(

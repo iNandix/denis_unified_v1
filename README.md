@@ -246,6 +246,34 @@ rm -f denis_unified_v1/api/memory_handler.py
 rm -f denis_unified_v1/scripts/phase9_memory_smoke.py
 ```
 
+## Phase-10 (Gate Hardening Real Tooling)
+Run gate pentest against real sandbox tooling (`py_compile`, `ruff`, `mypy`, `pytest`, `bandit`):
+```bash
+python3 denis_unified_v1/scripts/phase4_gate_pentest.py \
+  --out-json denis_unified_v1/phase10_gate_pentest.json
+```
+
+Optional explicit sandbox interpreter:
+```bash
+DENIS_SELF_EXTENSION_SANDBOX_PYTHON=/tmp/denis_gate_venv/bin/python \
+python3 denis_unified_v1/scripts/phase4_gate_pentest.py \
+  --out-json denis_unified_v1/phase10_gate_pentest.json
+```
+
+Gate behavior:
+- fail-closed if any required tool is missing in strict mode.
+- sandbox validation requires all checks to pass:
+  - compile
+  - typecheck
+  - lint
+  - tests
+  - security scan
+
+Phase-10 rollback:
+```bash
+git revert <phase10_commit_sha>
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1

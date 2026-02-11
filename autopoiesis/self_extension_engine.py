@@ -25,8 +25,10 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import py_compile
 import re
+import shutil
+import subprocess
+import sys
 import tempfile
 import time
 from typing import Any
@@ -112,8 +114,10 @@ class SandboxResult:
 
     success: bool
     compilation_passed: bool
+    typecheck_passed: bool
     tests_passed: bool
     lint_passed: bool
+    security_passed: bool
     output: str
     errors: list[str]
     duration_ms: float
@@ -163,6 +167,14 @@ class SelfExtensionEngine:
         )
         deploy_dir = os.getenv("DENIS_SELF_EXTENSION_DEPLOY_DIR", "/tmp/denis_self_extensions")
         self._deploy_root = Path(deploy_dir).expanduser().resolve()
+        self._sandbox_timeout_seconds = max(
+            5, int(os.getenv("DENIS_SELF_EXTENSION_SANDBOX_TIMEOUT_SECONDS", "20"))
+        )
+        self._strict_tooling = (
+            os.getenv("DENIS_SELF_EXTENSION_STRICT_TOOLING", "true").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self._sandbox_python = self._resolve_sandbox_python()
 
     def _find_proposal(self, proposal_id: str) -> ExtensionProposal | None:
         return next((p for p in self._proposals if p.id == proposal_id), None)
@@ -188,6 +200,64 @@ class SelfExtensionEngine:
             if re.search(pattern, code):
                 found.append(pattern)
         return found
+
+    def _to_module_name(self, value: str) -> str:
+        module = value.replace("-", "_").replace(" ", "_").lower()
+        module = re.sub(r"[^a-z0-9_]+", "_", module).strip("_")
+        if not module:
+            module = "generated_extension"
+        if module[0].isdigit():
+            module = f"ext_{module}"
+        return module
+
+    def _resolve_sandbox_python(self) -> str:
+        env_override = (os.getenv("DENIS_SELF_EXTENSION_SANDBOX_PYTHON") or "").strip()
+        candidates = [
+            env_override,
+            "/tmp/denis_gate_venv/bin/python",
+            "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
+            sys.executable,
+            "python3",
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            if "/" in candidate and not os.path.exists(candidate):
+                continue
+            if "/" not in candidate and shutil.which(candidate) is None:
+                continue
+            return candidate
+        return sys.executable
+
+    def _run_command(self, cmd: list[str], cwd: Path) -> dict[str, Any]:
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=self._sandbox_timeout_seconds,
+            )
+            return {
+                "ok": proc.returncode == 0,
+                "returncode": proc.returncode,
+                "stdout": (proc.stdout or "").strip()[:4000],
+                "stderr": (proc.stderr or "").strip()[:4000],
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "ok": False,
+                "returncode": -1,
+                "stdout": "",
+                "stderr": f"timeout>{self._sandbox_timeout_seconds}s",
+            }
+
+    def _python_has_module(self, module_name: str) -> bool:
+        check = self._run_command(
+            [self._sandbox_python, "-c", f"import {module_name}"],
+            cwd=Path.cwd(),
+        )
+        return bool(check["ok"])
 
     def _build_rollback_plan(self, proposal_id: str) -> dict[str, Any]:
         return {
@@ -378,8 +448,11 @@ class SelfExtensionEngine:
         start = time.perf_counter()
         errors: list[str] = []
         compilation_passed = False
+        typecheck_passed = False
         tests_passed = False
         lint_passed = False
+        security_passed = False
+        output_lines: list[str] = []
 
         code = proposal.generated_code
         forbidden = self._contains_forbidden_patterns(code)
@@ -396,47 +469,155 @@ class SelfExtensionEngine:
 
         try:
             ast.parse(code)
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".py", delete=False, encoding="utf-8"
-            ) as tmp:
-                tmp.write(code)
-                tmp_path = tmp.name
-            py_compile.compile(tmp_path, doraise=True)
-            compilation_passed = True
         except Exception as e:
-            errors.append(f"compile_error:{e}")
-        finally:
-            try:
-                if "tmp_path" in locals():
-                    os.unlink(tmp_path)
-            except OSError:
-                pass
+            errors.append(f"ast_parse_error:{e}")
 
-        tests_passed = (
-            re.search(r"^class\s+[A-Z]", code, flags=re.MULTILINE) is not None
-            and re.search(r"^\s*def\s+\w+", code, flags=re.MULTILINE) is not None
-            and ("try:" in code and "except" in code)
-        )
-        if not tests_passed:
-            errors.append("structure_check_failed")
+        module_name = self._to_module_name(proposal.name or proposal.id)
+        test_code = proposal.metadata.get("test_code", "")
+        if not isinstance(test_code, str):
+            test_code = ""
 
-        lint_passed = all(len(line) <= 120 for line in code.splitlines())
-        if not lint_passed:
-            errors.append("lint_line_length_failed")
+        if not test_code.strip():
+            test_code = f"""from {module_name} import *  # noqa: F401,F403
+
+def test_module_imports():
+    assert True
+"""
+
+        with tempfile.TemporaryDirectory(prefix="denis_selfext_") as sandbox_dir_raw:
+            sandbox_dir = Path(sandbox_dir_raw)
+            code_path = sandbox_dir / f"{module_name}.py"
+            test_path = sandbox_dir / f"test_{module_name}.py"
+
+            code_path.write_text(code, encoding="utf-8")
+            test_path.write_text(test_code, encoding="utf-8")
+
+            compile_cmd = [
+                self._sandbox_python,
+                "-m",
+                "py_compile",
+                str(code_path),
+                str(test_path),
+            ]
+            compile_result = self._run_command(compile_cmd, cwd=sandbox_dir)
+            compilation_passed = bool(compile_result["ok"])
+            output_lines.append(f"compile_rc={compile_result['returncode']}")
+            if compile_result["stderr"]:
+                output_lines.append(f"compile_err={compile_result['stderr']}")
+            if not compilation_passed:
+                errors.append(f"compile_error:rc={compile_result['returncode']}")
+
+            has_ruff = self._python_has_module("ruff")
+            if not has_ruff:
+                lint_passed = not self._strict_tooling
+                errors.append("missing_tool:ruff")
+            else:
+                lint_cmd = [
+                    self._sandbox_python,
+                    "-m",
+                    "ruff",
+                    "check",
+                    str(code_path),
+                    str(test_path),
+                ]
+                lint_result = self._run_command(lint_cmd, cwd=sandbox_dir)
+                lint_passed = bool(lint_result["ok"])
+                output_lines.append(f"ruff_rc={lint_result['returncode']}")
+                if lint_result["stdout"]:
+                    output_lines.append(f"ruff_out={lint_result['stdout']}")
+                if lint_result["stderr"]:
+                    output_lines.append(f"ruff_err={lint_result['stderr']}")
+                if not lint_passed:
+                    errors.append(f"lint_error:rc={lint_result['returncode']}")
+
+            has_mypy = self._python_has_module("mypy")
+            if not has_mypy:
+                typecheck_passed = not self._strict_tooling
+                errors.append("missing_tool:mypy")
+            else:
+                typecheck_cmd = [
+                    self._sandbox_python,
+                    "-m",
+                    "mypy",
+                    "--hide-error-context",
+                    "--no-error-summary",
+                    "--ignore-missing-imports",
+                    "--follow-imports=silent",
+                    str(code_path),
+                    str(test_path),
+                ]
+                typecheck_result = self._run_command(typecheck_cmd, cwd=sandbox_dir)
+                typecheck_passed = bool(typecheck_result["ok"])
+                output_lines.append(f"mypy_rc={typecheck_result['returncode']}")
+                if typecheck_result["stdout"]:
+                    output_lines.append(f"mypy_out={typecheck_result['stdout']}")
+                if typecheck_result["stderr"]:
+                    output_lines.append(f"mypy_err={typecheck_result['stderr']}")
+                if not typecheck_passed:
+                    errors.append(f"typecheck_error:rc={typecheck_result['returncode']}")
+
+            has_pytest = self._python_has_module("pytest")
+            if not has_pytest:
+                tests_passed = not self._strict_tooling
+                errors.append("missing_tool:pytest")
+            else:
+                test_cmd = [
+                    self._sandbox_python,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    str(test_path),
+                ]
+                test_result = self._run_command(test_cmd, cwd=sandbox_dir)
+                tests_passed = bool(test_result["ok"])
+                output_lines.append(f"pytest_rc={test_result['returncode']}")
+                if test_result["stdout"]:
+                    output_lines.append(f"pytest_out={test_result['stdout']}")
+                if test_result["stderr"]:
+                    output_lines.append(f"pytest_err={test_result['stderr']}")
+                if not tests_passed:
+                    errors.append(f"tests_error:rc={test_result['returncode']}")
+
+            has_bandit = self._python_has_module("bandit")
+            if not has_bandit:
+                security_passed = not self._strict_tooling
+                errors.append("missing_tool:bandit")
+            else:
+                bandit_cmd = [
+                    self._sandbox_python,
+                    "-m",
+                    "bandit",
+                    "-q",
+                    "-r",
+                    str(code_path),
+                ]
+                bandit_result = self._run_command(bandit_cmd, cwd=sandbox_dir)
+                security_passed = bool(bandit_result["ok"])
+                output_lines.append(f"bandit_rc={bandit_result['returncode']}")
+                if bandit_result["stdout"]:
+                    output_lines.append(f"bandit_out={bandit_result['stdout']}")
+                if bandit_result["stderr"]:
+                    output_lines.append(f"bandit_err={bandit_result['stderr']}")
+                if not security_passed:
+                    errors.append(f"security_error:rc={bandit_result['returncode']}")
 
         duration_ms = (time.perf_counter() - start) * 1000
         success = (
             compilation_passed
+            and typecheck_passed
             and tests_passed
             and lint_passed
+            and security_passed
             and not errors
         )
         return SandboxResult(
             success=success,
             compilation_passed=compilation_passed,
+            typecheck_passed=typecheck_passed,
             tests_passed=tests_passed,
             lint_passed=lint_passed,
-            output="Sandbox validation completed",
+            security_passed=security_passed,
+            output="\n".join(output_lines) if output_lines else "Sandbox validation completed",
             errors=errors,
             duration_ms=round(duration_ms, 3),
         )
@@ -446,8 +627,10 @@ class SelfExtensionEngine:
         proposal.sandbox_result = {
             "success": result.success,
             "compilation_passed": result.compilation_passed,
+            "typecheck_passed": result.typecheck_passed,
             "tests_passed": result.tests_passed,
             "lint_passed": result.lint_passed,
+            "security_passed": result.security_passed,
             "errors": result.errors,
             "duration_ms": result.duration_ms,
         }
@@ -692,6 +875,9 @@ class SelfExtensionEngine:
                 "min_quality_score": self._min_quality_score,
                 "allow_system_approval": self._allow_system_approval,
                 "deploy_root": str(self._deploy_root),
+                "strict_tooling": self._strict_tooling,
+                "sandbox_python": self._sandbox_python,
+                "sandbox_timeout_seconds": self._sandbox_timeout_seconds,
             },
         }
 
