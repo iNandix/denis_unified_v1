@@ -81,10 +81,12 @@ contracts:
 **Archivo:** `quantum/propagation_engine.py`
 
 **Features:**
-- `SuperpositionState` - múltiples candidatos
-- `InterferenceCalculator` - refuerzo/cancelación
-- `CoherenceDecay` - pérdida de coherencia
-- `CollapseMechanism` - convergencia
+- `[x]` `SuperpositionState` - múltiples candidatos simultáneamente
+- `[x]` `InterferenceCalculator` - refuerzo/cancelación
+- `[x]` `CoherenceDecay` - pérdida de coherencia
+- `[x]` `CollapseMechanism` - convergencia a respuesta
+- `[x]` `SimilarityCalculator` - similaridad entre candidatos
+- `[x]` `PropagationEngine` - motor principal orchestrado
 
 ---
 
