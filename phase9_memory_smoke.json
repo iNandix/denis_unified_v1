@@ -1,0 +1,238 @@
+{
+  "checks": [
+    {
+      "check": "memory_health",
+      "legacy_bridge": "ok",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "episodic_store",
+      "legacy_mirror": "error",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "episodic_fetch",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "neuro_layers_bridge",
+      "ok": true,
+      "status_code": 200,
+      "total_layers": 12
+    },
+    {
+      "check": "mental_loop_levels",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "adaptive_cot",
+      "depth": "medium",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "atlas_bridge",
+      "ok": true,
+      "status_code": 200
+    }
+  ],
+  "sample": {
+    "adaptive_cot": {
+      "chain_steps": 4,
+      "context_window_tokens": 12000,
+      "depth": "medium",
+      "mode": "adaptive_cot",
+      "reasoning_style": "semantic_first",
+      "token_estimate": 8
+    },
+    "atlas_projects": {
+      "count": 0,
+      "projects": []
+    },
+    "episodic_store": {
+      "conv_id": "phase9-59be8ff758",
+      "legacy_mirror": {
+        "error": "legacy_memory_http_500:{'detail': '{neo4j_code: Neo.ClientError.Security.AuthenticationRateLimit} {message: The client has provided incorrect authentication details too many times in a row.} {gql_stat",
+        "status": "error"
+      },
+      "neo4j_written": false,
+      "status": "ok"
+    },
+    "health": {
+      "components": {
+        "episodic": true,
+        "procedural": true,
+        "semantic": true,
+        "working": true
+      },
+      "legacy_bridge": "ok",
+      "legacy_neuro_layers": 12,
+      "status": "ok"
+    },
+    "neuro_layers": {
+      "layers": {
+        "L10_ARCHETYPAL": {
+          "chunk_size": 1500,
+          "description": "Arquetipos universales",
+          "mental_loop_depth": 4,
+          "name": "Archetypal",
+          "retention_hours": 175200,
+          "storage_backend": "mongodb",
+          "synergies_with": [
+            "L9_CULTURAL",
+            "L11_COLLECTIVE"
+          ],
+          "ttl_seconds": 630720000
+        },
+        "L11_COLLECTIVE": {
+          "chunk_size": 2000,
+          "description": "Consciencia colectiva",
+          "mental_loop_depth": 4,
+          "name": "Collective",
+          "retention_hours": 876000,
+          "storage_backend": "chroma",
+          "synergies_with": [
+            "L10_ARCHETYPAL",
+            "L12_COSMIC"
+          ],
+          "ttl_seconds": 3153600000
+        },
+        "L12_COSMIC": {
+          "chunk_size": 2500,
+          "description": "Conexi\u00f3n universal",
+          "mental_loop_depth": 4,
+          "name": "Cosmic",
+          "retention_hours": 8760000,
+          "storage_backend": "chroma",
+          "synergies_with": [
+            "L11_COLLECTIVE"
+          ],
+          "ttl_seconds": 31536000000
+        },
+        "L1_INSTINCTIVE": {
+          "chunk_size": 100,
+          "description": "Reflejos y respuestas autom\u00e1ticas",
+          "mental_loop_depth": 1,
+          "name": "Instinctive",
+          "retention_hours": 1,
+          "storage_backend": "redis",
+          "synergies_with": [
+            "L2_SHORT_TERM"
+          ],
+          "ttl_seconds": 3600
+        },
+        "L2_SHORT_TERM": {
+          "chunk_size": 300,
+          "description": "Memoria de trabajo inmediata",
+          "mental_loop_depth": 2,
+          "name": "Short Term",
+          "retention_hours": 24,
+          "storage_backend": "redis",
+          "synergies_with": [
+            "L1_INSTINCTIVE",
+            "L3_EPISODIC"
+          ],
+          "ttl_seconds": 86400
+        },
+        "L3_EPISODIC": {
+          "chunk_size": 500,
+          "description": "Eventos y experiencias",
+          "mental_loop_depth": 2,
+          "name": "Episodic",
+          "retention_hours": 168,
+          "storage_backend": "qdrant",
+          "synergies_with": [
+            "L2_SHORT_TERM",
+            "L4_PROCEDURAL"
+          ],
+          "ttl_seconds": 604800
+        },
+        "L4_PROCEDURAL": {
+          "chunk_size": 800,
+          "description": "Habilidades y procedimientos",
+          "mental_loop_depth": 3,
+          "name": "Procedural",
+          "retention_hours": 720,
+          "storage_backend": "chroma",
+          "synergies_with": [
+            "L3_EPISODIC",
+            "L5_SEMANTIC"
+          ],
+          "ttl_seconds": 2592000
+        },
+        "L5_SEMANTIC": {
+          "chunk_size": 1000,
+          "description": "Conocimiento factual",
+          "mental_loop_depth": 3,
+          "name": "Semantic",
+          "retention_hours": 8760,
+          "storage_backend": "chroma",
+          "synergies_with": [
+            "L4_PROCEDURAL",
+            "L6_RELATIONAL"
+          ],
+          "ttl_seconds": 31536000
+        },
+        "L6_RELATIONAL": {
+          "chunk_size": 600,
+          "description": "Relaciones entre conceptos",
+          "mental_loop_depth": 3,
+          "name": "Relational",
+          "retention_hours": 8760,
+          "storage_backend": "neo4j",
+          "synergies_with": [
+            "L5_SEMANTIC",
+            "L7_EMOTIONAL"
+          ],
+          "ttl_seconds": 31536000
+        },
+        "L7_EMOTIONAL": {
+          "chunk_size": 400,
+          "description": "Memoria emocional",
+          "mental_loop_depth": 4,
+          "name": "Emotional",
+          "retention_hours": 17520,
+          "storage_backend": "neo4j",
+          "synergies_with": [
+            "L6_RELATIONAL",
+            "L8_IDENTITY"
+          ],
+          "ttl_seconds": 63072000
+        },
+        "L8_IDENTITY": {
+          "chunk_size": 500,
+          "description": "Sentido de identidad y self",
+          "mental_loop_depth": 4,
+          "name": "Identity",
+          "retention_hours": 43800,
+          "storage_backend": "neo4j",
+          "synergies_with": [
+            "L7_EMOTIONAL",
+            "L9_CULTURAL"
+          ],
+          "ttl_seconds": 157680000
+        },
+        "L9_CULTURAL": {
+          "chunk_size": 1200,
+          "description": "Normas y valores culturales (MongoDB Atlas)",
+          "mental_loop_depth": 4,
+          "name": "Cultural",
+          "retention_hours": 87600,
+          "storage_backend": "mongodb",
+          "synergies_with": [
+            "L8_IDENTITY",
+            "L10_ARCHETYPAL"
+          ],
+          "ttl_seconds": 315360000
+        }
+      },
+      "total_layers": 12
+    }
+  },
+  "status": "ok",
+  "timestamp_utc": "2026-02-11T22:41:33.578346+00:00"
+}

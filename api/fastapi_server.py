@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from denis_unified_v1.api.openai_compatible import DenisRuntime, build_openai_router
+from denis_unified_v1.api.memory_handler import build_memory_router
 from denis_unified_v1.api.query_interface import build_query_router
 from denis_unified_v1.api.voice_handler import build_voice_router
 from denis_unified_v1.api.websocket_handler import build_ws_router
@@ -109,6 +110,8 @@ def create_app() -> FastAPI:
                 "query_interface": True,
                 "websocket_events": True,
                 "voice_pipeline": flags.denis_use_voice_pipeline,
+                "memory_unified": flags.denis_use_memory_unified,
+                "atlas_bridge": flags.denis_use_atlas,
             },
         }
 
@@ -117,6 +120,8 @@ def create_app() -> FastAPI:
     app.include_router(build_ws_router())
     if flags.denis_use_voice_pipeline:
         app.include_router(build_voice_router())
+    if flags.denis_use_memory_unified:
+        app.include_router(build_memory_router())
     metagraph_router = build_metagraph_router()
     if metagraph_router is not None:
         app.include_router(metagraph_router)

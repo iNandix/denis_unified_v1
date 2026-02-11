@@ -25,10 +25,12 @@ from datetime import datetime, timezone
 from typing import Any
 import json
 from collections import defaultdict
+import os
 
 from neo4j import GraphDatabase
 
 from denis_unified_v1.metagraph.observer import collect_graph_metrics
+from denis_unified_v1.cortex.neo4j_config_resolver import ensure_neo4j_env_auto
 from denis_unified_v1.metacognitive.hooks import (
     get_hooks,
     emit_reflection,
@@ -41,12 +43,14 @@ def _utc_now() -> str:
 
 
 def _get_neo4j_driver():
-    uri = "bolt://10.10.10.1:7687"
-    user = "neo4j"
-    password = ""
-    import os
-
-    password = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS") or ""
+    # Reuse existing Denis configuration discovery to avoid daily manual setup.
+    try:
+        ensure_neo4j_env_auto()
+    except Exception:
+        pass
+    uri = (os.getenv("NEO4J_URI") or "bolt://10.10.10.1:7687").strip()
+    user = (os.getenv("NEO4J_USER") or "neo4j").strip()
+    password = (os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS") or "").strip()
     if password:
         return GraphDatabase.driver(uri, auth=(user, password))
     return None
@@ -559,6 +563,13 @@ class ActiveMetagraph:
             ],
             "timestamp_utc": _utc_now(),
         }
+
+    # Backward compatibility with early exploratory docs/scripts.
+    def scan_and_propose(
+        self,
+        metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self.scan_and_analyze(metrics=metrics)
 
     def review_proposal(self, proposal: ReorganizationProposal) -> dict[str, Any]:
         return self._governance.review_proposal(proposal)

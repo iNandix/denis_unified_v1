@@ -71,6 +71,106 @@ contracts:
     file: level3_voice_pipeline.yaml
     status: draft
     owner: denis_unified_v1
+  - id: L3.MEM.GLOBAL.CONTINUITY
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L1_INSTINCTIVE
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L2_SHORT_TERM
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L3_EPISODIC
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L4_PROCEDURAL
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L5_SEMANTIC
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L6_RELATIONAL
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L7_EMOTIONAL
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L8_IDENTITY
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L9_CULTURAL
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L10_ARCHETYPAL
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L11_COLLECTIVE
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.LAYER.L12_COSMIC
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.MEM.MENTAL_LOOP.L1_REFLECTION
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.MENTAL_LOOP.L2_META
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.MENTAL_LOOP.L3_PATTERN
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.MENTAL_LOOP.L4_EXPANSIVE
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.COT.ADAPTIVE
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.ATLAS.BRIDGE
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.MEM.LONG_TERM.PERSISTENCE
+    level: 3
+    file: level3_memory_neuroplastic.yaml
+    status: active
+    owner: denis_unified_v1
   - id: L3.ROUTER.FALLBACK_LEGACY
     level: 3
     file: level3_cognitive_router.yaml

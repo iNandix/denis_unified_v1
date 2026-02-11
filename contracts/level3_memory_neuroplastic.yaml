@@ -1,0 +1,124 @@
+version: 1
+layer: level3
+description: "Contratos neuroplásticos, mental loop, CoT adaptativa y puente ATLAS"
+
+contracts:
+  - id: L3.MEM.GLOBAL.CONTINUITY
+    title: "Continuidad global de memoria"
+    description: "Toda escritura en memoria unificada debe poder reflejarse en memoria legacy para persistencia larga"
+    severity: critical
+    mutable: false
+    validation:
+      type: endpoint
+      path: "/v1/memory/contracts/verify/{user_id}"
+
+  - id: L3.MEM.LAYER.L1_INSTINCTIVE
+    title: "L1 Instinctive contract"
+    description: "Eventos reflejos viven en backend rápido y caducidad corta"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.LAYER.L2_SHORT_TERM
+    title: "L2 Short-term contract"
+    description: "Contexto inmediato con TTL estricto"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.LAYER.L3_EPISODIC
+    title: "L3 Episodic contract"
+    description: "Eventos conversacionales persistidos con timestamp y trazabilidad"
+    severity: medium
+    mutable: false
+  - id: L3.MEM.LAYER.L4_PROCEDURAL
+    title: "L4 Procedural contract"
+    description: "Macros/procedimientos versionados y recuperables"
+    severity: medium
+    mutable: false
+  - id: L3.MEM.LAYER.L5_SEMANTIC
+    title: "L5 Semantic contract"
+    description: "Conceptos y pesos semánticos actualizables sin perder historial"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.LAYER.L6_RELATIONAL
+    title: "L6 Relational contract"
+    description: "Relaciones entre entidades y conceptos deben mantenerse coherentes"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.LAYER.L7_EMOTIONAL
+    title: "L7 Emotional contract"
+    description: "Etiquetas emocionales no pueden contradecir el contexto causal"
+    severity: low
+    mutable: true
+  - id: L3.MEM.LAYER.L8_IDENTITY
+    title: "L8 Identity contract"
+    description: "Memoria de identidad con alta protección y trazabilidad"
+    severity: critical
+    mutable: false
+  - id: L3.MEM.LAYER.L9_CULTURAL
+    title: "L9 Cultural contract"
+    description: "Conocimiento cultural etiquetado por fuente/periodo"
+    severity: low
+    mutable: true
+  - id: L3.MEM.LAYER.L10_ARCHETYPAL
+    title: "L10 Archetypal contract"
+    description: "Patrones arquetípicos versionados para auditoría"
+    severity: low
+    mutable: true
+  - id: L3.MEM.LAYER.L11_COLLECTIVE
+    title: "L11 Collective contract"
+    description: "Conocimiento colectivo con control de procedencia"
+    severity: low
+    mutable: true
+  - id: L3.MEM.LAYER.L12_COSMIC
+    title: "L12 Cosmic contract"
+    description: "Nivel abstracto no bloquea operación de niveles inferiores"
+    severity: low
+    mutable: true
+
+  - id: L3.MEM.MENTAL_LOOP.L1_REFLECTION
+    title: "Mental loop L1 reflection"
+    description: "Reflexión operativa inmediata sobre salida"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.MENTAL_LOOP.L2_META
+    title: "Mental loop L2 meta"
+    description: "Meta-reflexión de estrategia y coste"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.MENTAL_LOOP.L3_PATTERN
+    title: "Mental loop L3 pattern"
+    description: "Reconocimiento de patrones recurrentes"
+    severity: medium
+    mutable: true
+  - id: L3.MEM.MENTAL_LOOP.L4_EXPANSIVE
+    title: "Mental loop L4 expansive"
+    description: "Gobernanza de continuidad y coherencia global"
+    severity: medium
+    mutable: true
+
+  - id: L3.MEM.COT.ADAPTIVE
+    title: "Adaptive CoT contract"
+    description: "La profundidad de razonamiento se ajusta a complejidad, latencia y contexto"
+    severity: medium
+    mutable: true
+    validation:
+      type: endpoint
+      path: "/v1/memory/cot/adaptive"
+
+  - id: L3.MEM.ATLAS.BRIDGE
+    title: "ATLAS bridge contract"
+    description: "La capa unificada expone puente read-through a endpoints ATLAS legacy"
+    severity: medium
+    mutable: false
+    validation:
+      type: endpoint
+      path: "/v1/memory/atlas/projects"
+
+  - id: L3.MEM.LONG_TERM.PERSISTENCE
+    title: "Long-term persistence contract"
+    description: "Las escrituras críticas deben reflejarse en memoria long-term existente"
+    severity: critical
+    mutable: false
+    validation:
+      type: mirror
+      target: "legacy_memory_api:/v1/memory/store"
+
+changes: []

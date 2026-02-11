@@ -32,6 +32,8 @@ class UnifiedFeatureFlags:
     denis_use_api_unified: bool = False
     denis_use_inference_router: bool = False
     denis_use_voice_pipeline: bool = False
+    denis_use_memory_unified: bool = False
+    denis_use_atlas: bool = False
     denis_enable_metagraph: bool = True
     denis_autopoiesis_mode: str = "supervised"
 
@@ -50,6 +52,8 @@ def load_feature_flags() -> UnifiedFeatureFlags:
         denis_use_api_unified=_env_bool("DENIS_USE_API_UNIFIED", False),
         denis_use_inference_router=_env_bool("DENIS_USE_INFERENCE_ROUTER", False),
         denis_use_voice_pipeline=_env_bool("DENIS_USE_VOICE_PIPELINE", False),
+        denis_use_memory_unified=_env_bool("DENIS_USE_MEMORY_UNIFIED", False),
+        denis_use_atlas=_env_bool("DENIS_USE_ATLAS", False),
         denis_enable_metagraph=_env_bool("DENIS_ENABLE_METAGRAPH", True),
         denis_autopoiesis_mode=_env_mode(
             "DENIS_AUTOPOIESIS_MODE", "supervised", {"off", "supervised", "manual"}

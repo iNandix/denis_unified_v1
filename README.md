@@ -206,6 +206,46 @@ rm -f denis_unified_v1/api/voice_handler.py
 rm -f denis_unified_v1/scripts/phase8_voice_smoke.py
 ```
 
+## Phase-9 (Unified Memory + Neuroplastic Contracts)
+Run memory smoke (episodic/semantic/procedural/working + neuro/atlas bridge):
+```bash
+python3 denis_unified_v1/scripts/phase9_memory_smoke.py \
+  --out-json denis_unified_v1/phase9_memory_smoke.json
+```
+
+Enable memory unified routes:
+```bash
+DENIS_USE_MEMORY_UNIFIED=true DENIS_USE_ATLAS=true \
+uvicorn denis_unified_v1.api.fastapi_server:app --host 0.0.0.0 --port 8001 --workers 1
+```
+
+Memory routes added (flagged):
+- `GET /v1/memory/health`
+- `POST /v1/memory/episodic`
+- `POST /v1/memory/semantic`
+- `POST /v1/memory/procedural`
+- `POST /v1/memory/working`
+- `GET /v1/memory/neuro/layers`
+- `GET /v1/memory/neuro/synergies`
+- `GET /v1/memory/mental-loop/levels`
+- `POST /v1/memory/cot/adaptive`
+- `GET /v1/memory/atlas/projects`
+
+Contracts:
+- `contracts/level3_memory_neuroplastic.yaml`
+  - 12 capas neuroplásticas (L1-L12)
+  - 1 contrato global de continuidad
+  - 4 niveles de mental loop
+  - CoT adaptativa
+  - Puente ATLAS + persistencia long-term
+
+Phase-9 rollback:
+```bash
+rm -rf denis_unified_v1/memory
+rm -f denis_unified_v1/api/memory_handler.py
+rm -f denis_unified_v1/scripts/phase9_memory_smoke.py
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1
