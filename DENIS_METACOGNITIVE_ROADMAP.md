@@ -118,11 +118,13 @@ NO es física real - es metáfora 2026:
 ```
 
 **Tareas:**
-- `[ ]` `SuperpositionState`: representa múltiples candidatos simultáneamente
-- `[ ]` `InterferenceCalculator`: calcula refuerzo/cancelación entre candidatos
-- `[ ]` `CoherenceDecay`: modela pérdida de coherencia por tiempo/distancia
-- `[ ]` `CollapseMechanism`: converge a respuesta final
-- `[ ]` Algoritmo de propagación BFS/DFS con pesos cuánticos
+- `[x]` `SuperpositionState`: representa múltiples candidatos simultáneamente
+- `[x]` `InterferenceCalculator`: calcula refuerzo/cancelación entre candidatos
+- `[x]` `CoherenceDecay`: modela pérdida de coherencia por tiempo/distancia
+- `[x]` `CollapseMechanism`: converge a respuesta final
+- `[x]` Algoritmo de propagación BFS/DFS con pesos cuánticos
+
+**Estado (segunda vuelta):** `CERRADO` (`2026-02-11`)
 
 **Matemática (metáfora 2026):**
 ```
