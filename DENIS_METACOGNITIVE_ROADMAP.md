@@ -189,11 +189,13 @@ Principio {
 ```
 
 **Tareas:**
-- `[ ]` `L1PatternDetector`: detecta patrones en L0 (ellos tienen detección básica)
-- `[ ]` `L1Reorganizer`: propone reorganizaciones basadas en patrones
-- `[ ]` `L2PrincipleEngine`: mantiene principios y los aplica
-- `[ ]` `L2Governance`: decide qué propuesta L1 aprobar
-- `[ ]` Integración con contratos (Level 2 adaptativos)
+- `[x]` `L1PatternDetector`: detecta patrones en L0 (ellos tienen detección básica)
+- `[x]` `L1Reorganizer`: propone reorganizaciones basadas en patrones
+- `[x]` `L2PrincipleEngine`: mantiene principios y los aplica
+- `[x]` `L2Governance`: decide qué propuesta L1 aprobar
+- `[x]` Integración con contratos (Level 2 adaptativos)
+
+**Estado (segunda vuelta):** `CERRADO` (`2026-02-11`)
 
 **Integración:**
 - Lee de L0 (no modifica)

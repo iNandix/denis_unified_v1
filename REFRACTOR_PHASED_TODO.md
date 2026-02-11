@@ -312,7 +312,7 @@ Estado:
 | FASE 0: Hooks | FASE 0 completada | **CERRADO (2da vuelta)** | `metacognitive/hooks.py` |
 | FASE 1: Perception | FASE 1 completada | **CERRADO (2da vuelta)** | `cortex/metacognitive_perception.py` |
 | FASE 2: Propagation | FASE 2 completada | **CERRADO (2da vuelta)** | `quantum/propagation_engine.py` |
-| FASE 3: Active Metagraph | FASE 3 completada | Pendiente | - |
+| FASE 3: Active Metagraph | FASE 3 completada | **CERRADO (2da vuelta)** | `metagraph/active_metagraph.py` |
 | **FASE 4: Self-Extension** | **FASE 4 completada** | **IMPLEMENTADO** | `capability_detector.py`, `extension_generator.py`, `behavior_handbook.py` |
 | **FASE 5: Cognitive Router** | **FASE 5 completada** | **IMPLEMENTADO** | `orchestration/cognitive_router.py` |
 | FASE 6: API | FASE 6 pendiente | Esperando | - |
