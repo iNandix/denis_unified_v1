@@ -1,0 +1,16 @@
+version: 1
+layer: level3
+description: "Emergent/proposed contracts pending evaluation."
+contracts:
+  - id: L3.EMERGENT.PATTERN_PROPOSAL_TEMPLATE
+    title: "Emergent proposal template"
+    rule: "Each emergent contract must include evidence, impact, and rollback plan."
+    status: pending
+    mutable: true
+    required_fields:
+      - evidence
+      - expected_impact
+      - risk_level
+      - rollback
+      - owner
+

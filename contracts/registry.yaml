@@ -1,0 +1,39 @@
+version: 1
+updated_utc: "2026-02-11T00:00:00Z"
+contracts:
+  - id: L0.IDENTITY.CORE
+    level: 0
+    file: level0_constitution.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L0.SAFETY.NO_SECRET_LOGGING
+    level: 0
+    file: level0_constitution.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L0.SAFETY.HUMAN_APPROVAL_FOR_SELF_MOD
+    level: 0
+    file: level0_constitution.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L1.CAUSAL.TIMESTAMP_ORDER
+    level: 1
+    file: level1_topology.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L1.COHERENCE.NO_STRONG_CONTRADICTION
+    level: 1
+    file: level1_topology.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L2.ORCHESTRATION.RETRY_BACKOFF
+    level: 2
+    file: level2_adaptive.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.EMERGENT.PENDING
+    level: 3
+    file: level3_emergent.yaml
+    status: pending
+    owner: denis_unified_v1
+

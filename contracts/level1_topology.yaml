@@ -1,0 +1,25 @@
+version: 1
+layer: level1
+description: "Structural and causal constraints for graph/runtime behavior."
+contracts:
+  - id: L1.CAUSAL.TIMESTAMP_ORDER
+    title: "Causal timestamp ordering"
+    rule: "For causal relation e1->e2, e1 timestamp must be <= e2 timestamp."
+    violation_severity: high
+    mutable: slow
+  - id: L1.COHERENCE.NO_STRONG_CONTRADICTION
+    title: "No strong contradiction in same context"
+    rule: "Avoid asserting P and not-P as simultaneously true in same context window."
+    violation_severity: high
+    mutable: slow
+  - id: L1.GRAPH.CONTINUITY
+    title: "Identity path continuity"
+    rule: "There must be a graph path linking core Denis identity snapshots over time."
+    violation_severity: high
+    mutable: slow
+  - id: L1.SCHEMA.BACKWARD_COMPAT
+    title: "Backward compatible schema changes"
+    rule: "New fields are additive; legacy critical fields/endpoints are not removed abruptly."
+    violation_severity: high
+    mutable: slow
+

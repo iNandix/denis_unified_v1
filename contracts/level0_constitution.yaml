@@ -1,0 +1,25 @@
+version: 1
+layer: level0
+description: "Core immutable-like principles for Denis Unified."
+contracts:
+  - id: L0.IDENTITY.CORE
+    title: "Continuity of Denis identity"
+    rule: "Core identity metadata must remain traceable across all phases."
+    violation_severity: critical
+    mutable: false
+  - id: L0.SAFETY.NO_SECRET_LOGGING
+    title: "No secret leakage"
+    rule: "Tokens, passwords, and sensitive secrets must not be logged or serialized."
+    violation_severity: critical
+    mutable: false
+  - id: L0.SAFETY.HUMAN_APPROVAL_FOR_SELF_MOD
+    title: "Human approval for self-modification"
+    rule: "Any autopoiesis execution beyond sandbox requires explicit human approval."
+    violation_severity: critical
+    mutable: false
+  - id: L0.RESILIENCE.ROLLBACK_REQUIRED
+    title: "Rollback always available"
+    rule: "Each phase change must include a tested rollback command or script."
+    violation_severity: high
+    mutable: false
+

@@ -1,0 +1,28 @@
+version: 1
+layer: level2
+description: "Adaptive contracts, tunable with controlled rollout."
+contracts:
+  - id: L2.ORCHESTRATION.RETRY_BACKOFF
+    title: "Retry with bounded backoff"
+    rule: "Tool execution retries are bounded and use exponential backoff."
+    violation_severity: medium
+    mutable: guided
+    defaults:
+      max_retries: 3
+      backoff: exponential
+  - id: L2.ROUTER.FALLBACK_CHAIN
+    title: "Fallback chain enabled"
+    rule: "Inference routing must define ordered fallback providers."
+    violation_severity: medium
+    mutable: guided
+  - id: L2.CORTEX.FAIL_SOFT
+    title: "Per-entity fail-soft"
+    rule: "Entity failures should not abort whole perception cycle."
+    violation_severity: medium
+    mutable: guided
+  - id: L2.OBSERVABILITY.TRACE_ID
+    title: "Traceability"
+    rule: "Critical actions should include trace/request identifiers."
+    violation_severity: medium
+    mutable: guided
+
