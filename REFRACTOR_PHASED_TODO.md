@@ -309,8 +309,8 @@ Estado:
 
 | Fase Metacognitiva | Depende De (Plan Original) | Estado | Evidencia |
 |-------------------|---------------------------|--------|-----------|
-| FASE 0: Hooks | FASE 0 completada | Pendiente | - |
-| FASE 1: Perception | FASE 1 completada | Pendiente | - |
+| FASE 0: Hooks | FASE 0 completada | **CERRADO (2da vuelta)** | `metacognitive/hooks.py` |
+| FASE 1: Perception | FASE 1 completada | **CERRADO (2da vuelta)** | `cortex/metacognitive_perception.py` |
 | FASE 2: Propagation | FASE 2 completada | Pendiente | - |
 | FASE 3: Active Metagraph | FASE 3 completada | Pendiente | - |
 | **FASE 4: Self-Extension** | **FASE 4 completada** | **IMPLEMENTADO** | `capability_detector.py`, `extension_generator.py`, `behavior_handbook.py` |
