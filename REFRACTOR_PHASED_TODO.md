@@ -294,6 +294,8 @@ Estado:
 - `[x]` `level1_topology.yaml`
 - `[x]` `level2_adaptive.yaml`
 - `[x]` `level3_emergent.yaml`
+- `[x]` `level3_cognitive_router.yaml`
+- `[x]` `level3_self_extension.yaml`
 - `[x]` `changes/README.md`
 - `[x]` `changes/_template.md`
 
@@ -301,58 +303,64 @@ Estado:
 
 ## 8) Metacognitive Project (paralelo)
 
-**Propósito:** Implementación "detrás de escenas" de capacidades metacognitivas que eventualmente reemplazan/suparan el plan original.
-
-**Documentación:** `DENIS_METACOGNITIVE_PROJECT.md`
+**Propósito:** Implementación "detrás de escenas" de capacidades metacognitivas.
 
 ### Estado por fase metacognitiva
 
 | Fase Metacognitiva | Depende De (Plan Original) | Estado | Evidencia |
 |-------------------|---------------------------|--------|-----------|
-| FASE 0: Hooks | FASE 0 completada | Implementado | `metacognitive/hooks.py` |
+| FASE 0: Hooks | FASE 0 completada | Pendiente | - |
 | FASE 1: Perception | FASE 1 completada | Pendiente | - |
 | FASE 2: Propagation | FASE 2 completada | Pendiente | - |
 | FASE 3: Active Metagraph | FASE 3 completada | Pendiente | - |
-| FASE 4: Self-Extension | FASE 4 completada | Pendiente | - |
+| **FASE 4: Self-Extension** | **FASE 4 completada** | **IMPLEMENTADO** | `capability_detector.py`, `extension_generator.py`, `behavior_handbook.py` |
 | **FASE 5: Cognitive Router** | **FASE 5 completada** | **IMPLEMENTADO** | `orchestration/cognitive_router.py` |
 | FASE 6: API | FASE 6 pendiente | Esperando | - |
 | FASE 7: Self-Aware Inference | FASE 7 pendiente | Esperando | - |
 | FASE 8: Metacognitive Voice | FASE 8 pendiente | Esperando | - |
 | FASE 9: Self-Aware Memory | FASE 9 pendiente | Esperando | - |
 
-### FASE 5 metacognitiva completada
+### FASE 4 metacognitiva completada
 
-**Componente:** `orchestration/cognitive_router.py`
+**Componentes:**
+- `autopoiesis/capability_detector.py` - Detecta gaps de capacidad
+- `autopoiesis/extension_generator.py` - Genera código para extensiones
+- `autopoiesis/behavior_handbook.py` - Extrae patrones de código existente
+- `contracts/level3_self_extension.yaml` - Contratos específicos
 
-**Contratos aplicados:**
-- `contracts/level3_cognitive_router.yaml`
+**Contratos:**
+- `L3.EXT.HUMAN_APPROVAL_REQUIRED`
+- `L3.EXT.SANDBOX_VALIDATION`
+- `L3.EXT.CODE_QUALITY_THRESHOLD`
+- `L3.EXT.STYLE_CONSISTENCY`
 
-**Features implementados:**
-- `[x]` `CognitiveRouter` class con scoring inteligente de tools
-- `[x]` Extracción de features de task (technical, creative, retrieval, modification, reasoning, code)
-- `[x]` Scoring basado en amplitude, success_rate, latency, errores
-- `[x]` Estrategias: SMART, ROUND_ROBIN, LEGACY_FALLBACK
-- `[x]` Métricas a Redis (`denis:cognitive_router:metrics:*`)
-- `[x]` Eventos a Redis channels (`denis:cognitive_router:decisions`)
-- `[x]` Análisis automático de fallos
-- `[x]` Sugerencias de optimización
-- `[x]` Cache de tools (30s TTL)
+**Features:**
+- `[x]` CapabilityDetector - Analiza errores, latencias, patrones
+- `[x]` ExtensionGenerator - Templates: basic_tool, cortex_adapter, memory_augment
+- `[x]` BehaviorHandbook - Extrae patrones del código existente
+- `[x]` Quality scoring basado en handbook
 
 **Verificación:**
 ```bash
 python3 -c "
-from denis_unified_v1.orchestration.cognitive_router import CognitiveRouter
-router = CognitiveRouter()
-print(router.get_status())
-decision = router.route_decision(task='Write Python code', request_id='test')
-print(f'Tool: {decision.tool_name}, Confidence: {decision.confidence}')
+from denis_unified_v1.autopoiesis.extension_generator import create_generator
+gen = create_generator()
+ext = gen.generate_tool(name='test-tool', description='Test')
+print(f'Generated: {ext.id}, Quality: {ext.quality_score:.0%}')
 "
 ```
 
-**Salida Redis verificada:**
-- `denis:cognitive_router:metrics:decisions_total`
-- `denis:cognitive_router:metrics:tool:default`
-- `denis:cognitive_router:metrics:strategy:smart`
+### FASE 5 metacognitiva completada
+
+**Componente:** `orchestration/cognitive_router.py`
+
+**Contratos:** `contracts/level3_cognitive_router.yaml`
+
+**Features:**
+- `[x]` CognitiveRouter con scoring inteligente
+- `[x]` Extracción de features del task
+- `[x]` Estrategias: SMART, ROUND_ROBIN, LEGACY_FALLBACK
+- `[x]` Métricas y eventos a Redis
 
 ### Siguiente
 
@@ -360,10 +368,11 @@ print(f'Tool: {decision.tool_name}, Confidence: {decision.confidence}')
 - `[ ]` Esperar FASE 6 completada (ellos)
 - `[ ]` Implementar FASE 6 metacognitiva (`api/metacognitive_api.py`)
 
-### Rollback metacognitivo total
+### Rollback metacognitivo parcial (FASE 4)
 ```bash
-rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1/metacognitive
-rm -f /media/jotah/SSD_denis/home_jotah/denis_unified_v1/orchestration/cognitive_router.py
-rm -f /media/jotah/SSD_denis/home_jotah/denis_unified_v1/contracts/level3_cognitive_router.yaml
-redis-cli DEL "denis:cognitive_router:*"
+rm -f autopoiesis/capability_detector.py
+rm -f autopoiesis/extension_generator.py
+rm -f autopoiesis/behavior_handbook.py
+rm -f contracts/level3_self_extension.yaml
+redis-cli DEL "denis:self_extension:*"
 ```
