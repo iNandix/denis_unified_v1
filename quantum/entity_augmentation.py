@@ -13,6 +13,8 @@ from typing import Any
 from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError
 
+from denis_unified_v1.cortex.neo4j_config_resolver import ensure_neo4j_env_auto
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MAPPING_PATH = PROJECT_ROOT / "config" / "quantum_mapping.yaml"
@@ -44,6 +46,11 @@ class Neo4jConfig:
 
 
 def resolve_neo4j_config() -> Neo4jConfig:
+    # Reuse existing Denis config files/env before fallback defaults.
+    try:
+        ensure_neo4j_env_auto()
+    except Exception:
+        pass
     uri = (os.getenv("NEO4J_URI") or "bolt://10.10.10.1:7687").strip()
     user = (os.getenv("NEO4J_USER") or "neo4j").strip()
     password = (os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS") or "").strip()

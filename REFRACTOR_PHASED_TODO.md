@@ -20,9 +20,9 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
 
 ## 2) Estado global actual (real)
 - `[x]` `Fase 0` implementada y validada.
-- `[~]` `Fase 1` implementada parcialmente (infra OK, HASS bloqueado por token inválido).
+- `[x]` `Fase 1` implementada (infra OK, HASS OK, daemon polling OK).
 - `[x]` `Fase 2` (parte Neo4j quantum augmentation) implementada y ejecutada en real.
-- `[ ]` `Fase 3` pendiente.
+- `[x]` `Fase 3` implementada y validada en modo pasivo (Neo4j + Redis).
 - `[ ]` `Fase 4` pendiente.
 - `[ ]` `Fase 5` pendiente.
 - `[ ]` `Fase 6` pendiente.
@@ -36,7 +36,11 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
 - Quantum execute: `denis_unified_v1/phase1_augment_execute.json`  
   Resultado: `status=success`, nodos augmentados idempotentemente.
 - Cortex smoke execute: `denis_unified_v1/phase2_cortex_smoke_execute.json`  
-  Resultado: `node1/node2` OK, HASS conectado pero `Invalid HA API token`.
+  Resultado: HASS + infra OK, nodomac añadido, Tailscale IPs configuradas.
+- Cortex polling daemon: `cortex_polling_daemon.py`  
+  Resultado: daemon funcional (5s intervalo, publicando a Redis).
+- Metagraph snapshot: `denis_unified_v1/phase3_metagraph_snapshot.json`  
+  Resultado: `status=ok`, persistencia Redis `ok`, detección de anomalías en modo solo-observación.
 
 ## 4) TODO maestro por fase
 
@@ -69,17 +73,23 @@ Checklist:
 - `[x]` Crear `cortex/adapters/infrastructure_adapter.py`.
 - `[x]` Crear `cortex/adapters/home_assistant_adapter.py`.
 - `[x]` Añadir `cortex/config_resolver.py` para auto-carga de config existente (`.env*`, inventario red, JSON Denis HASS).
-- `[~]` Validar `perceive_hass` en `ok` (pendiente token HASS válido).
-- `[x]` Validar `perceive` infraestructura (node1/node2) en ejecución real.
+- `[x]` Validar `perceive_hass` con entidades reales (`light.led_mesa_1`, `light.led_mesa_2`).
+- `[x]` Validar `perceive` infraestructura (node1/node2/nodomac) con IPs Tailscale.
+- `[x]` Token HASS actualizado y funcional.
+- `[x]` Crear daemon de polling (`cortex_polling_daemon.py`) con intervalo configurable (default 5s).
 
 Verificación:
-- `python3 /home/jotah/denis_unified_v1/scripts/phase2_cortex_smoke.py --execute --out-json /home/jotah/denis_unified_v1/phase2_cortex_smoke_execute.json`
+- `python3 /home/jotah/denis_unified_v1/scripts/phase2_cortex_smoke.py --execute`
+- `python3 /home/jotah/denis_unified_v1/scripts/cortex_polling_daemon.py --poll-interval 5`
 
-Bloqueo actual:
-- Token HASS cargado automáticamente pero rechazado por HA (`Invalid HA API token`).
+Bloqueo resuelto:
+- Token HASS actualizado en `.env.prod.local` y `.env.hass`.
+- Nodomac añadido con IP `192.168.1.65`.
+- Tailscale IPs configuradas para node1, node2, nodomac.
 
 Rollback:
 - `rm -rf /home/jotah/denis_unified_v1/cortex`
+- `rm -f /home/jotah/denis_unified_v1/scripts/cortex_polling_daemon.py`
 - `rm -f /home/jotah/denis_unified_v1/scripts/phase2_cortex_smoke.py`
 
 Riesgo:
@@ -114,17 +124,18 @@ Riesgo:
 Objetivo: observación analítica sin auto-mutaciones.
 
 Checklist:
-- `[ ]` Crear `metagraph/observer.py` (métricas de estructura).
-- `[ ]` Crear `metagraph/pattern_detector.py` (anomalías).
-- `[ ]` Crear `metagraph/dashboard.py` (read-only API local).
-- `[ ]` Persistir métricas en Redis con TTL.
-- `[ ]` Definir reporte horario y archivo de evidencia.
+- `[x]` Crear `metagraph/observer.py` (métricas de estructura).
+- `[x]` Crear `metagraph/pattern_detector.py` (anomalías).
+- `[x]` Crear `metagraph/dashboard.py` (read-only API local).
+- `[x]` Persistir métricas en Redis con TTL.
+- `[x]` Definir reporte de snapshot y archivo de evidencia.
 
 Verificación:
-- `[ ]` endpoint/archivo de métricas con timestamp y recuentos consistentes.
+- `[x]` snapshot generado con timestamp y recuentos consistentes.
+- `[x]` persistencia Redis `metagraph:metrics:latest` y `metagraph:patterns:latest`.
 
 Rollback:
-- `[ ]` desactivar scheduler metagraph y borrar rutas read-only.
+- `[x]` borrar módulo y script de snapshot (no hay auto-scheduler en esta fase).
 
 Riesgo:
 - Bajo.
@@ -262,7 +273,18 @@ Riesgo:
 - No exponer secretos en logs/reportes.
 
 ## 6) Kanban rápido (siguiente acción)
-- `NOW`: cerrar bloqueo Fase 1 con token HASS válido.
-- `NEXT`: arrancar Fase 3 (metagraph pasivo) sin impacto en runtime.
-- `LATER`: Fase 4 y 5 en paralelo por módulos.
+- `NOW`: arrancar Fase 4 (autopoiesis supervisada, sin auto-apply).
+- `NEXT`: Fase 5 (orchestration augmentation con fallback legacy).
+- `LATER`: Fase 6 (API unificada OpenAI-compatible con flags).
 
+## 7) Contracts (transversal)
+Ruta: `/home/jotah/denis_unified_v1/contracts`
+
+Estado:
+- `[x]` `registry.yaml`
+- `[x]` `level0_constitution.yaml`
+- `[x]` `level1_topology.yaml`
+- `[x]` `level2_adaptive.yaml`
+- `[x]` `level3_emergent.yaml`
+- `[x]` `changes/README.md`
+- `[x]` `changes/_template.md`

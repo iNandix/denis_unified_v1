@@ -66,10 +66,46 @@ python3 denis_unified_v1/scripts/phase2_cortex_smoke.py \
   --out-json denis_unified_v1/phase2_cortex_smoke_execute.json
 ```
 
+Run polling daemon (5s, HASS + infra + tailscale refresh):
+```bash
+python3 denis_unified_v1/scripts/cortex_polling_daemon.py \
+  --poll-interval 5 \
+  --redis-url redis://localhost:6379/0
+```
+
 Phase-2 rollback:
 ```bash
 rm -rf denis_unified_v1/cortex
 rm -f denis_unified_v1/scripts/phase2_cortex_smoke.py
+rm -f denis_unified_v1/scripts/cortex_polling_daemon.py
+```
+
+## Phase-3 (Metagraph Passive)
+Snapshot (read-only graph analysis):
+```bash
+python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
+  --out-json denis_unified_v1/phase3_metagraph_snapshot.json
+```
+
+Snapshot + Redis persistence:
+```bash
+python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
+  --persist-redis \
+  --out-json denis_unified_v1/phase3_metagraph_snapshot.json
+```
+
+If auto Neo4j config cannot resolve credentials, run with explicit env:
+```bash
+NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
+python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
+  --persist-redis \
+  --out-json denis_unified_v1/phase3_metagraph_snapshot.json
+```
+
+Phase-3 rollback:
+```bash
+rm -rf denis_unified_v1/metagraph
+rm -f denis_unified_v1/scripts/phase3_metagraph_snapshot.py
 ```
 
 ## Rollback

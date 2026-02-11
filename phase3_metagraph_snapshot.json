@@ -1,0 +1,849 @@
+{
+  "metrics": {
+    "label_distribution": [
+      {
+        "cnt": 1056,
+        "label": "Episode"
+      },
+      {
+        "cnt": 974,
+        "label": "Turn"
+      },
+      {
+        "cnt": 676,
+        "label": "GraphRoute"
+      },
+      {
+        "cnt": 636,
+        "label": "AgentScan"
+      },
+      {
+        "cnt": 552,
+        "label": "ReasoningTrace"
+      },
+      {
+        "cnt": 551,
+        "label": "ConceptNode"
+      },
+      {
+        "cnt": 311,
+        "label": "Event"
+      },
+      {
+        "cnt": 202,
+        "label": "CoTTemplateUse"
+      },
+      {
+        "cnt": 180,
+        "label": "User"
+      },
+      {
+        "cnt": 170,
+        "label": "TemplateChunkV2"
+      },
+      {
+        "cnt": 143,
+        "label": "ConsciousState"
+      },
+      {
+        "cnt": 142,
+        "label": "CognitiveTrace"
+      },
+      {
+        "cnt": 139,
+        "label": "TraitEvolution"
+      },
+      {
+        "cnt": 129,
+        "label": "SelfReflection"
+      },
+      {
+        "cnt": 94,
+        "label": "Service"
+      },
+      {
+        "cnt": 88,
+        "label": "NetworkService"
+      },
+      {
+        "cnt": 85,
+        "label": "Session"
+      },
+      {
+        "cnt": 53,
+        "label": "HakunaMataCycle"
+      },
+      {
+        "cnt": 50,
+        "label": "CausalInference"
+      },
+      {
+        "cnt": 48,
+        "label": "QdrantCollection"
+      },
+      {
+        "cnt": 47,
+        "label": "Tool"
+      },
+      {
+        "cnt": 42,
+        "label": "Person"
+      },
+      {
+        "cnt": 40,
+        "label": "PlanStep"
+      },
+      {
+        "cnt": 40,
+        "label": "ExecutionStep"
+      },
+      {
+        "cnt": 35,
+        "label": "ToolExecution"
+      },
+      {
+        "cnt": 33,
+        "label": "HADevice"
+      },
+      {
+        "cnt": 33,
+        "label": "CodeChange"
+      },
+      {
+        "cnt": 33,
+        "label": "Decision"
+      },
+      {
+        "cnt": 32,
+        "label": "MemoryUnit"
+      },
+      {
+        "cnt": 28,
+        "label": "CoTTemplate"
+      },
+      {
+        "cnt": 25,
+        "label": "MemoryLayer"
+      },
+      {
+        "cnt": 24,
+        "label": "NeuroLayer"
+      },
+      {
+        "cnt": 23,
+        "label": "MemoryChunk"
+      },
+      {
+        "cnt": 23,
+        "label": "NcFile"
+      },
+      {
+        "cnt": 21,
+        "label": "TechnicalMemory"
+      },
+      {
+        "cnt": 21,
+        "label": "Memory"
+      },
+      {
+        "cnt": 20,
+        "label": "DenisTask"
+      },
+      {
+        "cnt": 17,
+        "label": "NetworkNode"
+      },
+      {
+        "cnt": 16,
+        "label": "LongTimedMemory"
+      },
+      {
+        "cnt": 15,
+        "label": "DenisChannel"
+      },
+      {
+        "cnt": 15,
+        "label": "Node2"
+      },
+      {
+        "cnt": 15,
+        "label": "HAEntityType"
+      },
+      {
+        "cnt": 14,
+        "label": "DataType"
+      },
+      {
+        "cnt": 13,
+        "label": "UserMindModel"
+      },
+      {
+        "cnt": 12,
+        "label": "Tag"
+      },
+      {
+        "cnt": 12,
+        "label": "AtlasCollection"
+      },
+      {
+        "cnt": 12,
+        "label": "Goal"
+      },
+      {
+        "cnt": 12,
+        "label": "Capability"
+      },
+      {
+        "cnt": 11,
+        "label": "MobileDevice"
+      },
+      {
+        "cnt": 11,
+        "label": "Agent"
+      },
+      {
+        "cnt": 11,
+        "label": "Plan"
+      },
+      {
+        "cnt": 11,
+        "label": "UserGoal"
+      },
+      {
+        "cnt": 10,
+        "label": "LLMRole"
+      },
+      {
+        "cnt": 10,
+        "label": "AdaptiveCycle"
+      },
+      {
+        "cnt": 10,
+        "label": "MacroRule"
+      },
+      {
+        "cnt": 10,
+        "label": "DenisMacroTrigger"
+      },
+      {
+        "cnt": 10,
+        "label": "DataFlow"
+      },
+      {
+        "cnt": 10,
+        "label": "PrefetchCache"
+      },
+      {
+        "cnt": 10,
+        "label": "RasaEntity"
+      },
+      {
+        "cnt": 10,
+        "label": "RasaIntent"
+      },
+      {
+        "cnt": 9,
+        "label": "NcFolder"
+      },
+      {
+        "cnt": 9,
+        "label": "MemorySchemaRelationship"
+      },
+      {
+        "cnt": 8,
+        "label": "ServiceType"
+      },
+      {
+        "cnt": 8,
+        "label": "DeviceType"
+      },
+      {
+        "cnt": 8,
+        "label": "CodeModule"
+      },
+      {
+        "cnt": 8,
+        "label": "Artifact"
+      },
+      {
+        "cnt": 8,
+        "label": "Project"
+      },
+      {
+        "cnt": 8,
+        "label": "L12"
+      },
+      {
+        "cnt": 8,
+        "label": "MCPTool"
+      },
+      {
+        "cnt": 8,
+        "label": "IdentityEvent"
+      },
+      {
+        "cnt": 8,
+        "label": "Trait"
+      },
+      {
+        "cnt": 8,
+        "label": "Node1"
+      },
+      {
+        "cnt": 8,
+        "label": "MessageFormat"
+      },
+      {
+        "cnt": 7,
+        "label": "TailscaleDevice"
+      },
+      {
+        "cnt": 7,
+        "label": "DenisMacroStep"
+      },
+      {
+        "cnt": 7,
+        "label": "AuditRun"
+      },
+      {
+        "cnt": 7,
+        "label": "Role"
+      },
+      {
+        "cnt": 7,
+        "label": "NetworkDevice"
+      },
+      {
+        "cnt": 6,
+        "label": "HAArea"
+      },
+      {
+        "cnt": 6,
+        "label": "TechLayer"
+      }
+    ],
+    "metrics": {
+      "missing_timestamp_nodes": 1486,
+      "orphan_nodes": 4326,
+      "total_edges": 6448,
+      "total_nodes": 7623,
+      "two_hop_cycles": 0
+    },
+    "neo4j": {
+      "password_set": true,
+      "uri": "bolt://10.10.10.1:7687",
+      "user": "neo4j"
+    },
+    "sampled_orphan_labels": [
+      {
+        "cnt": 11,
+        "label": "AtlasCollection"
+      },
+      {
+        "cnt": 10,
+        "label": "Event"
+      },
+      {
+        "cnt": 9,
+        "label": "Session"
+      },
+      {
+        "cnt": 8,
+        "label": "IdentityEvent"
+      },
+      {
+        "cnt": 8,
+        "label": "L12"
+      },
+      {
+        "cnt": 8,
+        "label": "Artifact"
+      },
+      {
+        "cnt": 8,
+        "label": "CodeModule"
+      },
+      {
+        "cnt": 6,
+        "label": "TechLayer"
+      },
+      {
+        "cnt": 6,
+        "label": "LLMModel"
+      },
+      {
+        "cnt": 4,
+        "label": "CodeChunk"
+      },
+      {
+        "cnt": 3,
+        "label": "VoiceComponent"
+      },
+      {
+        "cnt": 2,
+        "label": "Identity"
+      },
+      {
+        "cnt": 2,
+        "label": "Project"
+      },
+      {
+        "cnt": 2,
+        "label": "Episode"
+      },
+      {
+        "cnt": 2,
+        "label": "Person"
+      },
+      {
+        "cnt": 2,
+        "label": "Place"
+      },
+      {
+        "cnt": 2,
+        "label": "Conversation"
+      },
+      {
+        "cnt": 2,
+        "label": "Emotion"
+      },
+      {
+        "cnt": 2,
+        "label": "TimePoint"
+      },
+      {
+        "cnt": 1,
+        "label": "YoDenis"
+      },
+      {
+        "cnt": 1,
+        "label": "Run"
+      },
+      {
+        "cnt": 1,
+        "label": "Agent"
+      },
+      {
+        "cnt": 1,
+        "label": "YoDenisAgent"
+      },
+      {
+        "cnt": 1,
+        "label": "TestNode"
+      },
+      {
+        "cnt": 1,
+        "label": "TraitEvolution"
+      },
+      {
+        "cnt": 1,
+        "label": "DenisAgent"
+      },
+      {
+        "cnt": 1,
+        "label": "Concept"
+      },
+      {
+        "cnt": 1,
+        "label": "Category"
+      },
+      {
+        "cnt": 1,
+        "label": "Context"
+      },
+      {
+        "cnt": 1,
+        "label": "Metacognition"
+      },
+      {
+        "cnt": 1,
+        "label": "TemplateEngine"
+      },
+      {
+        "cnt": 1,
+        "label": "IoTPlatform"
+      },
+      {
+        "cnt": 1,
+        "label": "CMSPlatform"
+      },
+      {
+        "cnt": 1,
+        "label": "NetworkOverlay"
+      },
+      {
+        "cnt": 1,
+        "label": "AgentScan"
+      },
+      {
+        "cnt": 1,
+        "label": "HaRoom"
+      }
+    ],
+    "status": "ok",
+    "timestamp_utc": "2026-02-11T21:30:10.100924+00:00",
+    "top_hubs": [
+      {
+        "degree": 418,
+        "labels": [
+          "Persona"
+        ],
+        "node_ref": "Denis"
+      },
+      {
+        "degree": 268,
+        "labels": [
+          "User"
+        ],
+        "node_ref": "5995"
+      },
+      {
+        "degree": 209,
+        "labels": [
+          "Agent"
+        ],
+        "node_ref": "Denis"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "analysis"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "perception"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "planning"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "synthesis"
+      },
+      {
+        "degree": 125,
+        "labels": [
+          "Person"
+        ],
+        "node_ref": "5996"
+      },
+      {
+        "degree": 112,
+        "labels": [
+          "Episode"
+        ],
+        "node_ref": "4657"
+      },
+      {
+        "degree": 99,
+        "labels": [
+          "Person"
+        ],
+        "node_ref": "4618"
+      },
+      {
+        "degree": 98,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L12_METACOG"
+      },
+      {
+        "degree": 98,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L1_SENSORY"
+      },
+      {
+        "degree": 98,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L5_PROCEDURAL"
+      },
+      {
+        "degree": 98,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L8_SOCIAL"
+      },
+      {
+        "degree": 98,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L3_EPISODIC"
+      },
+      {
+        "degree": 98,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L2_WORKING"
+      },
+      {
+        "degree": 95,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L10_RELATIONAL"
+      },
+      {
+        "degree": 95,
+        "labels": [
+          "NeuroLayer"
+        ],
+        "node_ref": "L9_IDENTITY"
+      },
+      {
+        "degree": 82,
+        "labels": [
+          "CoTTemplate"
+        ],
+        "node_ref": "3668"
+      },
+      {
+        "degree": 78,
+        "labels": [
+          "User"
+        ],
+        "node_ref": "4164"
+      },
+      {
+        "degree": 65,
+        "labels": [
+          "ConceptNode"
+        ],
+        "node_ref": "ayudarte"
+      },
+      {
+        "degree": 60,
+        "labels": [
+          "CausalInference"
+        ],
+        "node_ref": "6008"
+      },
+      {
+        "degree": 59,
+        "labels": [
+          "ConceptNode"
+        ],
+        "node_ref": "puedo"
+      },
+      {
+        "degree": 49,
+        "labels": [
+          "User"
+        ],
+        "node_ref": "6993"
+      },
+      {
+        "degree": 48,
+        "labels": [
+          "ConceptNode"
+        ],
+        "node_ref": "ping"
+      },
+      {
+        "degree": 48,
+        "labels": [
+          "ConceptNode"
+        ],
+        "node_ref": "pong"
+      },
+      {
+        "degree": 45,
+        "labels": [
+          "CausalInference"
+        ],
+        "node_ref": "6025"
+      },
+      {
+        "degree": 42,
+        "labels": [
+          "CoTTemplate"
+        ],
+        "node_ref": "3669"
+      },
+      {
+        "degree": 38,
+        "labels": [
+          "CoTTemplate"
+        ],
+        "node_ref": "3667"
+      },
+      {
+        "degree": 33,
+        "labels": [
+          "Person"
+        ],
+        "node_ref": "4345"
+      }
+    ]
+  },
+  "patterns": {
+    "anomalies": [
+      {
+        "severity": "high",
+        "threshold": 10,
+        "type": "orphan_pressure",
+        "value": 4326
+      },
+      {
+        "severity": "medium",
+        "type": "missing_timestamp_nodes",
+        "value": 1486
+      }
+    ],
+    "patterns": [
+      {
+        "degree": 418,
+        "labels": [
+          "Persona"
+        ],
+        "node_ref": "Denis",
+        "type": "hub_node"
+      },
+      {
+        "degree": 268,
+        "labels": [
+          "User"
+        ],
+        "node_ref": "5995",
+        "type": "hub_node"
+      },
+      {
+        "degree": 209,
+        "labels": [
+          "Agent"
+        ],
+        "node_ref": "Denis",
+        "type": "hub_node"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "analysis",
+        "type": "hub_node"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "perception",
+        "type": "hub_node"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "planning",
+        "type": "hub_node"
+      },
+      {
+        "degree": 199,
+        "labels": [
+          "MentalLoopLevel"
+        ],
+        "node_ref": "synthesis",
+        "type": "hub_node"
+      },
+      {
+        "degree": 125,
+        "labels": [
+          "Person"
+        ],
+        "node_ref": "5996",
+        "type": "hub_node"
+      },
+      {
+        "degree": 112,
+        "labels": [
+          "Episode"
+        ],
+        "node_ref": "4657",
+        "type": "hub_node"
+      }
+    ],
+    "proposals": [
+      {
+        "action": "investigate_orphans",
+        "mode": "read_only_proposal",
+        "reason": "4326 orphan nodes detected",
+        "requires_human_approval": true
+      }
+    ],
+    "status": "ok",
+    "summary": {
+      "anomalies_count": 2,
+      "patterns_count": 9,
+      "proposals_count": 1
+    },
+    "timestamp_utc": "2026-02-11T21:30:10.101033+00:00",
+    "top_labels": [
+      {
+        "cnt": 1056,
+        "label": "Episode"
+      },
+      {
+        "cnt": 974,
+        "label": "Turn"
+      },
+      {
+        "cnt": 676,
+        "label": "GraphRoute"
+      },
+      {
+        "cnt": 636,
+        "label": "AgentScan"
+      },
+      {
+        "cnt": 552,
+        "label": "ReasoningTrace"
+      },
+      {
+        "cnt": 551,
+        "label": "ConceptNode"
+      },
+      {
+        "cnt": 311,
+        "label": "Event"
+      },
+      {
+        "cnt": 202,
+        "label": "CoTTemplateUse"
+      }
+    ]
+  },
+  "redis": {
+    "metrics": {
+      "redis_url": "redis://localhost:6379/0",
+      "status": "ok",
+      "ttl_seconds": 3600
+    },
+    "patterns": {
+      "redis_url": "redis://localhost:6379/0",
+      "status": "ok",
+      "ttl_seconds": 3600
+    }
+  },
+  "status": "ok"
+}
