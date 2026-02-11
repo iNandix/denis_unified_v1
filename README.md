@@ -181,6 +181,31 @@ rm -rf denis_unified_v1/inference
 rm -f denis_unified_v1/scripts/phase7_inference_smoke.py
 ```
 
+## Phase-8 (Voice Pipeline Incremental)
+Run voice pipeline smoke (STT -> chat -> TTS + websocket streaming):
+```bash
+python3 denis_unified_v1/scripts/phase8_voice_smoke.py \
+  --out-json denis_unified_v1/phase8_voice_smoke.json
+```
+
+Enable voice pipeline routes in unified API:
+```bash
+DENIS_USE_VOICE_PIPELINE=true \
+uvicorn denis_unified_v1.api.fastapi_server:app --host 0.0.0.0 --port 8001 --workers 1
+```
+
+Voice routes added (flagged):
+- `GET /v1/voice/health`
+- `POST /v1/voice/process`
+- `WS /v1/voice/stream`
+
+Phase-8 rollback:
+```bash
+rm -rf denis_unified_v1/voice
+rm -f denis_unified_v1/api/voice_handler.py
+rm -f denis_unified_v1/scripts/phase8_voice_smoke.py
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1

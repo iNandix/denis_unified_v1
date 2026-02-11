@@ -1,0 +1,39 @@
+version: 1
+layer: level3
+description: "Contratos para pipeline de voz incremental"
+
+contracts:
+  - id: L3.VOICE.STT_LLM_TTS_CHAIN
+    title: "Toda sesión de voz pasa por STT->LLM->TTS"
+    description: "El endpoint /v1/voice/process siempre devuelve texto transcrito y audio de salida"
+    severity: medium
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.voice.voice_pipeline"
+      method: "VoicePipeline.process_audio_base64"
+
+  - id: L3.VOICE.NON_BLOCKING_FALLBACK
+    title: "Fallo de TTS principal no bloquea respuesta"
+    description: "Si TTS primario falla, usar fallback configurado"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.voice.tts_engine"
+      method: "TTSEngine.synthesize"
+
+  - id: L3.VOICE.LATENCY_METRICS
+    title: "Pipeline reporta latencias por tramo"
+    description: "El resultado incluye latency_stt_ms, latency_llm_ms, latency_tts_ms y total"
+    severity: medium
+    mutable: true
+    validation:
+      type: schema_field
+      required_fields:
+        - latency_stt_ms
+        - latency_llm_ms
+        - latency_tts_ms
+        - latency_total_ms
+
+changes: []

@@ -1,0 +1,79 @@
+{
+  "checks": [
+    {
+      "check": "voice_health",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "voice_process",
+      "latency_total_ms": 6122,
+      "ok": true,
+      "status_code": 200,
+      "tts_provider": "unavailable"
+    },
+    {
+      "check": "voice_ws_route",
+      "ok": true,
+      "route": "/v1/voice/stream"
+    },
+    {
+      "check": "voice_ws_stream_flow",
+      "event_types": [
+        "stt",
+        "text_delta",
+        "text_sentence",
+        "audio_chunk",
+        "done"
+      ],
+      "ok": true
+    }
+  ],
+  "sample": {
+    "latency_llm_ms": 6110,
+    "latency_stt_ms": 1,
+    "latency_total_ms": 6122,
+    "latency_tts_ms": 11,
+    "provider": "unavailable",
+    "response_text": "\u00a1Hola. \u00bfC\u00f3mo est\u00e1s? \u00bfEn qu\u00e9 puedo ayudarte hoy?",
+    "timestamp_utc": "2026-02-11T22:23:48.143984+00:00",
+    "transcribed_text": "No se detect\u00f3 texto en audio.",
+    "tts_audio_base64": "",
+    "tts_error": "Cannot connect to host 10.10.10.2:5002 ssl:default [Connect call failed ('10.10.10.2', 5002)]"
+  },
+  "status": "ok",
+  "timestamp_utc": "2026-02-11T22:23:42.015090+00:00",
+  "ws_events_preview": [
+    {
+      "latency_stt_ms": 1,
+      "text": "No se detect\u00f3 texto en audio.",
+      "timestamp_utc": "2026-02-11T22:23:48.147193+00:00",
+      "type": "stt"
+    },
+    {
+      "delta": "\u00a1Hola. \u00bfC\u00f3mo est\u00e1s? \u00bfEn qu\u00e9 puedo ayudarte hoy?",
+      "source": "non_sse_fallback",
+      "timestamp_utc": "2026-02-11T22:23:49.412468+00:00",
+      "type": "text_delta"
+    },
+    {
+      "seq": 1,
+      "text": "\u00a1Hola.",
+      "timestamp_utc": "2026-02-11T22:23:49.412523+00:00",
+      "type": "text_sentence"
+    },
+    {
+      "audio_base64": "",
+      "channels": 1,
+      "format": "wav",
+      "provider": "unavailable",
+      "sample_rate_hz": 16000,
+      "seq": 1,
+      "text": "\u00a1Hola.",
+      "text_seq": 1,
+      "timestamp_utc": "2026-02-11T22:23:49.422715+00:00",
+      "tts_error": "Cannot connect to host 10.10.10.2:5002 ssl:default [Connect call failed ('10.10.10.2', 5002)]",
+      "type": "audio_chunk"
+    }
+  ]
+}
