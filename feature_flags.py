@@ -28,6 +28,7 @@ class UnifiedFeatureFlags:
     denis_use_quantum_substrate: bool = False
     denis_use_quantum_search: bool = False
     denis_use_cortex: bool = False
+    denis_use_orchestration_aug: bool = False
     denis_enable_metagraph: bool = True
     denis_autopoiesis_mode: str = "supervised"
 
@@ -42,6 +43,7 @@ def load_feature_flags() -> UnifiedFeatureFlags:
         ),
         denis_use_quantum_search=_env_bool("DENIS_USE_QUANTUM_SEARCH", False),
         denis_use_cortex=_env_bool("DENIS_USE_CORTEX", False),
+        denis_use_orchestration_aug=_env_bool("DENIS_USE_ORCHESTRATION_AUG", False),
         denis_enable_metagraph=_env_bool("DENIS_ENABLE_METAGRAPH", True),
         denis_autopoiesis_mode=_env_mode(
             "DENIS_AUTOPOIESIS_MODE", "supervised", {"off", "supervised", "manual"}
@@ -53,4 +55,3 @@ if __name__ == "__main__":
     import json
 
     print(json.dumps(load_feature_flags().as_dict(), indent=2, sort_keys=True))
-

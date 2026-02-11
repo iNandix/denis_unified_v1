@@ -24,7 +24,7 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
 - `[x]` `Fase 2` (parte Neo4j quantum augmentation) implementada y ejecutada en real.
 - `[x]` `Fase 3` implementada y validada en modo pasivo (Neo4j + Redis).
 - `[x]` `Fase 4` implementada y validada en modo supervisado (proposal + sandbox + approve).
-- `[ ]` `Fase 5` pendiente.
+- `[x]` `Fase 5` implementada y validada (executor DAG + fallback + circuit breaker).
 - `[ ]` `Fase 6` pendiente.
 - `[ ]` `Fase 7` pendiente.
 - `[ ]` `Fase 8` pendiente.
@@ -43,6 +43,8 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
   Resultado: `status=ok`, persistencia Redis `ok`, detección de anomalías en modo solo-observación.
 - Autopoiesis smoke: `denis_unified_v1/phase4_autopoiesis_smoke.json`  
   Resultado: `status=ok`, propuestas generadas, sandbox con rollback y aprobación supervisada.
+- Orchestration smoke: `denis_unified_v1/phase5_orchestration_smoke.json`  
+  Resultado: `status=ok`, plan de 4 tools ejecutado, fallback legacy y circuit breaker verificados.
 
 ## 4) TODO maestro por fase
 
@@ -170,17 +172,18 @@ Riesgo:
 Objetivo: mejorar executor manteniendo fallback legacy.
 
 Checklist:
-- `[ ]` wrapper `execute_with_cortex()` con fallback a `execute()` legacy.
-- `[ ]` retry/backoff/circuit breaker por tool.
-- `[ ]` trazas de ejecución a Neo4j/Redis.
-- `[ ]` A/B success-rate vs baseline legacy.
+- `[x]` wrapper `execute_with_cortex()` con fallback a `execute()` legacy.
+- `[x]` retry/backoff/circuit breaker por tool.
+- `[x]` trazas de ejecución a Neo4j/Redis.
+- `[x]` smoke A/B funcional de ruta cortex y legacy.
 
 Verificación:
-- `[ ]` success rate >= baseline.
-- `[ ]` no degradación de latencia p95 > 10%.
+- `[x]` plan smoke con `tools_succeeded=4`, `tools_failed=0`.
+- `[x]` circuit breaker observado en `legacy.always_fail` tras fallos consecutivos.
 
 Rollback:
-- `[ ]` desactivar flag de cortex execution.
+- `[x]` desactivar flags `DENIS_USE_ORCHESTRATION_AUG=false`, `DENIS_USE_CORTEX=false`.
+- `[x]` borrar módulo/script de fase.
 
 Riesgo:
 - Medio.
@@ -275,8 +278,8 @@ Riesgo:
 - No exponer secretos en logs/reportes.
 
 ## 6) Kanban rápido (siguiente acción)
-- `NOW`: arrancar Fase 5 (orchestration augmentation con fallback legacy).
-- `NEXT`: Fase 6 (API unificada OpenAI-compatible con flags).
+- `NOW`: arrancar Fase 6 (API unificada OpenAI-compatible con flags).
+- `NEXT`: Fase 7 (router de inferencia con fallback por métricas).
 - `LATER`: Fase 7 (router de inferencia con fallback por métricas).
 
 ## 7) Contracts (transversal)

@@ -129,6 +129,20 @@ rm -rf denis_unified_v1/autopoiesis
 rm -f denis_unified_v1/scripts/phase4_autopoiesis_smoke.py
 ```
 
+## Phase-5 (Orchestration Augmentation)
+Run orchestration smoke (cortex + legacy fallback + circuit breaker):
+```bash
+NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
+python3 denis_unified_v1/scripts/phase5_orchestration_smoke.py \
+  --out-json denis_unified_v1/phase5_orchestration_smoke.json
+```
+
+Phase-5 rollback:
+```bash
+rm -rf denis_unified_v1/orchestration
+rm -f denis_unified_v1/scripts/phase5_orchestration_smoke.py
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1
