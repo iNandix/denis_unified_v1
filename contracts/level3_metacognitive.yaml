@@ -1,0 +1,55 @@
+version: 1
+layer: level3
+description: "Contratos metacognitivos base - aplicables a todas las fases metacognitivas"
+
+contracts:
+  - id: L3.META.NEVER_BLOCK
+    title: "Metacognición nunca bloquea operación principal"
+    description: "Si el sistema metacognitivo falla, la operación principal continúa"
+    severity: medium
+    mutable: true
+    validation:
+      type: function
+      method: "validate_never_blocks"
+
+  - id: L3.META.SELF_REFLECTION_LATENCY
+    title: "Reflexión metacognitiva tiene deadline"
+    description: "Self-reflection debe completar en < 100ms o skip"
+    severity: low
+    mutable: true
+    constraint:
+      max_latency_ms: 100
+
+  - id: L3.META.ONLY_OBSERVE_L0
+    title: "Metacognición solo lee L0, no modifica"
+    description: "L1/L2 pueden proponer, nunca ejecutar en L0"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      method: "validate_read_only"
+
+  - id: L3.META.HUMAN_APPROVAL_FOR_GROWTH
+    title: "Crecimiento siempre requiere aprobación humana"
+    description: "Cualquier auto-extensión propuesta necesita approval"
+    severity: critical
+    mutable: false
+
+  - id: L3.META.EVENT_SOURCING
+    title: "Todas las decisiones metacognitivas son trazables"
+    description: "Emitir eventos a Redis para auditoría"
+    severity: medium
+    mutable: false
+    validation:
+      type: redis_channel
+      channel_pattern: "denis:metacognitive:*"
+
+  - id: L3.META.QUALITY_GATE
+    title: "Output metacognitivo debe pasar quality gate"
+    description: "Antes de emitir, verificar formato y completitud"
+    severity: medium
+    mutable: true
+    constraint:
+      min_quality_score: 0.7
+
+changes: []

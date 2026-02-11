@@ -56,3 +56,68 @@ contracts:
     file: level3_inference_router.yaml
     status: draft
     owner: denis_unified_v1
+  - id: L3.VOICE.STT_LLM_TTS_CHAIN
+    level: 3
+    file: level3_voice_pipeline.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.VOICE.NON_BLOCKING_FALLBACK
+    level: 3
+    file: level3_voice_pipeline.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.VOICE.LATENCY_METRICS
+    level: 3
+    file: level3_voice_pipeline.yaml
+    status: draft
+    owner: denis_unified_v1
+  - id: L3.ROUTER.FALLBACK_LEGACY
+    level: 3
+    file: level3_cognitive_router.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.ROUTER.METRICS_REQUIRED
+    level: 3
+    file: level3_cognitive_router.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.ROUTER.CONFIDENCE_THRESHOLD
+    level: 3
+    file: level3_cognitive_router.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.EXT.HUMAN_APPROVAL_REQUIRED
+    level: 3
+    file: level3_self_extension.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.EXT.SANDBOX_VALIDATION
+    level: 3
+    file: level3_self_extension.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.EXT.CODE_QUALITY_THRESHOLD
+    level: 3
+    file: level3_self_extension.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.EXT.REVERSIBILITY
+    level: 3
+    file: level3_self_extension.yaml
+    status: active
+    owner: metacognitive
+  - id: L3.META.NEVER_BLOCK
+    level: 3
+    file: level3_metacognitive.yaml
+    status: pending
+    owner: metacognitive
+  - id: L3.META.SELF_REFLECTION_LATENCY
+    level: 3
+    file: level3_metacognitive.yaml
+    status: pending
+    owner: metacognitive
+  - id: L3.META.ONLY_OBSERVE_L0
+    level: 3
+    file: level3_metacognitive.yaml
+    status: pending
+    owner: metacognitive
