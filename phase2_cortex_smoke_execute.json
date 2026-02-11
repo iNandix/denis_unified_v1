@@ -1,0 +1,90 @@
+{
+  "adapter_info": {
+    "hass": {
+      "adapter": "home_assistant",
+      "client_available": true,
+      "client_mode": "ha_async_client",
+      "hass_token_env_set": true,
+      "hass_url_env_set": true,
+      "init_error": null
+    }
+  },
+  "checks": [
+    {
+      "check": "perceive_hass",
+      "result": {
+        "adapter": "home_assistant",
+        "entity_id": "ha:light.sample",
+        "error": "Invalid HA API token",
+        "status": "error"
+      }
+    },
+    {
+      "check": "perceive_node1",
+      "result": {
+        "adapter": "infrastructure",
+        "checks": {
+          "ping": {
+            "cmd": "ping -c 1 -W 1 10.10.10.1",
+            "exit_code": 0,
+            "ok": true,
+            "stderr": "",
+            "stdout": "PING 10.10.10.1 (10.10.10.1) 56(84) bytes of data.\n64 bytes from 10.10.10.1: icmp_seq=1 ttl=64 time=0.015 ms\n\n--- 10.10.10.1 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 0.015/0.015/0.015/0.000 ms"
+          },
+          "ssh_uname": {
+            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 10.10.10.1 'uname -a'",
+            "exit_code": 255,
+            "ok": false,
+            "stderr": "jotah@10.10.10.1: Permission denied (publickey,password).",
+            "stdout": ""
+          }
+        },
+        "entity_id": "node1",
+        "state": {
+          "host": "10.10.10.1",
+          "ping_ok": true,
+          "ssh_ok": false,
+          "ssh_uname": ""
+        },
+        "status": "ok"
+      }
+    },
+    {
+      "check": "perceive_node2",
+      "result": {
+        "adapter": "infrastructure",
+        "checks": {
+          "ping": {
+            "cmd": "ping -c 1 -W 1 10.10.10.2",
+            "exit_code": 0,
+            "ok": true,
+            "stderr": "",
+            "stdout": "PING 10.10.10.2 (10.10.10.2) 56(84) bytes of data.\n64 bytes from 10.10.10.2: icmp_seq=1 ttl=64 time=0.209 ms\n\n--- 10.10.10.2 ping statistics ---\n1 packets transmitted, 1 received, 0% packet loss, time 0ms\nrtt min/avg/max/mdev = 0.209/0.209/0.209/0.000 ms"
+          },
+          "ssh_uname": {
+            "cmd": "ssh -o BatchMode=yes -o ConnectTimeout=3 10.10.10.2 'uname -a'",
+            "exit_code": 0,
+            "ok": true,
+            "stderr": "",
+            "stdout": "Linux nodo2 6.8.0-51-generic #52-Ubuntu SMP PREEMPT_DYNAMIC Thu Dec  5 13:09:44 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux"
+          }
+        },
+        "entity_id": "node2",
+        "state": {
+          "host": "10.10.10.2",
+          "ping_ok": true,
+          "ssh_ok": true,
+          "ssh_uname": "Linux nodo2 6.8.0-51-generic #52-Ubuntu SMP PREEMPT_DYNAMIC Thu Dec  5 13:09:44 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux"
+        },
+        "status": "ok"
+      }
+    }
+  ],
+  "mode": "execute",
+  "registry_active": [
+    "ha:light.sample",
+    "node1",
+    "node2"
+  ],
+  "status": "ok"
+}

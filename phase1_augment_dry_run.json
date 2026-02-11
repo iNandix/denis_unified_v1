@@ -1,0 +1,33 @@
+{
+  "action": "augment",
+  "neo4j_config": {
+    "password_set": false,
+    "uri": "bolt://10.10.10.1:7687",
+    "user": "neo4j"
+  },
+  "status": "preview",
+  "steps": [
+    {
+      "global_properties": [
+        "cognitive_state",
+        "cognitive_dimensions",
+        "amplitude",
+        "phase",
+        "last_propagation",
+        "last_augmented"
+      ],
+      "label_overrides": [
+        "Agent",
+        "Concept",
+        "Conversation",
+        "Memory",
+        "Node",
+        "Service",
+        "User",
+        "WorldEntity"
+      ],
+      "mapping_path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/config/quantum_mapping.yaml",
+      "step": "plan"
+    }
+  ]
+}

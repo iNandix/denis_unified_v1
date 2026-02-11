@@ -1,0 +1,59 @@
+{
+  "default_dimensions": {
+    "intentional": 0.5,
+    "emotional": 0.0,
+    "contextual": 0.5,
+    "historical_coherence": 0.8
+  },
+  "label_overrides": {
+    "User": {
+      "intentional": 0.7,
+      "emotional": 0.3,
+      "contextual": 0.6,
+      "historical_coherence": 0.9
+    },
+    "Agent": {
+      "intentional": 0.9,
+      "emotional": 0.1,
+      "contextual": 0.8,
+      "historical_coherence": 1.0
+    },
+    "Service": {
+      "intentional": 0.4,
+      "emotional": 0.0,
+      "contextual": 0.7,
+      "historical_coherence": 0.8
+    },
+    "Conversation": {
+      "intentional": 0.6,
+      "emotional": 0.4,
+      "contextual": 0.9,
+      "historical_coherence": 0.7
+    },
+    "Memory": {
+      "intentional": 0.5,
+      "emotional": 0.2,
+      "contextual": 0.8,
+      "historical_coherence": 0.9
+    },
+    "Concept": {
+      "intentional": 0.5,
+      "emotional": 0.0,
+      "contextual": 0.9,
+      "historical_coherence": 0.8
+    },
+    "WorldEntity": {
+      "intentional": 0.5,
+      "emotional": 0.0,
+      "contextual": 0.7,
+      "historical_coherence": 0.8
+    },
+    "Node": {
+      "intentional": 0.4,
+      "emotional": 0.0,
+      "contextual": 0.6,
+      "historical_coherence": 0.9
+    }
+  }
+}
+

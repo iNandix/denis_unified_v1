@@ -1,0 +1,61 @@
+{
+  "health": [
+    {
+      "body_preview": "{\"status\":\"healthy\",\"version\":\"1.1.0-canonical\",\"timestamp\":\"2026-02-11T21:09:09.959084\",\"components\":{\"rasa_nlu_5005\":true,\"parlai_nlu_5006\":true,\"neo4j\":true,\"redis\":true,\"pg_memory\":\"disabled\",\"pipecat_19025\":false,\"identity_core_19042\":true,\"swarm_service_9990\":true,\"swarm_healthy_models\":6,\"ser",
+      "error": null,
+      "latency_ms": 25,
+      "ok": true,
+      "status_code": 200,
+      "url": "http://127.0.0.1:8084/health"
+    },
+    {
+      "body_preview": "{\"status\":\"healthy\",\"version\":\"3.1-canonical\",\"timestamp\":\"2026-02-11T21:09:09.966068\",\"components\":{\"canonical_core\":true,\"event_bus\":true,\"rasa_nlu\":true,\"neo4j\":true,\"redis\":true,\"legacy_mounted\":false,\"websocket_ready\":true},\"uptime_seconds\":105627.9,\"trace_id\":\"99f085a44dca9ee8\"}",
+      "error": null,
+      "latency_ms": 6,
+      "ok": true,
+      "status_code": 200,
+      "url": "http://127.0.0.1:9999/health"
+    },
+    {
+      "body_preview": "{\"status\":\"healthy\",\"service\":\"whisper-stt-canonical\",\"model\":\"base\",\"device\":\"cpu\"}",
+      "error": null,
+      "latency_ms": 4,
+      "ok": true,
+      "status_code": 200,
+      "url": "http://127.0.0.1:8086/health"
+    },
+    {
+      "body_preview": "",
+      "error": "curl: (7) Failed to connect to 127.0.0.1 port 8000 after 0 ms: Couldn't connect to server",
+      "latency_ms": 3,
+      "ok": false,
+      "status_code": null,
+      "url": "http://127.0.0.1:8000/health"
+    }
+  ],
+  "host": "Nodo1",
+  "phase0_feature_flags": {
+    "denis_autopoiesis_mode": "supervised",
+    "denis_enable_metagraph": true,
+    "denis_use_cortex": false,
+    "denis_use_quantum_search": false,
+    "denis_use_quantum_substrate": false
+  },
+  "ports": {
+    "command": "ss -tlnp",
+    "exit_code": 0,
+    "open_ports": [
+      8084,
+      8086,
+      9999
+    ],
+    "requested_ports": [
+      8084,
+      9999,
+      8086,
+      9100,
+      8000
+    ]
+  },
+  "timestamp_utc": "2026-02-11T21:09:09.899750+00:00"
+}

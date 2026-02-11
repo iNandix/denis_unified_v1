@@ -1,0 +1,1627 @@
+{
+  "action": "augment",
+  "neo4j_config": {
+    "password_set": true,
+    "uri": "bolt://10.10.10.1:7687",
+    "user": "neo4j"
+  },
+  "status": "success",
+  "steps": [
+    {
+      "rows": [
+        {
+          "count": 1056,
+          "label": "Episode"
+        },
+        {
+          "count": 974,
+          "label": "Turn"
+        },
+        {
+          "count": 676,
+          "label": "GraphRoute"
+        },
+        {
+          "count": 629,
+          "label": "AgentScan"
+        },
+        {
+          "count": 552,
+          "label": "ReasoningTrace"
+        },
+        {
+          "count": 551,
+          "label": "ConceptNode"
+        },
+        {
+          "count": 311,
+          "label": "Event"
+        },
+        {
+          "count": 202,
+          "label": "CoTTemplateUse"
+        },
+        {
+          "count": 180,
+          "label": "User"
+        },
+        {
+          "count": 170,
+          "label": "TemplateChunkV2"
+        },
+        {
+          "count": 143,
+          "label": "ConsciousState"
+        },
+        {
+          "count": 142,
+          "label": "CognitiveTrace"
+        },
+        {
+          "count": 139,
+          "label": "TraitEvolution"
+        },
+        {
+          "count": 129,
+          "label": "SelfReflection"
+        },
+        {
+          "count": 94,
+          "label": "Service"
+        },
+        {
+          "count": 88,
+          "label": "NetworkService"
+        },
+        {
+          "count": 85,
+          "label": "Session"
+        },
+        {
+          "count": 53,
+          "label": "HakunaMataCycle"
+        },
+        {
+          "count": 50,
+          "label": "CausalInference"
+        },
+        {
+          "count": 48,
+          "label": "QdrantCollection"
+        },
+        {
+          "count": 47,
+          "label": "Tool"
+        },
+        {
+          "count": 42,
+          "label": "Person"
+        },
+        {
+          "count": 40,
+          "label": "PlanStep"
+        },
+        {
+          "count": 40,
+          "label": "ExecutionStep"
+        },
+        {
+          "count": 35,
+          "label": "ToolExecution"
+        },
+        {
+          "count": 33,
+          "label": "Decision"
+        },
+        {
+          "count": 33,
+          "label": "CodeChange"
+        },
+        {
+          "count": 33,
+          "label": "HADevice"
+        },
+        {
+          "count": 32,
+          "label": "MemoryUnit"
+        },
+        {
+          "count": 28,
+          "label": "CoTTemplate"
+        },
+        {
+          "count": 25,
+          "label": "MemoryLayer"
+        },
+        {
+          "count": 24,
+          "label": "NeuroLayer"
+        },
+        {
+          "count": 23,
+          "label": "NcFile"
+        },
+        {
+          "count": 23,
+          "label": "MemoryChunk"
+        },
+        {
+          "count": 21,
+          "label": "Memory"
+        },
+        {
+          "count": 21,
+          "label": "TechnicalMemory"
+        },
+        {
+          "count": 20,
+          "label": "DenisTask"
+        },
+        {
+          "count": 17,
+          "label": "NetworkNode"
+        },
+        {
+          "count": 16,
+          "label": "LongTimedMemory"
+        },
+        {
+          "count": 15,
+          "label": "Node2"
+        },
+        {
+          "count": 15,
+          "label": "DenisChannel"
+        },
+        {
+          "count": 15,
+          "label": "HAEntityType"
+        },
+        {
+          "count": 14,
+          "label": "DataType"
+        },
+        {
+          "count": 13,
+          "label": "UserMindModel"
+        },
+        {
+          "count": 12,
+          "label": "AtlasCollection"
+        },
+        {
+          "count": 12,
+          "label": "Goal"
+        },
+        {
+          "count": 12,
+          "label": "Tag"
+        },
+        {
+          "count": 12,
+          "label": "Capability"
+        },
+        {
+          "count": 11,
+          "label": "Agent"
+        },
+        {
+          "count": 11,
+          "label": "Plan"
+        },
+        {
+          "count": 11,
+          "label": "MobileDevice"
+        },
+        {
+          "count": 11,
+          "label": "UserGoal"
+        },
+        {
+          "count": 10,
+          "label": "MacroRule"
+        },
+        {
+          "count": 10,
+          "label": "LLMRole"
+        },
+        {
+          "count": 10,
+          "label": "RasaIntent"
+        },
+        {
+          "count": 10,
+          "label": "RasaEntity"
+        },
+        {
+          "count": 10,
+          "label": "AdaptiveCycle"
+        },
+        {
+          "count": 10,
+          "label": "DataFlow"
+        },
+        {
+          "count": 10,
+          "label": "PrefetchCache"
+        },
+        {
+          "count": 10,
+          "label": "DenisMacroTrigger"
+        },
+        {
+          "count": 9,
+          "label": "NcFolder"
+        },
+        {
+          "count": 9,
+          "label": "MemorySchemaRelationship"
+        },
+        {
+          "count": 8,
+          "label": "IdentityEvent"
+        },
+        {
+          "count": 8,
+          "label": "L12"
+        },
+        {
+          "count": 8,
+          "label": "Project"
+        },
+        {
+          "count": 8,
+          "label": "Artifact"
+        },
+        {
+          "count": 8,
+          "label": "CodeModule"
+        },
+        {
+          "count": 8,
+          "label": "DeviceType"
+        },
+        {
+          "count": 8,
+          "label": "ServiceType"
+        },
+        {
+          "count": 8,
+          "label": "Node1"
+        },
+        {
+          "count": 8,
+          "label": "MCPTool"
+        },
+        {
+          "count": 8,
+          "label": "MessageFormat"
+        },
+        {
+          "count": 8,
+          "label": "Trait"
+        },
+        {
+          "count": 7,
+          "label": "AuditRun"
+        },
+        {
+          "count": 7,
+          "label": "TailscaleDevice"
+        },
+        {
+          "count": 7,
+          "label": "NetworkDevice"
+        },
+        {
+          "count": 7,
+          "label": "Role"
+        },
+        {
+          "count": 7,
+          "label": "DenisMacroStep"
+        },
+        {
+          "count": 6,
+          "label": "TechLayer"
+        },
+        {
+          "count": 6,
+          "label": "LLMModel"
+        },
+        {
+          "count": 6,
+          "label": "FlowRun"
+        },
+        {
+          "count": 6,
+          "label": "Environment"
+        },
+        {
+          "count": 6,
+          "label": "TsDevice"
+        },
+        {
+          "count": 6,
+          "label": "Interaction"
+        },
+        {
+          "count": 6,
+          "label": "InferenceModel"
+        },
+        {
+          "count": 6,
+          "label": "LlamaCpp"
+        },
+        {
+          "count": 6,
+          "label": "TailscalePeer"
+        },
+        {
+          "count": 6,
+          "label": "SwarmModel"
+        },
+        {
+          "count": 6,
+          "label": "HAArea"
+        },
+        {
+          "count": 5,
+          "label": "Emotion"
+        },
+        {
+          "count": 5,
+          "label": "TimePoint"
+        },
+        {
+          "count": 5,
+          "label": "MCPToolFlow"
+        },
+        {
+          "count": 5,
+          "label": "MCPExampleQuery"
+        },
+        {
+          "count": 5,
+          "label": "MentalLoop"
+        },
+        {
+          "count": 5,
+          "label": "MultimediaDevice"
+        },
+        {
+          "count": 4,
+          "label": "CodeChunk"
+        },
+        {
+          "count": 4,
+          "label": "VoiceComponent"
+        },
+        {
+          "count": 4,
+          "label": "HaRoom"
+        },
+        {
+          "count": 4,
+          "label": "Node"
+        },
+        {
+          "count": 4,
+          "label": "LessonLearned"
+        },
+        {
+          "count": 4,
+          "label": "Team"
+        },
+        {
+          "count": 4,
+          "label": "CognitiveCapability"
+        },
+        {
+          "count": 4,
+          "label": "ExecutionPath"
+        },
+        {
+          "count": 4,
+          "label": "GPSZone"
+        },
+        {
+          "count": 4,
+          "label": "ToolUtility"
+        },
+        {
+          "count": 4,
+          "label": "Scope"
+        },
+        {
+          "count": 4,
+          "label": "DenisMacro"
+        },
+        {
+          "count": 4,
+          "label": "MentalLoopLevel"
+        },
+        {
+          "count": 4,
+          "label": "ToolStats"
+        },
+        {
+          "count": 3,
+          "label": "Identity"
+        },
+        {
+          "count": 3,
+          "label": "Place"
+        },
+        {
+          "count": 3,
+          "label": "Concept"
+        },
+        {
+          "count": 3,
+          "label": "AtlasEvent"
+        },
+        {
+          "count": 3,
+          "label": "RiskProfile"
+        },
+        {
+          "count": 3,
+          "label": "TestRun"
+        },
+        {
+          "count": 3,
+          "label": "PatternSuccessScore"
+        },
+        {
+          "count": 3,
+          "label": "ComputeNode"
+        },
+        {
+          "count": 3,
+          "label": "NetworkInterface"
+        },
+        {
+          "count": 3,
+          "label": "Network"
+        },
+        {
+          "count": 3,
+          "label": "DenisMacroExecution"
+        },
+        {
+          "count": 3,
+          "label": "ModelPreference"
+        },
+        {
+          "count": 2,
+          "label": "Run"
+        },
+        {
+          "count": 2,
+          "label": "DenisAgent"
+        },
+        {
+          "count": 2,
+          "label": "Conversation"
+        },
+        {
+          "count": 2,
+          "label": "Category"
+        },
+        {
+          "count": 2,
+          "label": "Context"
+        },
+        {
+          "count": 2,
+          "label": "Metacognition"
+        },
+        {
+          "count": 2,
+          "label": "Execution"
+        },
+        {
+          "count": 2,
+          "label": "Chronicle"
+        },
+        {
+          "count": 2,
+          "label": "Learning"
+        },
+        {
+          "count": 2,
+          "label": "Domain"
+        },
+        {
+          "count": 2,
+          "label": "VoiceService"
+        },
+        {
+          "count": 2,
+          "label": "Subnet"
+        },
+        {
+          "count": 2,
+          "label": "Device"
+        },
+        {
+          "count": 2,
+          "label": "HAPlatform"
+        },
+        {
+          "count": 1,
+          "label": "YoDenis"
+        },
+        {
+          "count": 1,
+          "label": "YoDenisAgent"
+        },
+        {
+          "count": 1,
+          "label": "TestNode"
+        },
+        {
+          "count": 1,
+          "label": "TemplateEngine"
+        },
+        {
+          "count": 1,
+          "label": "IoTPlatform"
+        },
+        {
+          "count": 1,
+          "label": "CMSPlatform"
+        },
+        {
+          "count": 1,
+          "label": "NetworkOverlay"
+        },
+        {
+          "count": 1,
+          "label": "Check"
+        },
+        {
+          "count": 1,
+          "label": "ServiceStatus"
+        },
+        {
+          "count": 1,
+          "label": "Persona"
+        },
+        {
+          "count": 1,
+          "label": "CodeAgent"
+        },
+        {
+          "count": 1,
+          "label": "SpecDecodePolicy"
+        },
+        {
+          "count": 1,
+          "label": "HiddenIntentPolicy"
+        },
+        {
+          "count": 1,
+          "label": "Gateway"
+        },
+        {
+          "count": 1,
+          "label": "HumanApproval"
+        },
+        {
+          "count": 1,
+          "label": "Metric"
+        },
+        {
+          "count": 1,
+          "label": "StorageResource"
+        },
+        {
+          "count": 1,
+          "label": "DenisAtlas"
+        },
+        {
+          "count": 1,
+          "label": "Layer9"
+        },
+        {
+          "count": 1,
+          "label": "Piper"
+        },
+        {
+          "count": 1,
+          "label": "Whisper"
+        },
+        {
+          "count": 1,
+          "label": "Tailscale"
+        },
+        {
+          "count": 1,
+          "label": "NetworkLayer"
+        },
+        {
+          "count": 1,
+          "label": "Layer0"
+        },
+        {
+          "count": 1,
+          "label": "VectorDB"
+        },
+        {
+          "count": 1,
+          "label": "Qdrant"
+        },
+        {
+          "count": 1,
+          "label": "Swarm"
+        },
+        {
+          "count": 1,
+          "label": "MCPServer"
+        },
+        {
+          "count": 1,
+          "label": "Neo4j"
+        },
+        {
+          "count": 1,
+          "label": "NeuroPlasticMemory"
+        },
+        {
+          "count": 1,
+          "label": "HAIntegrationSchema"
+        },
+        {
+          "count": 1,
+          "label": "LocalNetwork"
+        },
+        {
+          "count": 1,
+          "label": "NetworkZone"
+        },
+        {
+          "count": 1,
+          "label": "SmartHomeIntegration"
+        },
+        {
+          "count": 1,
+          "label": "PrefetchAnalytics"
+        },
+        {
+          "count": 1,
+          "label": "DenisSystem"
+        },
+        {
+          "count": 1,
+          "label": "RoutePolicy"
+        },
+        {
+          "count": 1,
+          "label": "UserPattern"
+        },
+        {
+          "count": 1,
+          "label": "Feedback"
+        },
+        {
+          "count": 1,
+          "label": "Intent"
+        },
+        {
+          "count": 1,
+          "label": "ToolCall"
+        },
+        {
+          "count": 1,
+          "label": "Observation"
+        },
+        {
+          "count": 1,
+          "label": "IsolatedMemory"
+        },
+        {
+          "count": 1,
+          "label": "EmotionalMemory"
+        },
+        {
+          "count": 1,
+          "label": "SkillRelatedMemory"
+        },
+        {
+          "count": 1,
+          "label": "TimeAnchored"
+        },
+        {
+          "count": 1,
+          "label": "PlaceAnchored"
+        },
+        {
+          "count": 1,
+          "label": "EnvironmentAnchored"
+        },
+        {
+          "count": 1,
+          "label": "MLSystemState"
+        },
+        {
+          "count": 1,
+          "label": "SynergyRule"
+        },
+        {
+          "count": 1,
+          "label": "Worker"
+        }
+      ],
+      "step": "label_distribution_before"
+    },
+    {
+      "queries": [
+        "CREATE INDEX cognitive_amplitude_agent IF NOT EXISTS FOR (n:Agent) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_concept IF NOT EXISTS FOR (n:Concept) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_conversation IF NOT EXISTS FOR (n:Conversation) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_memory IF NOT EXISTS FOR (n:Memory) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_node IF NOT EXISTS FOR (n:Node) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_service IF NOT EXISTS FOR (n:Service) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_user IF NOT EXISTS FOR (n:User) ON (n.amplitude)",
+        "CREATE INDEX cognitive_amplitude_worldentity IF NOT EXISTS FOR (n:WorldEntity) ON (n.amplitude)"
+      ],
+      "step": "index"
+    },
+    {
+      "changed": {
+        "amplitude": 0,
+        "cognitive_state": 0,
+        "last_augmented": 0,
+        "last_propagation": 7616,
+        "phase": 0
+      },
+      "step": "global_augmentation"
+    },
+    {
+      "rows": [
+        {
+          "dims": {
+            "contextual": 0.5,
+            "emotional": 0.0,
+            "historical_coherence": 0.8,
+            "intentional": 0.5
+          },
+          "target": "__default__",
+          "updated_nodes": 7616
+        },
+        {
+          "dims": {
+            "contextual": 0.6,
+            "emotional": 0.3,
+            "historical_coherence": 0.9,
+            "intentional": 0.7
+          },
+          "target": "User",
+          "updated_nodes": 180
+        },
+        {
+          "dims": {
+            "contextual": 0.8,
+            "emotional": 0.1,
+            "historical_coherence": 1.0,
+            "intentional": 0.9
+          },
+          "target": "Agent",
+          "updated_nodes": 11
+        },
+        {
+          "dims": {
+            "contextual": 0.7,
+            "emotional": 0.0,
+            "historical_coherence": 0.8,
+            "intentional": 0.4
+          },
+          "target": "Service",
+          "updated_nodes": 94
+        },
+        {
+          "dims": {
+            "contextual": 0.9,
+            "emotional": 0.4,
+            "historical_coherence": 0.7,
+            "intentional": 0.6
+          },
+          "target": "Conversation",
+          "updated_nodes": 2
+        },
+        {
+          "dims": {
+            "contextual": 0.8,
+            "emotional": 0.2,
+            "historical_coherence": 0.9,
+            "intentional": 0.5
+          },
+          "target": "Memory",
+          "updated_nodes": 21
+        },
+        {
+          "dims": {
+            "contextual": 0.9,
+            "emotional": 0.0,
+            "historical_coherence": 0.8,
+            "intentional": 0.5
+          },
+          "target": "Concept",
+          "updated_nodes": 3
+        },
+        {
+          "dims": {
+            "contextual": 0.7,
+            "emotional": 0.0,
+            "historical_coherence": 0.8,
+            "intentional": 0.5
+          },
+          "target": "WorldEntity",
+          "updated_nodes": 0
+        },
+        {
+          "dims": {
+            "contextual": 0.6,
+            "emotional": 0.0,
+            "historical_coherence": 0.9,
+            "intentional": 0.4
+          },
+          "target": "Node",
+          "updated_nodes": 4
+        }
+      ],
+      "step": "label_augmentation"
+    },
+    {
+      "rows": [
+        {
+          "count": 1056,
+          "label": "Episode"
+        },
+        {
+          "count": 974,
+          "label": "Turn"
+        },
+        {
+          "count": 676,
+          "label": "GraphRoute"
+        },
+        {
+          "count": 629,
+          "label": "AgentScan"
+        },
+        {
+          "count": 552,
+          "label": "ReasoningTrace"
+        },
+        {
+          "count": 551,
+          "label": "ConceptNode"
+        },
+        {
+          "count": 311,
+          "label": "Event"
+        },
+        {
+          "count": 202,
+          "label": "CoTTemplateUse"
+        },
+        {
+          "count": 180,
+          "label": "User"
+        },
+        {
+          "count": 170,
+          "label": "TemplateChunkV2"
+        },
+        {
+          "count": 143,
+          "label": "ConsciousState"
+        },
+        {
+          "count": 142,
+          "label": "CognitiveTrace"
+        },
+        {
+          "count": 139,
+          "label": "TraitEvolution"
+        },
+        {
+          "count": 129,
+          "label": "SelfReflection"
+        },
+        {
+          "count": 94,
+          "label": "Service"
+        },
+        {
+          "count": 88,
+          "label": "NetworkService"
+        },
+        {
+          "count": 85,
+          "label": "Session"
+        },
+        {
+          "count": 53,
+          "label": "HakunaMataCycle"
+        },
+        {
+          "count": 50,
+          "label": "CausalInference"
+        },
+        {
+          "count": 48,
+          "label": "QdrantCollection"
+        },
+        {
+          "count": 47,
+          "label": "Tool"
+        },
+        {
+          "count": 42,
+          "label": "Person"
+        },
+        {
+          "count": 40,
+          "label": "PlanStep"
+        },
+        {
+          "count": 40,
+          "label": "ExecutionStep"
+        },
+        {
+          "count": 35,
+          "label": "ToolExecution"
+        },
+        {
+          "count": 33,
+          "label": "Decision"
+        },
+        {
+          "count": 33,
+          "label": "CodeChange"
+        },
+        {
+          "count": 33,
+          "label": "HADevice"
+        },
+        {
+          "count": 32,
+          "label": "MemoryUnit"
+        },
+        {
+          "count": 28,
+          "label": "CoTTemplate"
+        },
+        {
+          "count": 25,
+          "label": "MemoryLayer"
+        },
+        {
+          "count": 24,
+          "label": "NeuroLayer"
+        },
+        {
+          "count": 23,
+          "label": "NcFile"
+        },
+        {
+          "count": 23,
+          "label": "MemoryChunk"
+        },
+        {
+          "count": 21,
+          "label": "Memory"
+        },
+        {
+          "count": 21,
+          "label": "TechnicalMemory"
+        },
+        {
+          "count": 20,
+          "label": "DenisTask"
+        },
+        {
+          "count": 17,
+          "label": "NetworkNode"
+        },
+        {
+          "count": 16,
+          "label": "LongTimedMemory"
+        },
+        {
+          "count": 15,
+          "label": "Node2"
+        },
+        {
+          "count": 15,
+          "label": "DenisChannel"
+        },
+        {
+          "count": 15,
+          "label": "HAEntityType"
+        },
+        {
+          "count": 14,
+          "label": "DataType"
+        },
+        {
+          "count": 13,
+          "label": "UserMindModel"
+        },
+        {
+          "count": 12,
+          "label": "AtlasCollection"
+        },
+        {
+          "count": 12,
+          "label": "Goal"
+        },
+        {
+          "count": 12,
+          "label": "Tag"
+        },
+        {
+          "count": 12,
+          "label": "Capability"
+        },
+        {
+          "count": 11,
+          "label": "Agent"
+        },
+        {
+          "count": 11,
+          "label": "Plan"
+        },
+        {
+          "count": 11,
+          "label": "MobileDevice"
+        },
+        {
+          "count": 11,
+          "label": "UserGoal"
+        },
+        {
+          "count": 10,
+          "label": "MacroRule"
+        },
+        {
+          "count": 10,
+          "label": "LLMRole"
+        },
+        {
+          "count": 10,
+          "label": "RasaIntent"
+        },
+        {
+          "count": 10,
+          "label": "RasaEntity"
+        },
+        {
+          "count": 10,
+          "label": "AdaptiveCycle"
+        },
+        {
+          "count": 10,
+          "label": "DataFlow"
+        },
+        {
+          "count": 10,
+          "label": "PrefetchCache"
+        },
+        {
+          "count": 10,
+          "label": "DenisMacroTrigger"
+        },
+        {
+          "count": 9,
+          "label": "NcFolder"
+        },
+        {
+          "count": 9,
+          "label": "MemorySchemaRelationship"
+        },
+        {
+          "count": 8,
+          "label": "IdentityEvent"
+        },
+        {
+          "count": 8,
+          "label": "L12"
+        },
+        {
+          "count": 8,
+          "label": "Project"
+        },
+        {
+          "count": 8,
+          "label": "Artifact"
+        },
+        {
+          "count": 8,
+          "label": "CodeModule"
+        },
+        {
+          "count": 8,
+          "label": "DeviceType"
+        },
+        {
+          "count": 8,
+          "label": "ServiceType"
+        },
+        {
+          "count": 8,
+          "label": "Node1"
+        },
+        {
+          "count": 8,
+          "label": "MCPTool"
+        },
+        {
+          "count": 8,
+          "label": "MessageFormat"
+        },
+        {
+          "count": 8,
+          "label": "Trait"
+        },
+        {
+          "count": 7,
+          "label": "AuditRun"
+        },
+        {
+          "count": 7,
+          "label": "TailscaleDevice"
+        },
+        {
+          "count": 7,
+          "label": "NetworkDevice"
+        },
+        {
+          "count": 7,
+          "label": "Role"
+        },
+        {
+          "count": 7,
+          "label": "DenisMacroStep"
+        },
+        {
+          "count": 6,
+          "label": "TechLayer"
+        },
+        {
+          "count": 6,
+          "label": "LLMModel"
+        },
+        {
+          "count": 6,
+          "label": "FlowRun"
+        },
+        {
+          "count": 6,
+          "label": "Environment"
+        },
+        {
+          "count": 6,
+          "label": "TsDevice"
+        },
+        {
+          "count": 6,
+          "label": "Interaction"
+        },
+        {
+          "count": 6,
+          "label": "InferenceModel"
+        },
+        {
+          "count": 6,
+          "label": "LlamaCpp"
+        },
+        {
+          "count": 6,
+          "label": "TailscalePeer"
+        },
+        {
+          "count": 6,
+          "label": "SwarmModel"
+        },
+        {
+          "count": 6,
+          "label": "HAArea"
+        },
+        {
+          "count": 5,
+          "label": "Emotion"
+        },
+        {
+          "count": 5,
+          "label": "TimePoint"
+        },
+        {
+          "count": 5,
+          "label": "MCPToolFlow"
+        },
+        {
+          "count": 5,
+          "label": "MCPExampleQuery"
+        },
+        {
+          "count": 5,
+          "label": "MentalLoop"
+        },
+        {
+          "count": 5,
+          "label": "MultimediaDevice"
+        },
+        {
+          "count": 4,
+          "label": "CodeChunk"
+        },
+        {
+          "count": 4,
+          "label": "VoiceComponent"
+        },
+        {
+          "count": 4,
+          "label": "HaRoom"
+        },
+        {
+          "count": 4,
+          "label": "Node"
+        },
+        {
+          "count": 4,
+          "label": "LessonLearned"
+        },
+        {
+          "count": 4,
+          "label": "Team"
+        },
+        {
+          "count": 4,
+          "label": "CognitiveCapability"
+        },
+        {
+          "count": 4,
+          "label": "ExecutionPath"
+        },
+        {
+          "count": 4,
+          "label": "GPSZone"
+        },
+        {
+          "count": 4,
+          "label": "ToolUtility"
+        },
+        {
+          "count": 4,
+          "label": "Scope"
+        },
+        {
+          "count": 4,
+          "label": "DenisMacro"
+        },
+        {
+          "count": 4,
+          "label": "MentalLoopLevel"
+        },
+        {
+          "count": 4,
+          "label": "ToolStats"
+        },
+        {
+          "count": 3,
+          "label": "Identity"
+        },
+        {
+          "count": 3,
+          "label": "Place"
+        },
+        {
+          "count": 3,
+          "label": "Concept"
+        },
+        {
+          "count": 3,
+          "label": "AtlasEvent"
+        },
+        {
+          "count": 3,
+          "label": "RiskProfile"
+        },
+        {
+          "count": 3,
+          "label": "TestRun"
+        },
+        {
+          "count": 3,
+          "label": "PatternSuccessScore"
+        },
+        {
+          "count": 3,
+          "label": "ComputeNode"
+        },
+        {
+          "count": 3,
+          "label": "NetworkInterface"
+        },
+        {
+          "count": 3,
+          "label": "Network"
+        },
+        {
+          "count": 3,
+          "label": "DenisMacroExecution"
+        },
+        {
+          "count": 3,
+          "label": "ModelPreference"
+        },
+        {
+          "count": 2,
+          "label": "Run"
+        },
+        {
+          "count": 2,
+          "label": "DenisAgent"
+        },
+        {
+          "count": 2,
+          "label": "Conversation"
+        },
+        {
+          "count": 2,
+          "label": "Category"
+        },
+        {
+          "count": 2,
+          "label": "Context"
+        },
+        {
+          "count": 2,
+          "label": "Metacognition"
+        },
+        {
+          "count": 2,
+          "label": "Execution"
+        },
+        {
+          "count": 2,
+          "label": "Chronicle"
+        },
+        {
+          "count": 2,
+          "label": "Learning"
+        },
+        {
+          "count": 2,
+          "label": "Domain"
+        },
+        {
+          "count": 2,
+          "label": "VoiceService"
+        },
+        {
+          "count": 2,
+          "label": "Subnet"
+        },
+        {
+          "count": 2,
+          "label": "Device"
+        },
+        {
+          "count": 2,
+          "label": "HAPlatform"
+        },
+        {
+          "count": 1,
+          "label": "YoDenis"
+        },
+        {
+          "count": 1,
+          "label": "YoDenisAgent"
+        },
+        {
+          "count": 1,
+          "label": "TestNode"
+        },
+        {
+          "count": 1,
+          "label": "TemplateEngine"
+        },
+        {
+          "count": 1,
+          "label": "IoTPlatform"
+        },
+        {
+          "count": 1,
+          "label": "CMSPlatform"
+        },
+        {
+          "count": 1,
+          "label": "NetworkOverlay"
+        },
+        {
+          "count": 1,
+          "label": "Check"
+        },
+        {
+          "count": 1,
+          "label": "ServiceStatus"
+        },
+        {
+          "count": 1,
+          "label": "Persona"
+        },
+        {
+          "count": 1,
+          "label": "CodeAgent"
+        },
+        {
+          "count": 1,
+          "label": "SpecDecodePolicy"
+        },
+        {
+          "count": 1,
+          "label": "HiddenIntentPolicy"
+        },
+        {
+          "count": 1,
+          "label": "Gateway"
+        },
+        {
+          "count": 1,
+          "label": "HumanApproval"
+        },
+        {
+          "count": 1,
+          "label": "Metric"
+        },
+        {
+          "count": 1,
+          "label": "StorageResource"
+        },
+        {
+          "count": 1,
+          "label": "DenisAtlas"
+        },
+        {
+          "count": 1,
+          "label": "Layer9"
+        },
+        {
+          "count": 1,
+          "label": "Piper"
+        },
+        {
+          "count": 1,
+          "label": "Whisper"
+        },
+        {
+          "count": 1,
+          "label": "Tailscale"
+        },
+        {
+          "count": 1,
+          "label": "NetworkLayer"
+        },
+        {
+          "count": 1,
+          "label": "Layer0"
+        },
+        {
+          "count": 1,
+          "label": "VectorDB"
+        },
+        {
+          "count": 1,
+          "label": "Qdrant"
+        },
+        {
+          "count": 1,
+          "label": "Swarm"
+        },
+        {
+          "count": 1,
+          "label": "MCPServer"
+        },
+        {
+          "count": 1,
+          "label": "Neo4j"
+        },
+        {
+          "count": 1,
+          "label": "NeuroPlasticMemory"
+        },
+        {
+          "count": 1,
+          "label": "HAIntegrationSchema"
+        },
+        {
+          "count": 1,
+          "label": "LocalNetwork"
+        },
+        {
+          "count": 1,
+          "label": "NetworkZone"
+        },
+        {
+          "count": 1,
+          "label": "SmartHomeIntegration"
+        },
+        {
+          "count": 1,
+          "label": "PrefetchAnalytics"
+        },
+        {
+          "count": 1,
+          "label": "DenisSystem"
+        },
+        {
+          "count": 1,
+          "label": "RoutePolicy"
+        },
+        {
+          "count": 1,
+          "label": "UserPattern"
+        },
+        {
+          "count": 1,
+          "label": "Feedback"
+        },
+        {
+          "count": 1,
+          "label": "Intent"
+        },
+        {
+          "count": 1,
+          "label": "ToolCall"
+        },
+        {
+          "count": 1,
+          "label": "Observation"
+        },
+        {
+          "count": 1,
+          "label": "IsolatedMemory"
+        },
+        {
+          "count": 1,
+          "label": "EmotionalMemory"
+        },
+        {
+          "count": 1,
+          "label": "SkillRelatedMemory"
+        },
+        {
+          "count": 1,
+          "label": "TimeAnchored"
+        },
+        {
+          "count": 1,
+          "label": "PlaceAnchored"
+        },
+        {
+          "count": 1,
+          "label": "EnvironmentAnchored"
+        },
+        {
+          "count": 1,
+          "label": "MLSystemState"
+        },
+        {
+          "count": 1,
+          "label": "SynergyRule"
+        },
+        {
+          "count": 1,
+          "label": "Worker"
+        }
+      ],
+      "step": "label_distribution_after"
+    }
+  ]
+}
