@@ -1,0 +1,44 @@
+{
+  "checks": [
+    {
+      "check": "health",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "models",
+      "model_count": 3,
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "chat_completion",
+      "finish_reason": "stop",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "chat_tools",
+      "finish_reason": "tool_calls",
+      "ok": true,
+      "status_code": 200
+    },
+    {
+      "check": "chat_stream",
+      "has_done": true,
+      "ok": true,
+      "preview_lines": [
+        "data: {\"id\": \"chatcmpl-609e19d4149a49a8\", \"object\": \"chat.completion.chunk\", \"model\": \"denis-cognitive\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Claro, \"}, \"finish_reason\": null}]}",
+        "data: {\"id\": \"chatcmpl-609e19d4149a49a8\", \"object\": \"chat.completion.chunk\", \"model\": \"denis-cognitive\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"puedo \"}, \"finish_reason\": null}]}",
+        "data: {\"id\": \"chatcmpl-609e19d4149a49a8\", \"object\": \"chat.completion.chunk\", \"model\": \"denis-cognitive\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"ayudarte \"}, \"finish_reason\": null}]}"
+      ],
+      "status_code": 200
+    },
+    {
+      "check": "websocket_events_route",
+      "ok": true,
+      "route": "/v1/events"
+    }
+  ],
+  "status": "ok"
+}

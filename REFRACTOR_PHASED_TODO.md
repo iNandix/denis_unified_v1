@@ -25,7 +25,7 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
 - `[x]` `Fase 3` implementada y validada en modo pasivo (Neo4j + Redis).
 - `[x]` `Fase 4` implementada y validada en modo supervisado (proposal + sandbox + approve).
 - `[x]` `Fase 5` implementada y validada (executor DAG + fallback + circuit breaker).
-- `[ ]` `Fase 6` pendiente.
+- `[x]` `Fase 6` implementada y validada (OpenAI-compatible + health + stream + ws route).
 - `[ ]` `Fase 7` pendiente.
 - `[ ]` `Fase 8` pendiente.
 - `[ ]` `Fase 9` pendiente.
@@ -45,6 +45,8 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
   Resultado: `status=ok`, propuestas generadas, sandbox con rollback y aprobación supervisada.
 - Orchestration smoke: `denis_unified_v1/phase5_orchestration_smoke.json`  
   Resultado: `status=ok`, plan de 4 tools ejecutado, fallback legacy y circuit breaker verificados.
+- API smoke: `denis_unified_v1/phase6_api_smoke.json`  
+  Resultado: `status=ok`, `/health`, `/v1/models`, `/v1/chat/completions`, stream SSE y ruta WS verificados.
 
 ## 4) TODO maestro por fase
 
@@ -194,16 +196,17 @@ Riesgo:
 Objetivo: exponer capa unificada sin romper contrato actual.
 
 Checklist:
-- `[ ]` añadir rutas nuevas compatibles (`/v1/chat/completions`, `/v1/models`), sin retirar legacy.
-- `[ ]` SSE/WS para eventos.
-- `[ ]` middleware auth/rate-limit/trace.
-- `[ ]` health contract estable (`/health` + metadata).
+- `[x]` añadir rutas nuevas compatibles (`/v1/chat/completions`, `/v1/models`), sin retirar legacy.
+- `[x]` SSE/WS para eventos.
+- `[x]` middleware auth/rate-limit/trace.
+- `[x]` health contract estable (`/health` + metadata).
 
 Verificación:
-- `[ ]` smoke de endpoints y compat OpenAI.
+- `[x]` smoke de endpoints y compat OpenAI.
 
 Rollback:
-- `[ ]` feature flag de rutas nuevas + revert include_router.
+- `[x]` `DENIS_USE_API_UNIFIED=false`.
+- `[x]` borrar módulo/script de fase.
 
 Riesgo:
 - Medio.
@@ -278,9 +281,9 @@ Riesgo:
 - No exponer secretos en logs/reportes.
 
 ## 6) Kanban rápido (siguiente acción)
-- `NOW`: arrancar Fase 6 (API unificada OpenAI-compatible con flags).
-- `NEXT`: Fase 7 (router de inferencia con fallback por métricas).
-- `LATER`: Fase 7 (router de inferencia con fallback por métricas).
+- `NOW`: arrancar Fase 7 (router de inferencia con fallback por métricas).
+- `NEXT`: Fase 8 (voice pipeline incremental sin romper canal actual).
+- `LATER`: Fase 9 (consolidación de memorias y sincronización).
 
 ## 7) Contracts (transversal)
 Ruta: `/home/jotah/denis_unified_v1/contracts`
@@ -293,3 +296,74 @@ Estado:
 - `[x]` `level3_emergent.yaml`
 - `[x]` `changes/README.md`
 - `[x]` `changes/_template.md`
+
+---
+
+## 8) Metacognitive Project (paralelo)
+
+**Propósito:** Implementación "detrás de escenas" de capacidades metacognitivas que eventualmente reemplazan/suparan el plan original.
+
+**Documentación:** `DENIS_METACOGNITIVE_PROJECT.md`
+
+### Estado por fase metacognitiva
+
+| Fase Metacognitiva | Depende De (Plan Original) | Estado | Evidencia |
+|-------------------|---------------------------|--------|-----------|
+| FASE 0: Hooks | FASE 0 completada | Implementado | `metacognitive/hooks.py` |
+| FASE 1: Perception | FASE 1 completada | Pendiente | - |
+| FASE 2: Propagation | FASE 2 completada | Pendiente | - |
+| FASE 3: Active Metagraph | FASE 3 completada | Pendiente | - |
+| FASE 4: Self-Extension | FASE 4 completada | Pendiente | - |
+| **FASE 5: Cognitive Router** | **FASE 5 completada** | **IMPLEMENTADO** | `orchestration/cognitive_router.py` |
+| FASE 6: API | FASE 6 pendiente | Esperando | - |
+| FASE 7: Self-Aware Inference | FASE 7 pendiente | Esperando | - |
+| FASE 8: Metacognitive Voice | FASE 8 pendiente | Esperando | - |
+| FASE 9: Self-Aware Memory | FASE 9 pendiente | Esperando | - |
+
+### FASE 5 metacognitiva completada
+
+**Componente:** `orchestration/cognitive_router.py`
+
+**Contratos aplicados:**
+- `contracts/level3_cognitive_router.yaml`
+
+**Features implementados:**
+- `[x]` `CognitiveRouter` class con scoring inteligente de tools
+- `[x]` Extracción de features de task (technical, creative, retrieval, modification, reasoning, code)
+- `[x]` Scoring basado en amplitude, success_rate, latency, errores
+- `[x]` Estrategias: SMART, ROUND_ROBIN, LEGACY_FALLBACK
+- `[x]` Métricas a Redis (`denis:cognitive_router:metrics:*`)
+- `[x]` Eventos a Redis channels (`denis:cognitive_router:decisions`)
+- `[x]` Análisis automático de fallos
+- `[x]` Sugerencias de optimización
+- `[x]` Cache de tools (30s TTL)
+
+**Verificación:**
+```bash
+python3 -c "
+from denis_unified_v1.orchestration.cognitive_router import CognitiveRouter
+router = CognitiveRouter()
+print(router.get_status())
+decision = router.route_decision(task='Write Python code', request_id='test')
+print(f'Tool: {decision.tool_name}, Confidence: {decision.confidence}')
+"
+```
+
+**Salida Redis verificada:**
+- `denis:cognitive_router:metrics:decisions_total`
+- `denis:cognitive_router:metrics:tool:default`
+- `denis:cognitive_router:metrics:strategy:smart`
+
+### Siguiente
+
+**YO:**
+- `[ ]` Esperar FASE 6 completada (ellos)
+- `[ ]` Implementar FASE 6 metacognitiva (`api/metacognitive_api.py`)
+
+### Rollback metacognitivo total
+```bash
+rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1/metacognitive
+rm -f /media/jotah/SSD_denis/home_jotah/denis_unified_v1/orchestration/cognitive_router.py
+rm -f /media/jotah/SSD_denis/home_jotah/denis_unified_v1/contracts/level3_cognitive_router.yaml
+redis-cli DEL "denis:cognitive_router:*"
+```

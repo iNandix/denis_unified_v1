@@ -143,6 +143,25 @@ rm -rf denis_unified_v1/orchestration
 rm -f denis_unified_v1/scripts/phase5_orchestration_smoke.py
 ```
 
+## Phase-6 (API Unified Incremental)
+Run API smoke (health + models + chat + tools + stream + websocket route):
+```bash
+python3 denis_unified_v1/scripts/phase6_api_smoke.py \
+  --out-json denis_unified_v1/phase6_api_smoke.json
+```
+
+Optional run server:
+```bash
+DENIS_USE_API_UNIFIED=true \
+uvicorn denis_unified_v1.api.fastapi_server:app --host 0.0.0.0 --port 8001 --workers 1
+```
+
+Phase-6 rollback:
+```bash
+rm -rf denis_unified_v1/api
+rm -f denis_unified_v1/scripts/phase6_api_smoke.py
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1

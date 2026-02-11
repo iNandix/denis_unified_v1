@@ -4,40 +4,38 @@ Fecha: `2026-02-11`
 Estado: `activo`
 
 ## Objetivo del día
-Cerrar Fase 5 (orchestration augmentation) y dejar preparada la entrada a Fase 6.
+Cerrar Fase 6 (API unificada incremental) y dejar preparada la entrada a Fase 7.
 
-## Prioridad 1 - Fase 5 (hecho)
-- `[x]` Crear `orchestration/tool_executor.py`.
-- `[x]` Crear `scripts/phase5_orchestration_smoke.py`.
-- `[x]` Implementar `execute_with_cortex()` con fallback legacy.
-- `[x]` Implementar retry/backoff + circuit breaker + logging Redis/Neo4j.
-- `[x]` Validar plan de ejecución + degradación controlada por circuito.
+## Prioridad 1 - Fase 6 (hecho)
+- `[x]` Crear módulo `api/` (`fastapi_server.py`, `openai_compatible.py`, `query_interface.py`, `websocket_handler.py`, `sse_handler.py`).
+- `[x]` Añadir middleware de auth/rate-limit/trace.
+- `[x]` Exponer `/health`, `/v1/models`, `/v1/chat/completions`, `/v1/query/*`, `/v1/events`.
+- `[x]` Crear `scripts/phase6_api_smoke.py`.
+- `[x]` Validar compat OpenAI + stream + ruta websocket.
 
 Comando ejecutado:
 ```bash
-NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
-python3 /home/jotah/denis_unified_v1/scripts/phase5_orchestration_smoke.py \
-  --out-json /home/jotah/denis_unified_v1/phase5_orchestration_smoke.json
+python3 /home/jotah/denis_unified_v1/scripts/phase6_api_smoke.py \
+  --out-json /home/jotah/denis_unified_v1/phase6_api_smoke.json
 ```
 
 Resultado:
-- `phase5_orchestration_smoke.json` con `status=ok`.
-- Plan de 4 tools ejecutado con `tools_succeeded=4`.
-- Circuit breaker confirmado tras fallos consecutivos en `legacy.always_fail`.
+- `phase6_api_smoke.json` con `status=ok`.
+- `/health`, `/v1/models`, `/v1/chat/completions`, stream SSE y ruta `/v1/events` validados.
 
 ## Prioridad 2 - Siguiente fase
-- `[ ]` Iniciar Fase 6 (API unificada OpenAI-compatible incremental).
-- `[ ]` Añadir rutas nuevas sin romper contrato actual.
-- `[ ]` Definir smoke de `/health`, `/v1/models`, `/v1/chat/completions`.
+- `[ ]` Iniciar Fase 7 (router de inferencia con métricas y fallback).
+- `[ ]` Conectar scoring por latencia/error/costo.
+- `[ ]` Añadir smoke de router con fallback controlado.
 
 ## Riesgos activos
 - `node3` sigue sin ruta por red en smoke de infraestructura.
 - Credenciales Neo4j deben venir de config existente o env en ejecución de smokes.
 
-## Rollback rápido Fase 5
+## Rollback rápido Fase 6
 ```bash
-rm -rf /home/jotah/denis_unified_v1/orchestration
-rm -f /home/jotah/denis_unified_v1/scripts/phase5_orchestration_smoke.py
+rm -rf /home/jotah/denis_unified_v1/api
+rm -f /home/jotah/denis_unified_v1/scripts/phase6_api_smoke.py
 ```
 
 ## Referencias
@@ -45,3 +43,4 @@ rm -f /home/jotah/denis_unified_v1/scripts/phase5_orchestration_smoke.py
 - Evidencia Fase 3: `/home/jotah/denis_unified_v1/phase3_metagraph_snapshot.json`
 - Evidencia Fase 4: `/home/jotah/denis_unified_v1/phase4_autopoiesis_smoke.json`
 - Evidencia Fase 5: `/home/jotah/denis_unified_v1/phase5_orchestration_smoke.json`
+- Evidencia Fase 6: `/home/jotah/denis_unified_v1/phase6_api_smoke.json`
