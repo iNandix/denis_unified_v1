@@ -1,0 +1,142 @@
+{
+  "feature_flags": {
+    "denis_autopoiesis_mode": "supervised",
+    "denis_enable_metagraph": true,
+    "denis_use_cortex": false,
+    "denis_use_quantum_search": false,
+    "denis_use_quantum_substrate": false
+  },
+  "status": "ok",
+  "steps": [
+    {
+      "result": {
+        "generated_count": 2,
+        "metrics_source": "redis",
+        "metrics_status": "ok",
+        "patterns_status": "ok",
+        "proposals": [
+          {
+            "contracts": [
+              "level0",
+              "level1"
+            ],
+            "cypher": "\n            MATCH (orphan)\n            WHERE NOT (orphan)--()\n            WITH orphan LIMIT $orphan_limit\n            MATCH (candidate)\n            WHERE candidate <> orphan\n            WITH orphan, candidate\n            ORDER BY rand()\n            LIMIT $pair_limit\n            MERGE (orphan)-[:SIMILAR_TO {source:'autopoiesis_supervised'}]->(candidate)\n            RETURN count(*) AS linked\n        ",
+            "description": "Link orphan nodes to similar hubs (detected=4326)",
+            "impact": "medium",
+            "params": {
+              "orphan_limit": 20,
+              "pair_limit": 20
+            },
+            "proposal_id": "repair_orphans:7b88e1740436",
+            "requires_human_approval": true,
+            "reversible": true,
+            "type": "repair_orphans",
+            "undo": "\n            MATCH ()-[r:SIMILAR_TO {source:'autopoiesis_supervised'}]->()\n            DELETE r\n            RETURN count(r) AS removed\n        "
+          },
+          {
+            "contracts": [
+              "level0",
+              "level1"
+            ],
+            "cypher": "\n            MATCH (n)\n            WHERE n.timestamp IS NULL\n              AND n.created_at IS NULL\n              AND n.updated_at IS NULL\n            WITH n LIMIT $limit\n            SET n.timestamp = datetime()\n            RETURN count(n) AS updated\n        ",
+            "description": "Backfill timestamp for nodes without time fields (detected=1486)",
+            "impact": "low",
+            "params": {
+              "limit": 200
+            },
+            "proposal_id": "fill_timestamps:6513b5e2e569",
+            "requires_human_approval": true,
+            "reversible": true,
+            "type": "fill_missing_timestamps",
+            "undo": "\n            MATCH (n)\n            WHERE n.timestamp IS NOT NULL\n              AND n.created_at IS NULL\n              AND n.updated_at IS NULL\n            WITH n LIMIT $limit\n            REMOVE n.timestamp\n            RETURN count(n) AS reverted\n        "
+          }
+        ],
+        "redis": {
+          "key": "autopoiesis:proposals",
+          "status": "ok",
+          "ttl_seconds": 86400
+        },
+        "status": "ok",
+        "timestamp_utc": "2026-02-11T21:42:26.967528+00:00"
+      },
+      "step": "generate_proposals"
+    },
+    {
+      "result": {
+        "count": 2,
+        "proposals": [
+          {
+            "contracts": [
+              "level0",
+              "level1"
+            ],
+            "created_at": "2026-02-11T21:42:26.967528+00:00",
+            "cypher": "\n            MATCH (orphan)\n            WHERE NOT (orphan)--()\n            WITH orphan LIMIT $orphan_limit\n            MATCH (candidate)\n            WHERE candidate <> orphan\n            WITH orphan, candidate\n            ORDER BY rand()\n            LIMIT $pair_limit\n            MERGE (orphan)-[:SIMILAR_TO {source:'autopoiesis_supervised'}]->(candidate)\n            RETURN count(*) AS linked\n        ",
+            "description": "Link orphan nodes to similar hubs (detected=4326)",
+            "impact": "medium",
+            "params": {
+              "orphan_limit": 20,
+              "pair_limit": 20
+            },
+            "proposal_id": "repair_orphans:7b88e1740436",
+            "requires_human_approval": true,
+            "reversible": true,
+            "status": "pending",
+            "type": "repair_orphans",
+            "undo": "\n            MATCH ()-[r:SIMILAR_TO {source:'autopoiesis_supervised'}]->()\n            DELETE r\n            RETURN count(r) AS removed\n        "
+          },
+          {
+            "contracts": [
+              "level0",
+              "level1"
+            ],
+            "created_at": "2026-02-11T21:42:26.967528+00:00",
+            "cypher": "\n            MATCH (n)\n            WHERE n.timestamp IS NULL\n              AND n.created_at IS NULL\n              AND n.updated_at IS NULL\n            WITH n LIMIT $limit\n            SET n.timestamp = datetime()\n            RETURN count(n) AS updated\n        ",
+            "description": "Backfill timestamp for nodes without time fields (detected=1486)",
+            "impact": "low",
+            "params": {
+              "limit": 200
+            },
+            "proposal_id": "fill_timestamps:6513b5e2e569",
+            "requires_human_approval": true,
+            "reversible": true,
+            "status": "pending",
+            "type": "fill_missing_timestamps",
+            "undo": "\n            MATCH (n)\n            WHERE n.timestamp IS NOT NULL\n              AND n.created_at IS NULL\n              AND n.updated_at IS NULL\n            WITH n LIMIT $limit\n            REMOVE n.timestamp\n            RETURN count(n) AS reverted\n        "
+          }
+        ],
+        "status": "ok",
+        "timestamp_utc": "2026-02-11T21:42:26.969018+00:00"
+      },
+      "step": "list_proposals"
+    },
+    {
+      "result": {
+        "execution": "scheduled_manual_only",
+        "proposal_id": "repair_orphans:7b88e1740436",
+        "sandbox": {
+          "counters": {
+            "contains_updates": true,
+            "nodes_created": 0,
+            "nodes_deleted": 0,
+            "properties_set": 20,
+            "relationships_created": 20,
+            "relationships_deleted": 0
+          },
+          "duration_ms": 72,
+          "neo4j": {
+            "password_set": true,
+            "uri": "bolt://10.10.10.1:7687",
+            "user": "neo4j"
+          },
+          "sandbox": "rollback",
+          "status": "ok",
+          "timestamp_utc": "2026-02-11T21:42:27.046676+00:00"
+        },
+        "status": "approved",
+        "timestamp_utc": "2026-02-11T21:42:27.046806+00:00"
+      },
+      "step": "approve_first"
+    }
+  ]
+}

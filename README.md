@@ -108,6 +108,27 @@ rm -rf denis_unified_v1/metagraph
 rm -f denis_unified_v1/scripts/phase3_metagraph_snapshot.py
 ```
 
+## Phase-4 (Autopoiesis Supervised)
+Generate proposals + Redis persistence:
+```bash
+python3 denis_unified_v1/scripts/phase4_autopoiesis_smoke.py \
+  --out-json denis_unified_v1/phase4_autopoiesis_smoke.json
+```
+
+Generate + approve first proposal (sandbox rollback, no auto-apply):
+```bash
+NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
+python3 denis_unified_v1/scripts/phase4_autopoiesis_smoke.py \
+  --approve-first \
+  --out-json denis_unified_v1/phase4_autopoiesis_smoke.json
+```
+
+Phase-4 rollback:
+```bash
+rm -rf denis_unified_v1/autopoiesis
+rm -f denis_unified_v1/scripts/phase4_autopoiesis_smoke.py
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1

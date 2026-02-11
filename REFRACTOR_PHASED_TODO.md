@@ -23,7 +23,7 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
 - `[x]` `Fase 1` implementada (infra OK, HASS OK, daemon polling OK).
 - `[x]` `Fase 2` (parte Neo4j quantum augmentation) implementada y ejecutada en real.
 - `[x]` `Fase 3` implementada y validada en modo pasivo (Neo4j + Redis).
-- `[ ]` `Fase 4` pendiente.
+- `[x]` `Fase 4` implementada y validada en modo supervisado (proposal + sandbox + approve).
 - `[ ]` `Fase 5` pendiente.
 - `[ ]` `Fase 6` pendiente.
 - `[ ]` `Fase 7` pendiente.
@@ -41,6 +41,8 @@ Este plan respeta tu estructura por fases y la ejecuta en modo incremental:
   Resultado: daemon funcional (5s intervalo, publicando a Redis).
 - Metagraph snapshot: `denis_unified_v1/phase3_metagraph_snapshot.json`  
   Resultado: `status=ok`, persistencia Redis `ok`, detección de anomalías en modo solo-observación.
+- Autopoiesis smoke: `denis_unified_v1/phase4_autopoiesis_smoke.json`  
+  Resultado: `status=ok`, propuestas generadas, sandbox con rollback y aprobación supervisada.
 
 ## 4) TODO maestro por fase
 
@@ -146,18 +148,18 @@ Riesgo:
 Objetivo: propuestas de cambio con aprobación humana obligatoria.
 
 Checklist:
-- `[ ]` Crear `autopoiesis/proposal_engine.py`.
-- `[ ]` Crear `autopoiesis/dashboard.py` (`list`, `approve`, `sandbox`).
-- `[ ]` Implementar transacción sin commit para validación.
-- `[ ]` Marcar propuestas con `reversible=true` y plan de undo.
-- `[ ]` Integrar con contratos nivel 0/1.
+- `[x]` Crear `autopoiesis/proposal_engine.py`.
+- `[x]` Crear `autopoiesis/dashboard.py` (`list`, `approve`, `sandbox`).
+- `[x]` Implementar transacción sin commit para validación.
+- `[x]` Marcar propuestas con `reversible=true` y plan de undo.
+- `[x]` Integrar con contratos nivel 0/1.
 
 Verificación:
-- `[ ]` propuesta se lista.
-- `[ ]` aprobación hace sandbox y no rompe health.
+- `[x]` propuesta se lista.
+- `[x]` aprobación hace sandbox y no rompe health.
 
 Rollback:
-- `[ ]` limpiar propuestas aprobadas pendientes y mantener `supervised`.
+- `[x]` borrar módulo/script y limpiar keys Redis (`autopoiesis:*`).
 
 Riesgo:
 - Medio.
@@ -273,9 +275,9 @@ Riesgo:
 - No exponer secretos en logs/reportes.
 
 ## 6) Kanban rápido (siguiente acción)
-- `NOW`: arrancar Fase 4 (autopoiesis supervisada, sin auto-apply).
-- `NEXT`: Fase 5 (orchestration augmentation con fallback legacy).
-- `LATER`: Fase 6 (API unificada OpenAI-compatible con flags).
+- `NOW`: arrancar Fase 5 (orchestration augmentation con fallback legacy).
+- `NEXT`: Fase 6 (API unificada OpenAI-compatible con flags).
+- `LATER`: Fase 7 (router de inferencia con fallback por métricas).
 
 ## 7) Contracts (transversal)
 Ruta: `/home/jotah/denis_unified_v1/contracts`
