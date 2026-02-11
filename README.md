@@ -162,6 +162,25 @@ rm -rf denis_unified_v1/api
 rm -f denis_unified_v1/scripts/phase6_api_smoke.py
 ```
 
+## Phase-7 (Inference Router)
+Run inference router smoke (provider scoring + fallback + metrics):
+```bash
+python3 denis_unified_v1/scripts/phase7_inference_smoke.py \
+  --out-json denis_unified_v1/phase7_inference_smoke.json
+```
+
+Enable inference router in API:
+```bash
+DENIS_USE_INFERENCE_ROUTER=true \
+uvicorn denis_unified_v1.api.fastapi_server:app --host 0.0.0.0 --port 8001 --workers 1
+```
+
+Phase-7 rollback:
+```bash
+rm -rf denis_unified_v1/inference
+rm -f denis_unified_v1/scripts/phase7_inference_smoke.py
+```
+
 ## Rollback
 ```bash
 rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1

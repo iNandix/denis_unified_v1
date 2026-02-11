@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from denis_unified_v1.api.sse_handler import stream_text_chunks
+from denis_unified_v1.feature_flags import load_feature_flags
+from denis_unified_v1.inference.router import build_inference_router
 
 
 def _utc_now() -> int:
@@ -36,10 +38,12 @@ class ChatCompletionRequest(BaseModel):
 
 class DenisRuntime:
     def __init__(self) -> None:
+        self.flags = load_feature_flags()
         self.models = [
             {"id": "denis-cognitive", "object": "model", "owned_by": "denis"},
             {"id": "denis-fast", "object": "model", "owned_by": "denis"},
             {"id": "denis-core-8084", "object": "model", "owned_by": "denis"},
+            {"id": "denis-smart-router", "object": "model", "owned_by": "denis"},
         ]
         self.legacy_chat_url = (
             os.getenv("DENIS_CORE_CHAT_URL")
@@ -47,6 +51,9 @@ class DenisRuntime:
             or "http://127.0.0.1:8084/v1/chat"
         ).strip()
         self.legacy_timeout_sec = float(os.getenv("DENIS_CORE_TIMEOUT_SEC", "6.0"))
+        self.inference_router = (
+            build_inference_router() if self.flags.denis_use_inference_router else None
+        )
 
     async def _try_legacy_chat(self, user_text: str) -> str | None:
         payload = {"message": user_text}
@@ -90,6 +97,7 @@ class DenisRuntime:
     async def generate(self, req: ChatCompletionRequest) -> dict[str, Any]:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:16]}"
         user_text = self._extract_user_text(req.messages)
+        prompt_tokens = max(1, len(user_text.split()))
 
         tool_call = self._maybe_tool_call(req, user_text)
         if tool_call:
@@ -105,23 +113,51 @@ class DenisRuntime:
                         "finish_reason": "tool_calls",
                     }
                 ],
-                "usage": {"prompt_tokens": max(1, len(user_text.split())), "completion_tokens": 0, "total_tokens": max(1, len(user_text.split()))},
+                "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": 0, "total_tokens": prompt_tokens},
                 "meta": {"path": "tool_calls"},
             }
 
-        legacy = await self._try_legacy_chat(user_text)
-        if legacy:
-            answer = legacy
-            path = "legacy_8084"
-        else:
-            answer = (
-                f"Denis (incremental API) recibió: '{user_text}'. "
-                "Respuesta local porque el core legacy no devolvió contenido."
-            )
-            path = "local_fallback"
+        answer = ""
+        path = "local_fallback"
+        router_meta: dict[str, Any] = {}
+
+        if self.inference_router is not None:
+            try:
+                routed = await self.inference_router.route_chat(
+                    messages=[
+                        {"role": msg.role, "content": str(msg.content or "")}
+                        for msg in req.messages
+                    ],
+                    request_id=completion_id,
+                    latency_budget_ms=int(os.getenv("DENIS_ROUTER_LATENCY_BUDGET_MS", "2500")),
+                )
+                answer = str(routed.get("response") or "").strip()
+                if answer:
+                    path = f"inference_router:{routed.get('llm_used', 'unknown')}"
+                    router_meta = {
+                        "llm_used": routed.get("llm_used"),
+                        "latency_ms": routed.get("latency_ms"),
+                        "cost_usd": routed.get("cost_usd"),
+                        "fallback_used": routed.get("fallback_used"),
+                        "attempts": routed.get("attempts"),
+                    }
+            except Exception:
+                answer = ""
+                router_meta = {"error": "inference_router_exception"}
+
+        if not answer:
+            legacy = await self._try_legacy_chat(user_text)
+            if legacy:
+                answer = legacy
+                path = "legacy_8084"
+            else:
+                answer = (
+                    f"Denis (incremental API) recibió: '{user_text}'. "
+                    "Respuesta local porque el core legacy no devolvió contenido."
+                )
+                path = "local_fallback"
 
         completion_tokens = max(1, len(answer.split()))
-        prompt_tokens = max(1, len(user_text.split()))
         return {
             "id": completion_id,
             "object": "chat.completion",
@@ -139,7 +175,7 @@ class DenisRuntime:
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens,
             },
-            "meta": {"path": path},
+            "meta": {"path": path, "router": router_meta},
         }
 
 
@@ -174,4 +210,3 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
         return StreamingResponse(_gen(), media_type="text/event-stream")
 
     return router
-

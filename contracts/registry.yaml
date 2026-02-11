@@ -36,4 +36,23 @@ contracts:
     file: level3_emergent.yaml
     status: pending
     owner: denis_unified_v1
-
+  - id: L3.INFERENCE.FALLBACK_CHAIN
+    level: 3
+    file: level3_inference_router.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.INFERENCE.METRICS_REQUIRED
+    level: 3
+    file: level3_inference_router.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.INFERENCE.REQUEST_TRACE
+    level: 3
+    file: level3_inference_router.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.INFERENCE.COST_GUARD
+    level: 3
+    file: level3_inference_router.yaml
+    status: draft
+    owner: denis_unified_v1

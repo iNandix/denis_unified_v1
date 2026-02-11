@@ -1,0 +1,168 @@
+{
+  "checks": [
+    {
+      "check": "status_providers_loaded",
+      "ok": true,
+      "providers_count": 5
+    },
+    {
+      "check": "primary_response_non_empty",
+      "fallback_used": true,
+      "llm_used": "local_fallback",
+      "ok": true
+    },
+    {
+      "attempts": 2,
+      "check": "fallback_path_exercised",
+      "errors_count": 2,
+      "llm_used": "local_fallback",
+      "ok": true
+    }
+  ],
+  "forced_fallback": {
+    "attempts": 2,
+    "cost_usd": 0.0,
+    "errors": [
+      {
+        "error": "Cannot connect to host 127.0.0.1:1 ssl:default [Connect call failed ('127.0.0.1', 1)]",
+        "latency_ms": 0,
+        "provider": "vllm"
+      },
+      {
+        "error": "",
+        "latency_ms": 2202,
+        "provider": "legacy_core"
+      }
+    ],
+    "fallback_used": true,
+    "input_tokens": 5,
+    "latency_ms": 0,
+    "llm_used": "local_fallback",
+    "output_tokens": 14,
+    "ranking": [
+      {
+        "availability": 1.0,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 150.0,
+        "provider": "vllm",
+        "score": 0.00633333
+      },
+      {
+        "availability": 1.0,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 180.0,
+        "provider": "legacy_core",
+        "score": 0.00555556
+      }
+    ],
+    "response": "Denis router fallback local: no provider respondi\u00f3 correctamente. Query: explica el fallback del router"
+  },
+  "primary": {
+    "attempts": 3,
+    "cost_usd": 0.0,
+    "errors": [
+      {
+        "error": "groq_http_400:{'error': {'message': 'The model `llama-3.1-70b-versatile` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.', 'type': 'invalid_request_error', 'code': 'model_decommissioned",
+        "latency_ms": 181,
+        "provider": "groq"
+      },
+      {
+        "error": "Cannot connect to host 10.10.10.2:9999 ssl:default [Connect call failed ('10.10.10.2', 9999)]",
+        "latency_ms": 0,
+        "provider": "vllm"
+      },
+      {
+        "error": "",
+        "latency_ms": 2502,
+        "provider": "legacy_core"
+      }
+    ],
+    "fallback_used": true,
+    "input_tokens": 9,
+    "latency_ms": 0,
+    "llm_used": "local_fallback",
+    "output_tokens": 18,
+    "ranking": [
+      {
+        "availability": 1.0,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 250.0,
+        "provider": "groq",
+        "score": 0.2028
+      },
+      {
+        "availability": 1.0,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 150.0,
+        "provider": "vllm",
+        "score": 0.00633333
+      },
+      {
+        "availability": 1.0,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 180.0,
+        "provider": "legacy_core",
+        "score": 0.00555556
+      },
+      {
+        "availability": 1.0,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 450.0,
+        "provider": "openrouter",
+        "score": 0.00144444
+      }
+    ],
+    "response": "Denis router fallback local: no provider respondi\u00f3 correctamente. Query: resume el estado actual de denis en una frase"
+  },
+  "router_status": {
+    "provider_order": [
+      "legacy_core",
+      "vllm",
+      "groq",
+      "openrouter",
+      "claude"
+    ],
+    "providers": [
+      {
+        "availability": 1.0,
+        "configured": true,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 180.0,
+        "provider": "legacy_core"
+      },
+      {
+        "availability": 1.0,
+        "configured": true,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 150.0,
+        "provider": "vllm"
+      },
+      {
+        "availability": 1.0,
+        "configured": true,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 250.0,
+        "provider": "groq"
+      },
+      {
+        "availability": 1.0,
+        "configured": true,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 450.0,
+        "provider": "openrouter"
+      },
+      {
+        "availability": 1.0,
+        "configured": false,
+        "error_rate_1h": 0.0,
+        "latency_p95_ms": 700.0,
+        "provider": "claude"
+      }
+    ],
+    "redis_metrics_enabled": true,
+    "status": "ok",
+    "timestamp_utc": "2026-02-11T22:13:46.029647+00:00"
+  },
+  "status": "ok",
+  "timestamp_utc": "2026-02-11T22:13:50.920406+00:00"
+}

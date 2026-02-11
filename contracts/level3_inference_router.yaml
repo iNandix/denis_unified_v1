@@ -1,0 +1,44 @@
+version: 1
+layer: level3
+description: "Contratos para el router de inferencia multi-provider"
+
+contracts:
+  - id: L3.INFERENCE.FALLBACK_CHAIN
+    title: "El router siempre tiene cadena de fallback"
+    description: "Si proveedor primario falla, intenta siguiente y nunca bloquea respuesta"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.inference.router"
+      method: "InferenceRouter.route_chat"
+
+  - id: L3.INFERENCE.METRICS_REQUIRED
+    title: "Toda llamada registra métricas"
+    description: "Cada intento de provider incrementa contadores de total/success/failure"
+    severity: medium
+    mutable: false
+    validation:
+      type: redis_key
+      key_pattern: "llm:*:requests:*"
+
+  - id: L3.INFERENCE.REQUEST_TRACE
+    title: "Cada decisión queda trazada por request_id"
+    description: "El router persiste la decisión y ranking por request_id"
+    severity: medium
+    mutable: false
+    validation:
+      type: redis_key
+      key_pattern: "denis:inference_router:decision:*"
+
+  - id: L3.INFERENCE.COST_GUARD
+    title: "Respeta límite de coste cuando se especifica"
+    description: "Si cost_limit_usd está definido, no devuelve provider por encima del límite"
+    severity: low
+    mutable: true
+    validation:
+      type: function
+      path: "denis_unified_v1.inference.router"
+      method: "_estimate_cost_usd"
+
+changes: []
