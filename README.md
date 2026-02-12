@@ -7,6 +7,9 @@ This scaffold initializes a safe Phase-0 baseline without touching legacy runtim
   - `/home/jotah/denis_unified_v1/REFRACTOR_PHASED_TODO.md`
 - Daily operational checklist:
   - `/home/jotah/denis_unified_v1/DAILY_TODO.md`
+- Dual-agent sync protocol + shared log:
+  - `/home/jotah/denis_unified_v1/DUAL_AGENT_SYNC.md`
+  - `/home/jotah/denis_unified_v1/DUAL_AGENT_LOG.md`
 
 ## What is included
 - `feature_flags.py`: single source of defaults for Phase-0 flags.
@@ -286,3 +289,105 @@ rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1
   - Phase-1 execute: medium-low (idempotent property/index additions).
   - Phase-1 rollback: removes only phase-1 quantum properties.
   - Phase-2 execute smoke: low-medium (network calls only, no core mutation).
+
+## Phase-11 (Sprint Orchestrator Terminal-First)
+
+Run provider status (real tools only):
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py providers
+```
+
+Generate provider load template:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py providers-template --out denis_unified_v1/.env.sprint.providers.example
+```
+
+Start interactive sprint session (1..4 workers):
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py start --interactive --watch
+```
+
+Commands in interactive mode:
+- `dashboard` -> visual resumen de sesión (workers, providers, eventos)
+- `journal` -> bitacora de sprint/git (pending/in_progress/done + provider + timestamp)
+- `manager` -> vista unificada (commit-tree + fases + journal + chat live)
+- `commit-tree [project]` -> vista de gestión en árbol de commits por proyecto
+- `monitor [worker] [kind]` -> monitor vivo con fases + chat de workers/agentes
+- `chat [worker] [kind]` -> modo chat-only en vivo
+- `noc [worker] [kind]` -> modo NOC en una sola pantalla con auto-refresh
+- `providers` -> list configured providers + request formats
+- `mcp-tools` -> read tools from real Denis MCP endpoint
+- `tail [worker] [kind]` -> eventos recientes con filtro por worker/kind
+- `follow [worker] [kind]` -> stream en tiempo real (Ctrl+C para parar)
+- `logs [limit]` -> log de auditoria del event bus (JSONL)
+- `validate <target> [worker]` -> run existing validation targets and stream output
+- `run <worker> -- <cmd...>` -> stream terminal command output into session events
+- `adapt <provider> <message>` -> show provider-specific JSON payload
+- `dispatch <provider> <message>` -> real dispatch (direct API or Celery queue)
+- `autodispatch [worker]` -> dispatch all workers (or one) with fallback chain
+- `propose --file <md>` -> pipeline propuesta->faseado usando Groq+Rasa con decision validar/rehacer/cancelar
+
+Generate phased plan from proposal markdown:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py propose \
+  --file denis_unified_v1/REFRACTOR_PHASED_TODO.md \
+  --autodispatch
+```
+
+Phase-11 smoke:
+```bash
+make -C denis_unified_v1 phase11-smoke
+```
+
+Start sprint with automatic worker dispatch:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py start \
+  --prompt "Sprint A/B kickoff real" \
+  --workers 2 \
+  --autodispatch
+```
+
+Re-run auto dispatch on an existing session:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py autodispatch <session_id>
+```
+
+Live monitor (phases + chat):
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py monitor <session_id> --follow
+```
+
+Unified manager view:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py manager <session_id> --follow
+```
+Manager hotkeys: `j/k` commit, `h/l` project, `w/t` filters, `d` detail, `f` scope, `q` quit.
+
+Commit tree management view:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py commit-tree --session-id <session_id> --max-commits 40
+```
+
+Guide panel:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py guide
+```
+
+Audit logs:
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py logs --session-id <session_id> --follow
+```
+
+NOC live (dashboard + stream en una pantalla):
+```bash
+python3 denis_unified_v1/scripts/sprintctl.py noc <session_id> --worker worker-1 --kind worker.dispatch
+```
+
+Notes:
+- `llama_node1/llama_node2` support `MODE=celery` (recommended) and `MODE=direct`.
+- Request adaptation supports `openai_chat`, `anthropic_messages`, and `celery_task`.
+- MCP file catalog fallback is disabled by default (`DENIS_SPRINT_MCP_ALLOW_FILE_CATALOG=false`).
+- MCP bridge auto-discovers tools via `/tools`, `/v1/tools`, `/mcp/tools` (base defaults to `127.0.0.1:8084` when available).
+- Placeholder/stub guard runs after dispatch and requires human decision (`yes/no`) before accepting changes.
+- Contract file create/modify emits bus events and requires explicit human approval (`yes/no`).
+- Event bus writes audit JSONL by default in `.sprint_orchestrator/logs/events.log.jsonl`.
