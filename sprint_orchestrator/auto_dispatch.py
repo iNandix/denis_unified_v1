@@ -20,6 +20,7 @@ _FALLBACK_ORDER = [
     "celery_crewai",
     "llama_node1",
     "llama_node2",
+    "denis_canonical",
     "legacy_core",
     "groq",
     "openrouter",

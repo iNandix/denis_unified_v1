@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 _DEFAULT_PROVIDER_POOL = [
+    "denis_canonical",
     "legacy_core",
     "codex",
     "claude_code",
@@ -35,6 +36,7 @@ class SprintOrchestratorConfig:
     projects_scan_root: Path
     max_workers: int
     provider_pool: list[str]
+    primary_provider: str
     pin_legacy_first: bool
 
 
@@ -62,5 +64,6 @@ def load_sprint_config(project_root: Path | None = None) -> SprintOrchestratorCo
         projects_scan_root=scan_root,
         max_workers=max_workers,
         provider_pool=provider_pool,
+        primary_provider=(os.getenv("DENIS_SPRINT_PRIMARY_PROVIDER") or "denis_canonical").strip(),
         pin_legacy_first=_env_bool("DENIS_SPRINT_PIN_LEGACY_FIRST", True),
     )

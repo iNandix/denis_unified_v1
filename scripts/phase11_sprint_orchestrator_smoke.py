@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
 
 def run_smoke() -> dict[str, Any]:
     os.environ.setdefault("DENIS_USE_SPRINT_ORCHESTRATOR", "true")
+    os.environ.setdefault("DENIS_SPRINT_PRIMARY_PROVIDER", "denis_canonical")
 
     config = load_sprint_config(PROJECT_ROOT / "denis_unified_v1")
     orchestrator = SprintOrchestrator(config)
@@ -96,6 +97,14 @@ def run_smoke() -> dict[str, Any]:
             "check": "session_created",
             "ok": bool(session.session_id),
             "session_id": session.session_id,
+        },
+        {
+            "check": "primary_provider_pinned",
+            "ok": (not config.primary_provider)
+            or (len(real_provider_ids) >= 1 and real_provider_ids[0] == config.primary_provider)
+            or (config.primary_provider not in real_provider_ids),
+            "primary_provider": config.primary_provider,
+            "first_provider": real_provider_ids[0] if real_provider_ids else "",
         },
         {
             "check": "assignments_generated",

@@ -67,6 +67,7 @@ def _as_anthropic_messages(messages: list[dict[str, str]]) -> tuple[str | None, 
 
 def _resolve_model(provider: str, env: dict[str, str]) -> str:
     mapping = {
+        "denis_canonical": ("DENIS_CANONICAL_MODEL", "denis-cognitive"),
         "groq": ("DENIS_GROQ_MODEL", "llama-3.1-70b-versatile"),
         "openrouter": ("DENIS_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
         "claude": ("DENIS_CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),
@@ -86,6 +87,7 @@ def _resolve_endpoint(provider: str, status: ProviderStatus, env: dict[str, str]
     if explicit:
         return explicit
     defaults = {
+        "denis_canonical": (env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:9999/v1/chat/completions").strip(),
         "groq": "https://api.groq.com/openai/v1/chat/completions",
         "openrouter": "https://openrouter.ai/api/v1/chat/completions",
         "claude": "https://api.anthropic.com/v1/messages",
@@ -182,6 +184,7 @@ def build_provider_request(
         )
         headers = {"Content-Type": "application/json"}
         token_map = {
+            "denis_canonical": "DENIS_CANONICAL_API_KEY",
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
             "opencode": "OPENAI_API_KEY",

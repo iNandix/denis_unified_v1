@@ -87,6 +87,22 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
     env = merged_env(config)
     statuses: list[ProviderStatus] = []
 
+    denis_canonical_endpoint = (
+        env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:9999/v1/chat/completions"
+    ).strip()
+    statuses.append(
+        ProviderStatus(
+            provider="denis_canonical",
+            mode="local",
+            request_format="openai_chat",
+            configured=bool(denis_canonical_endpoint),
+            missing_env=[] if denis_canonical_endpoint else ["DENIS_CANONICAL_URL"],
+            endpoint=denis_canonical_endpoint,
+            queue="",
+            notes="preferred Denis canonical endpoint (slot-1 candidate)",
+        )
+    )
+
     codex_cmd = env.get("DENIS_SPRINT_CODEX_CMD", "codex").strip()
     statuses.append(
         ProviderStatus(
@@ -340,6 +356,9 @@ def ordered_configured_provider_ids(
         if provider_id not in ordered:
             ordered.append(provider_id)
 
-    if config.pin_legacy_first and "legacy_core" in ordered:
+    primary = (config.primary_provider or "").strip()
+    if config.pin_legacy_first and (not primary or primary == "legacy_core") and "legacy_core" in ordered:
         ordered = ["legacy_core"] + [item for item in ordered if item != "legacy_core"]
+    elif primary and primary in ordered:
+        ordered = [primary] + [item for item in ordered if item != primary]
     return ordered
