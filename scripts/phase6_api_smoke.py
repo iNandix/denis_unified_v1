@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Phase-6 API smoke via FastAPI TestClient."""
+# ruff: noqa: E402
 
 from __future__ import annotations
 
@@ -114,6 +115,54 @@ def run_smoke() -> dict[str, Any]:
                 "check": "websocket_events_route",
                 "ok": ws_route_exists,
                 "route": "/v1/events",
+            }
+        )
+
+        providers_cfg = client.get("/v1/providers/config")
+        providers_json = providers_cfg.json() if providers_cfg.status_code == 200 else {}
+        providers_count = len(providers_json.get("providers", [])) if isinstance(providers_json, dict) else 0
+        out["checks"].append(
+            {
+                "check": "providers_config_route",
+                "status_code": providers_cfg.status_code,
+                "ok": providers_cfg.status_code == 200 and providers_count >= 1,
+                "providers_count": providers_count,
+            }
+        )
+
+        provider_models = client.get("/v1/providers/models")
+        models_json = provider_models.json() if provider_models.status_code == 200 else {}
+        models_count = len(models_json.get("models", [])) if isinstance(models_json, dict) else 0
+        out["checks"].append(
+            {
+                "check": "providers_models_route",
+                "status_code": provider_models.status_code,
+                "ok": provider_models.status_code == 200,
+                "models_count": models_count,
+            }
+        )
+
+        load_req = {
+            "provider": "legacy_core",
+            "persist_env": False,
+            "create_backup": False,
+            "extra_env": {},
+        }
+        load_start = client.post("/v1/providers/load", json=load_req)
+        load_start_json = load_start.json() if load_start.status_code == 200 else {}
+        run_id = str(load_start_json.get("run_id") or "")
+        load_get = client.get(f"/v1/providers/load/{run_id}") if run_id else None
+        load_get_ok = bool(load_get and load_get.status_code == 200)
+        load_status = ""
+        if load_get_ok:
+            load_status = str((load_get.json() or {}).get("status") or "")
+        out["checks"].append(
+            {
+                "check": "providers_load_pipeline",
+                "status_code": load_start.status_code,
+                "ok": load_start.status_code == 200 and run_id != "" and load_get_ok and load_status in {"ok", "running"},
+                "run_id": run_id,
+                "run_status": load_status,
             }
         )
 
