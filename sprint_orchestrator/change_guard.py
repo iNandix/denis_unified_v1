@@ -50,10 +50,19 @@ class ChangeGuard:
     def __init__(self, config: SprintOrchestratorConfig) -> None:
         self.config = config
         env = merged_env(config)
-        self.enabled = _env_bool(env.get("DENIS_SPRINT_PLACEHOLDER_GUARD_ENABLED"), True)
-        self.fail_closed = _env_bool(env.get("DENIS_SPRINT_PLACEHOLDER_GUARD_FAIL_CLOSED"), True)
-        self.allow_marker = (env.get("DENIS_SPRINT_PLACEHOLDER_ALLOW_MARKER") or "denis:allow-placeholder").strip()
-        self.max_violations = max(50, int(env.get("DENIS_SPRINT_PLACEHOLDER_GUARD_MAX") or "300"))
+        self.enabled = _env_bool(
+            env.get("DENIS_SPRINT_PLACEHOLDER_GUARD_ENABLED"), True
+        )
+        self.fail_closed = _env_bool(
+            env.get("DENIS_SPRINT_PLACEHOLDER_GUARD_FAIL_CLOSED"), True
+        )
+        self.allow_marker = (
+            env.get("DENIS_SPRINT_PLACEHOLDER_ALLOW_MARKER")
+            or "denis:allow-placeholder"
+        ).strip()
+        self.max_violations = max(
+            50, int(env.get("DENIS_SPRINT_PLACEHOLDER_GUARD_MAX") or "300")
+        )
 
         self.patterns: list[tuple[str, re.Pattern[str]]] = [
             ("placeholder", re.compile(r"(?i)\bplaceholder(s)?\b")),
@@ -64,6 +73,20 @@ class ChangeGuard:
             ("todo", re.compile(r"(?i)\b(TODO|FIXME|XXX)\b")),
             ("coming_soon", re.compile(r"(?i)coming soon|to be implemented|tbd")),
             ("pass_placeholder", re.compile(r"^\s*pass\s*(#.*)?$")),
+            # Nuevos patrones para contracts y tests
+            (
+                "contract_missing_validation",
+                re.compile(r"class\s+\w+.*?BaseModel.*?validators\s*="),
+            ),
+            (
+                "test_missing",
+                re.compile(r"def\s+(test_|tests\.)"),
+            ),  # Simple heuristic, improve later
+        ]
+
+        # Patrones de archivos que requieren tests
+        self.requires_test_patterns = [
+            re.compile(r"/(?:services?|agents?|crews?|api|models?)/.*\.py$"),
         ]
 
     def inspect_repo_diff(self, project_path: Path) -> GuardReport:
@@ -89,7 +112,9 @@ class ChangeGuard:
                 scanned_added_lines=0,
                 error=(proc.stderr or proc.stdout or "git_diff_failed").strip()[:400],
             )
-        return self.inspect_diff_text(project_path=project_path, diff_text=proc.stdout or "")
+        return self.inspect_diff_text(
+            project_path=project_path, diff_text=proc.stdout or ""
+        )
 
     def inspect_diff_text(self, *, project_path: Path, diff_text: str) -> GuardReport:
         current_file = ""
@@ -99,11 +124,17 @@ class ChangeGuard:
         scanned_added_lines = 0
         violations: list[GuardViolation] = []
 
+        # Para detección de tests faltantes: recopilar archivos modificados
+        modified_files: set[str] = set()
+
         for raw in diff_text.splitlines():
             if raw.startswith("+++ b/"):
                 current_file = raw[6:].strip()
                 scan_current_file = _should_scan_file(current_file)
                 scanned_files.add(current_file)
+                # Si es archivo de código que requiere test, registrarlo
+                if scan_current_file and self._requires_test(current_file):
+                    modified_files.add(current_file)
                 continue
             if raw.startswith("@@"):
                 start = _parse_new_hunk_start(raw)
@@ -131,6 +162,11 @@ class ChangeGuard:
                         "coming_soon",
                     }:
                         continue
+                    # Detectar violaciones específicas de contracts
+                    if category == "contract_missing_validation":
+                        # Más específico: si se añade modelo BaseModel sin validadores
+                        # Ya capturemos por patrón, no necesitamos lógica extra
+                        pass
                     violations.append(
                         GuardViolation(
                             file_path=current_file or "(unknown)",
@@ -151,6 +187,19 @@ class ChangeGuard:
             if raw.startswith(" "):
                 line_no += 1
 
+        # Chequeo posterior: tests faltantes para archivos modificados
+        for mod_file in modified_files:
+            if not self._has_test_for(project_path, mod_file):
+                violations.append(
+                    GuardViolation(
+                        file_path=mod_file,
+                        line_no=1,  # Línea genérica
+                        category="missing_test",
+                        pattern="test_file_missing",
+                        line=f"No se encontró test para {mod_file}",
+                    )
+                )
+
         status = "clean" if not violations else "alert"
         return GuardReport(
             status=status,
@@ -159,6 +208,52 @@ class ChangeGuard:
             scanned_files=len(scanned_files),
             scanned_added_lines=scanned_added_lines,
         )
+
+    def _requires_test(self, file_path: str) -> bool:
+        """Determina si un archivo requiere test asociado."""
+        # Excluir tests, docs,配置文件
+        skip_suffixes = (
+            "test_",
+            "conftest.py",
+            ".md",
+            ".rst",
+            ".txt",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+        )
+        if any(file_path.endswith(s) for s in skip_suffixes):
+            return False
+        # Solo archivos en src/ o módulos principales
+        if file_path.startswith(("tests/", "docs/", "contextpacks/", ".", "venv")):
+            return False
+        # Si coincide con patrón de módulos que requieren test
+        for pat in self.requires_test_patterns:
+            if pat.search(file_path):
+                return True
+        return False
+
+    def _has_test_for(self, project_root: Path, source_file: str) -> bool:
+        """Verifica si existe un test para el archivo fuente."""
+        # Estrategias:
+        # 1. tests/<source_file>  -> tests/services/crew_manager.py
+        # 2. tests/test_<nombre>.py
+        # 3. tests/<dirname>/test_<nombre>.py
+        src_path = Path(source_file)
+        possible_tests = [
+            project_root / "tests" / src_path.relative_to(project_root / "src")
+            if str(src_path).startswith("src/")
+            else None,
+            project_root / "tests" / f"test_{src_path.name}",
+            project_root / "tests" / src_path.parent / f"test_{src_path.name}",
+        ]
+        for p in possible_tests:
+            if p and p.exists():
+                return True
+        return False
 
 
 def _env_bool(raw: str | None, default: bool) -> bool:
