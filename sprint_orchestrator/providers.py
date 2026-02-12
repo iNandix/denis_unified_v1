@@ -99,8 +99,10 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
     statuses: list[ProviderStatus] = []
 
     # Canonical Denis backend (slot-1 candidate). Default is the real Denis API on :8084.
+    # Canonical Denis contract is OpenAI-compatible at /v1/chat/completions.
+    # Keep /v1/chat as a legacy fallback for older deployments.
     denis_canonical_endpoint = (
-        env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:8084/v1/chat"
+        env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:8084/v1/chat/completions"
     ).strip()
     denis_canonical_format = (
         "denis_chat"

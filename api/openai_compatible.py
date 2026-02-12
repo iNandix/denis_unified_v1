@@ -45,10 +45,12 @@ class DenisRuntime:
             {"id": "denis-core-8084", "object": "model", "owned_by": "denis"},
             {"id": "denis-smart-router", "object": "model", "owned_by": "denis"},
         ]
+        # Prefer the canonical OpenAI-compatible endpoint on the core (:8084).
+        # Keep /v1/chat as a legacy fallback for older core deployments.
         self.legacy_chat_url = (
             os.getenv("DENIS_CORE_CHAT_URL")
             or os.getenv("DENIS_CORE_URL")
-            or "http://127.0.0.1:8084/v1/chat"
+            or "http://127.0.0.1:8084/v1/chat/completions"
         ).strip()
         self.legacy_timeout_sec = float(os.getenv("DENIS_CORE_TIMEOUT_SEC", "6.0"))
         self.inference_router = (
@@ -56,20 +58,65 @@ class DenisRuntime:
         )
 
     async def _try_legacy_chat(self, user_text: str) -> str | None:
-        payload = {"message": user_text}
         timeout = aiohttp.ClientTimeout(total=self.legacy_timeout_sec)
+
+        raw = (self.legacy_chat_url or "").strip()
+        if not raw:
+            return None
+
+        endpoint = raw.rstrip("/")
+        if not endpoint.endswith("/v1/chat") and not endpoint.endswith("/v1/chat/completions"):
+            endpoint = f"{endpoint}/v1/chat/completions"
+
+        candidates: list[tuple[str, str]] = []
+        if endpoint.endswith("/v1/chat/completions"):
+            base = endpoint[: -len("/v1/chat/completions")]
+            candidates = [
+                ("openai", endpoint),
+                ("legacy", f"{base}/v1/chat"),
+            ]
+        elif endpoint.endswith("/v1/chat"):
+            base = endpoint[: -len("/v1/chat")]
+            candidates = [
+                ("legacy", endpoint),
+                ("openai", f"{base}/v1/chat/completions"),
+            ]
+        else:
+            candidates = [("openai", endpoint)]
+
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(self.legacy_chat_url, json=payload) as resp:
-                    if resp.status != 200:
-                        return None
-                    data = await resp.json()
-                    if isinstance(data, dict):
-                        for key in ("response", "answer", "text", "content"):
-                            val = data.get(key)
-                            if isinstance(val, str) and val.strip():
-                                return val.strip()
-                    return None
+                for kind, url in candidates:
+                    if kind == "legacy":
+                        payload: dict[str, Any] = {"message": user_text}
+                    else:
+                        payload = {
+                            "model": os.getenv("DENIS_CORE_MODEL", "denis-cognitive"),
+                            "messages": [{"role": "user", "content": user_text}],
+                            "stream": False,
+                        }
+
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status != 200:
+                            continue
+                        data = await resp.json(content_type=None)
+
+                        if kind == "openai" and isinstance(data, dict):
+                            choices = data.get("choices")
+                            if isinstance(choices, list) and choices:
+                                msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+                                if isinstance(msg, dict):
+                                    content = msg.get("content")
+                                    if isinstance(content, str) and content.strip():
+                                        return content.strip()
+
+                        if kind == "legacy" and isinstance(data, dict):
+                            for key in ("response", "answer", "text", "content"):
+                                val = data.get(key)
+                                if isinstance(val, str) and val.strip():
+                                    return val.strip()
+
+                return None
         except Exception:
             return None
 
