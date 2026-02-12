@@ -2053,8 +2053,9 @@ def cmd_secrets(args: argparse.Namespace) -> int:
             if present and not show_all:
                 continue
             if present and show_all:
-                # Overwrite requires explicit action; keep current values unless missing.
-                continue
+                overwrite = _ask_yes_no(prompt=f"{key} already set. Overwrite?", default="no", mode="ask")
+                if not overwrite:
+                    continue
             if non_interactive:
                 missing.append(key)
                 continue
@@ -2859,7 +2860,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_secrets.add_argument("--path", default=None, help="Optional explicit env file (default is scope-based .env.local)")
     p_secrets.add_argument("--persist", action=argparse.BooleanOptionalAction, default=True)
     p_secrets.add_argument("--non-interactive", action="store_true")
-    p_secrets.add_argument("--all", action="store_true", help="Show prompts even when key exists (does not overwrite)")
+    p_secrets.add_argument("--all", action="store_true", help="Allow overwrite prompts for already-set keys")
     p_secrets.set_defaults(func=cmd_secrets)
 
     p_mcp = sub.add_parser("mcp-tools", help="List real MCP tools from Denis MCP endpoint")
