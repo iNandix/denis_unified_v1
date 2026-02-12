@@ -87,7 +87,7 @@ def _resolve_endpoint(provider: str, status: ProviderStatus, env: dict[str, str]
     if explicit:
         return explicit
     defaults = {
-        "denis_canonical": (env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:9999/v1/chat/completions").strip(),
+        "denis_canonical": (env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:8084/v1/chat/completions").strip(),
         "groq": "https://api.groq.com/openai/v1/chat/completions",
         "openrouter": "https://openrouter.ai/api/v1/chat/completions",
         "claude": "https://api.anthropic.com/v1/messages",

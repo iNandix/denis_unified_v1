@@ -87,8 +87,9 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
     env = merged_env(config)
     statuses: list[ProviderStatus] = []
 
+    # Canonical Denis backend (slot-1 candidate). Default is the real Denis API on :8084.
     denis_canonical_endpoint = (
-        env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:9999/v1/chat/completions"
+        env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:8084/v1/chat/completions"
     ).strip()
     statuses.append(
         ProviderStatus(
