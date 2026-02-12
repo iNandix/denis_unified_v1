@@ -20,8 +20,8 @@ from denis_unified_v1.sprint_orchestrator.config import load_sprint_config
 from denis_unified_v1.sprint_orchestrator.model_adapter import build_provider_request
 from denis_unified_v1.sprint_orchestrator.orchestrator import SprintOrchestrator
 from denis_unified_v1.sprint_orchestrator.providers import (
-    configured_provider_ids,
     load_provider_statuses,
+    ordered_configured_provider_ids,
     provider_status_map,
 )
 from denis_unified_v1.sprint_orchestrator.validation import resolve_target, run_validation_target
@@ -48,7 +48,7 @@ def run_smoke() -> dict[str, Any]:
     orchestrator = SprintOrchestrator(config)
 
     provider_statuses = load_provider_statuses(config)
-    real_provider_ids = configured_provider_ids(provider_statuses)
+    real_provider_ids = ordered_configured_provider_ids(config=config, statuses=provider_statuses)
     provider_map = provider_status_map(provider_statuses)
 
     projects = orchestrator.discover_projects(config.projects_scan_root)

@@ -32,8 +32,8 @@ from .orchestrator import SprintOrchestrator
 from .proposal_pipeline import ProposalPipeline, pick_file_with_zenity
 from .proposal_normalizer import normalize_proposal_markdown
 from .providers import (
-    configured_provider_ids,
     load_provider_statuses,
+    ordered_configured_provider_ids,
     provider_status_map,
 )
 from .shell_stream import run_command_stream
@@ -1506,7 +1506,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     workers = max(1, min(4, int(workers)))
 
     provider_status = load_provider_statuses(orch.config)
-    real_providers = configured_provider_ids(provider_status)
+    real_providers = ordered_configured_provider_ids(config=orch.config, statuses=provider_status)
     if not real_providers:
         print("No configured providers found. Run `sprintctl providers` and set keys/endpoints first.")
         return 3
@@ -2470,7 +2470,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
         workers = max(1, min(4, int(args.workers)))
         provider_status = load_provider_statuses(orch.config)
-        real_providers = configured_provider_ids(provider_status)
+        real_providers = ordered_configured_provider_ids(config=orch.config, statuses=provider_status)
         if not real_providers:
             print("No configured providers found. Run `sprintctl providers` and set keys/endpoints first.")
             return 3

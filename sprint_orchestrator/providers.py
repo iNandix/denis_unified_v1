@@ -322,3 +322,24 @@ def configured_provider_ids(statuses: list[ProviderStatus]) -> list[str]:
 
 def provider_status_map(statuses: list[ProviderStatus]) -> dict[str, ProviderStatus]:
     return {item.provider: item for item in statuses}
+
+
+def ordered_configured_provider_ids(
+    *,
+    config: SprintOrchestratorConfig,
+    statuses: list[ProviderStatus],
+) -> list[str]:
+    configured = configured_provider_ids(statuses)
+    configured_set = set(configured)
+
+    ordered: list[str] = []
+    for provider_id in config.provider_pool:
+        if provider_id in configured_set and provider_id not in ordered:
+            ordered.append(provider_id)
+    for provider_id in configured:
+        if provider_id not in ordered:
+            ordered.append(provider_id)
+
+    if config.pin_legacy_first and "legacy_core" in ordered:
+        ordered = ["legacy_core"] + [item for item in ordered if item != "legacy_core"]
+    return ordered
