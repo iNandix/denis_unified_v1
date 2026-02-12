@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
@@ -14,11 +13,13 @@ import aiohttp
 
 
 ROOT = Path("/media/jotah/SSD_denis")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INTEGRATIONS_ROOT = ROOT / "integrations"
 if str(INTEGRATIONS_ROOT) not in sys.path:
     sys.path.insert(0, str(INTEGRATIONS_ROOT))
 
-_ENV_FILES = [
+_CANONICAL_ENV_FILE = PROJECT_ROOT / ".env"
+_LEGACY_ENV_FILES = [
     ROOT / ".env.prod.local",
     ROOT / ".env.platform",
     ROOT / ".env.ultimate",
@@ -29,6 +30,7 @@ _ENV_FILES = [
     ROOT / ".env.denis.hass",
     ROOT / "denis-ha-complete" / ".env",
 ]
+_ENV_FILES = [_CANONICAL_ENV_FILE, *_LEGACY_ENV_FILES]
 
 _JSON_FILES = [
     ROOT / ".denis_hass_full_config.json",
@@ -36,8 +38,25 @@ _JSON_FILES = [
     ROOT / ".denis_hass_setup_report.json",
 ]
 
-_TOKEN_KEYS = ("HA_TOKEN", "HASS_TOKEN", "TOKEN", "hass_token", "ha_token")
-_URL_KEYS = ("HA_BASE_URL", "HASS_URL", "HA_URL", "hass_url", "url", "base_url")
+_TOKEN_KEYS = (
+    "HA_TOKEN",
+    "HASS_TOKEN",
+    "HASS_LONG_LIVED_TOKEN",
+    "DENIS_HA_TOKEN",
+    "TOKEN",
+    "hass_token",
+    "ha_token",
+)
+_URL_KEYS = (
+    "HA_BASE_URL",
+    "HASS_URL",
+    "HASS_BASE_URL",
+    "HA_URL",
+    "DENIS_HA_URL",
+    "hass_url",
+    "url",
+    "base_url",
+)
 
 
 def _normalize_url(url: str) -> str:
@@ -78,10 +97,7 @@ def _extract_from_dict(d: dict[str, Any]) -> tuple[str | None, str | None]:
 
 def _collect_from_runtime_env() -> list[dict[str, str]]:
     env = dict(os.environ)
-    url = (
-        env.get("HA_BASE_URL") or env.get("HASS_URL") or env.get("HA_URL") or ""
-    ).strip()
-    token = (env.get("HA_TOKEN") or env.get("HASS_TOKEN") or "").strip()
+    url, token = _extract_from_dict(env)
     if url and token:
         return [{"source": "runtime_env", "url": _normalize_url(url), "token": token}]
     return []
@@ -93,10 +109,7 @@ def _collect_from_env_files() -> list[dict[str, str]]:
         env = _load_env_file(path)
         if not env:
             continue
-        url = (
-            env.get("HA_BASE_URL") or env.get("HASS_URL") or env.get("HA_URL") or ""
-        ).strip()
-        token = (env.get("HA_TOKEN") or env.get("HASS_TOKEN") or "").strip()
+        url, token = _extract_from_dict(env)
         if url and token:
             rows.append(
                 {
@@ -191,8 +204,9 @@ def _token_fingerprint(token: str) -> str:
 
 async def ensure_hass_env_auto() -> dict[str, Any]:
     candidates: list[dict[str, str]] = []
-    candidates.extend(_collect_from_runtime_env())
+    # Canonical project .env first, then legacy env files, then runtime/json fallbacks.
     candidates.extend(_collect_from_env_files())
+    candidates.extend(_collect_from_runtime_env())
     candidates.extend(_collect_from_json_files())
 
     inventory_urls = _collect_hass_urls_from_network_inventory()

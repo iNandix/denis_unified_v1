@@ -13,8 +13,10 @@ from neo4j import GraphDatabase
 
 
 ROOT = Path("/media/jotah/SSD_denis")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-_ENV_FILES = [
+_CANONICAL_ENV_FILE = PROJECT_ROOT / ".env"
+_LEGACY_ENV_FILES = [
     ROOT / ".env.prod.local",
     ROOT / ".env.platform",
     ROOT / ".env.ultimate",
@@ -22,6 +24,7 @@ _ENV_FILES = [
     ROOT / ".env",
     ROOT / ".env.denis",
 ]
+_ENV_FILES = [_CANONICAL_ENV_FILE, *_LEGACY_ENV_FILES]
 
 
 @dataclass(frozen=True)
@@ -134,18 +137,34 @@ def _verify_connectivity(cfg: Neo4jResolvedConfig, timeout_sec: float = 4.0) -> 
             pass
 
 
+def _is_auth_rate_limited(error: str | None) -> bool:
+    if not error:
+        return False
+    return (
+        "AuthenticationRateLimit" in error
+        or "incorrect authentication details too many times" in error.lower()
+    )
+
+
+def _is_auth_unauthorized(error: str | None) -> bool:
+    if not error:
+        return False
+    return "Unauthorized" in error or "authentication failure" in error.lower()
+
+
 def ensure_neo4j_env_auto() -> dict[str, Any]:
     candidates: list[tuple[str, Neo4jResolvedConfig]] = []
 
-    runtime_cfg = _extract_neo4j(dict(os.environ))
-    if runtime_cfg:
-        candidates.append(("runtime_env", runtime_cfg))
-
+    # Canonical project .env first, then legacy env files, then runtime fallback.
     for path in _ENV_FILES:
         env = _load_env_file(path)
         cfg = _extract_neo4j(env)
         if cfg:
             candidates.append((f"env_file:{path}", cfg))
+
+    runtime_cfg = _extract_neo4j(dict(os.environ))
+    if runtime_cfg:
+        candidates.append(("runtime_env", runtime_cfg))
 
     dedup: list[tuple[str, Neo4jResolvedConfig]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -157,15 +176,40 @@ def ensure_neo4j_env_auto() -> dict[str, Any]:
             seen.add(key)
             dedup.append((source, expanded_cfg))
 
+    # Export canonical-first candidate so downstream code does not fail on empty password
+    # even if connectivity validation fails.
+    if dedup:
+        _, first_cfg = dedup[0]
+        os.environ["NEO4J_URI"] = first_cfg.uri
+        os.environ["NEO4J_USER"] = first_cfg.user
+        os.environ["NEO4J_USERNAME"] = first_cfg.user
+        os.environ["NEO4J_PASSWORD"] = first_cfg.password
+        os.environ["NEO4J_PASS"] = first_cfg.password
+
     attempts: list[dict[str, Any]] = []
+    blocked_password_fps: set[str] = set()
     for source, cfg in dedup:
+        pwd_fp = _password_fp(cfg.password)
+        if pwd_fp in blocked_password_fps:
+            attempts.append(
+                {
+                    "source": source,
+                    "uri": cfg.uri,
+                    "user": cfg.user,
+                    "password_fp": pwd_fp,
+                    "ok": False,
+                    "error": "skipped_after_unauthorized_same_credential",
+                }
+            )
+            continue
+
         ok, error = _verify_connectivity(cfg)
         attempts.append(
             {
                 "source": source,
                 "uri": cfg.uri,
                 "user": cfg.user,
-                "password_fp": _password_fp(cfg.password),
+                "password_fp": pwd_fp,
                 "ok": ok,
                 "error": error,
             }
@@ -182,6 +226,16 @@ def ensure_neo4j_env_auto() -> dict[str, Any]:
                 "selected_uri": cfg.uri,
                 "selected_user": cfg.user,
                 "password_fp": _password_fp(cfg.password),
+                "attempts": attempts,
+            }
+
+        if _is_auth_unauthorized(error):
+            blocked_password_fps.add(pwd_fp)
+
+        if _is_auth_rate_limited(error):
+            return {
+                "status": "error",
+                "error": "neo4j_auth_rate_limited",
                 "attempts": attempts,
             }
 
