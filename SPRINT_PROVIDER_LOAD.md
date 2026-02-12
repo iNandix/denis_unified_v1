@@ -14,7 +14,7 @@ Then copy required keys into `.env` (never commit secrets).
 
 Slot-1 provider pin:
 - Set `DENIS_SPRINT_PRIMARY_PROVIDER=denis_canonical` (default).
-- Configure canonical endpoint via `DENIS_CANONICAL_URL` (default: `http://127.0.0.1:8084/v1/chat/completions`).
+- Configure canonical endpoint via `DENIS_CANONICAL_URL` (default: `http://127.0.0.1:8084/v1/chat`).
 
 ## 2. Verify Real Provider Status
 

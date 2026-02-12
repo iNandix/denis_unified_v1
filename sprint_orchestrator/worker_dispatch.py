@@ -61,7 +61,7 @@ def dispatch_worker_task(
             details = _dispatch_celery(config, provider_status, messages)
             status = "ok"
             mode = "celery"
-        elif provider_status.request_format in {"openai_chat", "anthropic_messages"}:
+        elif provider_status.request_format in {"openai_chat", "anthropic_messages", "denis_chat"}:
             request = build_provider_request(
                 config=config,
                 status=provider_status,

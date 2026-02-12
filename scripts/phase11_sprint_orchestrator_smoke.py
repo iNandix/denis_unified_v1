@@ -80,7 +80,7 @@ def run_smoke() -> dict[str, Any]:
         item.provider
         for item in provider_statuses
         if item.provider in real_provider_ids
-        and item.request_format in {"openai_chat", "anthropic_messages"}
+        and item.request_format in {"openai_chat", "anthropic_messages", "denis_chat"}
     ]
     if not adaptable:
         raise RuntimeError("No adaptable API provider available for phase11 smoke")

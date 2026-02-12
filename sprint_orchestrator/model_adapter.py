@@ -87,7 +87,7 @@ def _resolve_endpoint(provider: str, status: ProviderStatus, env: dict[str, str]
     if explicit:
         return explicit
     defaults = {
-        "denis_canonical": (env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:8084/v1/chat/completions").strip(),
+        "denis_canonical": (env.get("DENIS_CANONICAL_URL") or "http://127.0.0.1:8084/v1/chat").strip(),
         "groq": "https://api.groq.com/openai/v1/chat/completions",
         "openrouter": "https://openrouter.ai/api/v1/chat/completions",
         "claude": "https://api.anthropic.com/v1/messages",
@@ -205,6 +205,16 @@ def build_provider_request(
                 headers["HTTP-Referer"] = site_url
             if site_name:
                 headers["X-Title"] = site_name
+    elif status.request_format == "denis_chat":
+        # Denis canonical gateway `/v1/chat` expects `text`/`message` and returns `{text, intent, ...}`.
+        normalized = _normalize_messages(messages)
+        text = str(normalized[-1].get("content") or "").strip() if normalized else "Hello"
+        payload = {
+            "text": text,
+            "user_id": (env.get("DENIS_OWNER_USER_ID") or env.get("DENIS_OWNER_USERNAME") or "owner").strip(),
+            "stream": False,
+        }
+        headers = {"Content-Type": "application/json"}
     else:
         raise ValueError(
             f"Provider {provider} is request_format={status.request_format}; direct HTTP invoke is not supported"
@@ -261,6 +271,15 @@ def _parse_anthropic_response(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_provider_response(status: ProviderStatus, data: dict[str, Any]) -> dict[str, Any]:
+    if status.request_format == "denis_chat":
+        return {
+            "text": str(data.get("text") or data.get("response_text") or "").strip(),
+            "finish_reason": None,
+            "tool_calls": [],
+            "input_tokens": None,
+            "output_tokens": None,
+            "raw": data,
+        }
     if status.request_format == "anthropic_messages":
         return _parse_anthropic_response(data)
     return _parse_openai_response(data)

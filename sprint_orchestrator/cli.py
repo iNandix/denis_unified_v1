@@ -1958,7 +1958,7 @@ DENIS_SPRINT_CODEX_CMD=codex
 DENIS_SPRINT_CLAUDE_CMD=claude
 
 # API providers
-DENIS_CANONICAL_URL=http://127.0.0.1:8084/v1/chat/completions
+DENIS_CANONICAL_URL=http://127.0.0.1:8084/v1/chat
 DENIS_CANONICAL_MODEL=denis-cognitive
 DENIS_CANONICAL_API_KEY=
 GROQ_API_KEY=
@@ -2113,7 +2113,7 @@ def cmd_secrets(args: argparse.Namespace) -> int:
 
         provider_specs: dict[str, list[tuple[str, bool, str | None]]] = {
             "denis_canonical": [
-                ("DENIS_CANONICAL_URL", False, "http://127.0.0.1:8084/v1/chat/completions"),
+                ("DENIS_CANONICAL_URL", False, "http://127.0.0.1:8084/v1/chat"),
                 ("DENIS_CANONICAL_MODEL", False, "denis-cognitive"),
                 ("DENIS_CANONICAL_API_KEY", True, None),
             ],
