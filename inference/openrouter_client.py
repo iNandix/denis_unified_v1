@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import aiohttp
+import aiohttp  # type: ignore[import-not-found]
 
 
 class OpenRouterClient:

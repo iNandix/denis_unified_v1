@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from denis_unified_v1.api.openai_compatible import DenisRuntime, build_openai_router
 from denis_unified_v1.api.memory_handler import build_memory_router
 from denis_unified_v1.api.query_interface import build_query_router
+from denis_unified_v1.api.provider_config_handler import build_provider_config_router
 from denis_unified_v1.api.voice_handler import build_voice_router
 from denis_unified_v1.api.websocket_handler import build_ws_router
 from denis_unified_v1.autopoiesis.dashboard import build_router as build_autopoiesis_router
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
 
     app.include_router(build_openai_router(runtime))
     app.include_router(build_query_router())
+    app.include_router(build_provider_config_router())
     app.include_router(build_ws_router())
     if flags.denis_use_voice_pipeline:
         app.include_router(build_voice_router())

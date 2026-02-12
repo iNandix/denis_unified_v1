@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from collections.abc import Iterator
 import contextlib
 import json
 from pathlib import Path
@@ -160,25 +161,31 @@ def _print_dashboard(orch: SprintOrchestrator, session_id: str) -> None:
     total_providers = len(providers)
     workers = session.get("assignments") or []
     high_priority = len([w for w in workers if w.get("priority") == "high"])
+    last = stats.get("last", {})
+    last_kind = last.get("kind", "-") if isinstance(last, dict) else "-"
 
     print(panel(
         f"Sprint Dashboard :: {session_id}",
         [
             f"events={stats['total']} workers={len(workers)} high_priority={high_priority}",
             f"providers_configured={configured}/{total_providers}",
-            f"last_event={stats.get('last', {}).get('kind', '-')}",
+            f"last_event={last_kind}",
         ],
         border_char="-",
     ))
 
     worker_rows = []
-    for worker, count in sorted((stats["workers"] or {}).items()):
-        worker_rows.append([worker, str(count)])
+    workers_stats = stats.get("workers", {})
+    if isinstance(workers_stats, dict):
+        for worker, count in sorted(workers_stats.items()):
+            worker_rows.append([worker, str(count)])
     if worker_rows:
         print(render_table(["worker", "events"], worker_rows, widths=[16, 8]))
     kind_rows = []
-    for kind, count in sorted((stats["kinds"] or {}).items()):
-        kind_rows.append([kind, str(count)])
+    kinds_stats = stats.get("kinds", {})
+    if isinstance(kinds_stats, dict):
+        for kind, count in sorted(kinds_stats.items()):
+            kind_rows.append([kind, str(count)])
     if kind_rows:
         print(render_table(["event_kind", "count"], kind_rows, widths=[36, 8]))
     print()
@@ -437,7 +444,7 @@ def _read_commit_detail(repo_path: Path, sha: str, *, max_lines: int = 30) -> li
 
 
 @contextlib.contextmanager
-def _raw_stdin_mode(enabled: bool) -> bool:
+def _raw_stdin_mode(enabled: bool) -> Iterator[bool]:
     if not enabled or not sys.stdin.isatty() or termios is None or tty is None:
         yield False
         return
@@ -980,8 +987,8 @@ def _detect_contract_changes(project_path: Path) -> list[dict[str, str]]:
     if proc.returncode != 0:
         return []
     out: list[dict[str, str]] = []
-    for line in (proc.stdout or "").splitlines():
-        raw = line.strip()
+    for stdout_line in (proc.stdout or "").splitlines():
+        raw = stdout_line.strip()
         if not raw:
             continue
         parts = raw.split("\t")
@@ -1956,8 +1963,9 @@ DENIS_SPRINT_PLACEHOLDER_ALLOW_MARKER=denis:allow-placeholder
 def cmd_mcp_tools(args: argparse.Namespace) -> int:
     orch = _load_orchestrator()
     bridge = MCPBridge(orch.config)
-    payload = {
-        "status": bridge.status(),
+    status = bridge.status()
+    payload: dict[str, object] = {
+        "status": status,
         "tools": bridge.list_tools(),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
@@ -1968,7 +1976,7 @@ def cmd_mcp_tools(args: argparse.Namespace) -> int:
             store=orch.store,
             bus=orch.bus,
         )
-    return 0 if payload["status"]["configured"] else 1
+    return 0 if bool(status.get("configured")) else 1
 
 
 def cmd_dashboard(args: argparse.Namespace) -> int:
@@ -2027,8 +2035,8 @@ def cmd_logs(args: argparse.Namespace) -> int:
 
     def read_rows() -> list[dict]:
         rows: list[dict] = []
-        for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-            raw = line.strip()
+        for log_line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            raw = log_line.strip()
             if not raw:
                 continue
             try:

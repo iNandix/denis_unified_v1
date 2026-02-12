@@ -1,0 +1,96 @@
+version: 1
+layer: level3
+description: "Contratos para Sprint Orchestrator terminal-first y workers multi-provider"
+
+contracts:
+  - id: L3.SPRINT.REAL_TOOLS_ONLY
+    title: "Asignación solo con providers reales configurados"
+    description: "El planner no puede asignar workers a providers sin configuración válida"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.planner"
+      method: "SprintPlanner.build_assignments"
+
+  - id: L3.SPRINT.JSON_ADAPTATION_NATIVE
+    title: "Adaptación JSON nativa por API"
+    description: "Las llamadas deben adaptarse al formato esperado por cada proveedor"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.model_adapter"
+      method: "build_provider_request"
+
+  - id: L3.SPRINT.MCP_REAL_VISIBILITY
+    title: "MCP tools desde endpoint real"
+    description: "Por defecto se usa endpoint HTTP real para catálogo de tools"
+    severity: medium
+    mutable: true
+    validation:
+      type: env
+      key: "DENIS_SPRINT_MCP_ALLOW_FILE_CATALOG"
+      expected: "false"
+
+  - id: L3.SPRINT.TERMINAL_STREAM_AUDIT
+    title: "Toda salida terminal queda en event stream"
+    description: "Comandos de validación o ejecución deben producir eventos start/output/end"
+    severity: medium
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.shell_stream"
+      method: "run_command_stream"
+
+  - id: L3.SPRINT.CELERY_LLAMA_WORKERS
+    title: "llama node workers soportan dispatch por Celery"
+    description: "llama_node1/2 en modo celery deben encolar tasks en la queue configurada"
+    severity: medium
+    mutable: true
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.worker_dispatch"
+      method: "dispatch_worker_task"
+
+  - id: L3.SPRINT.EVENT_BUS_NATIVE
+    title: "Event bus nativo con persistencia obligatoria"
+    description: "Todo evento del sprint se persiste en store y opcionalmente se publica por Redis"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.event_bus"
+      method: "publish_event"
+
+  - id: L3.SPRINT.RASA_CONFIDENCE_GATE
+    title: "Rasa primero, LLM fallback controlado por confianza"
+    description: "Si confianza Rasa < umbral, deriva a fallback sin ejecutar acción determinista insegura"
+    severity: critical
+    mutable: true
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.intent_router_rasa"
+      method: "RasaIntentRouter.route"
+
+  - id: L3.SPRINT.STUB_GUARD_HUMAN_APPROVAL
+    title: "Stub/placeholder requieren aprobacion explicita"
+    description: "El guard detecta placeholders/stubs/simulaciones en git diff y exige decision humana"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.change_guard"
+      method: "ChangeGuard.inspect_repo_diff"
+
+  - id: L3.SPRINT.CONTRACT_CHANGE_REVIEW
+    title: "Creacion/modificacion de contratos requiere decision humana"
+    description: "Cambios en contracts/* generan eventos en bus y se aceptan solo por confirmacion yes/no"
+    severity: critical
+    mutable: false
+    validation:
+      type: function
+      path: "denis_unified_v1.sprint_orchestrator.cli"
+      method: "_enforce_contract_approval"
+
+changes: []
