@@ -6,6 +6,7 @@ import argparse
 from collections import Counter
 from collections.abc import Iterator
 import contextlib
+import getpass
 import json
 from pathlib import Path
 import re
@@ -32,6 +33,7 @@ from .orchestrator import SprintOrchestrator
 from .proposal_pipeline import ProposalPipeline, pick_file_with_zenity
 from .proposal_normalizer import normalize_proposal_markdown
 from .providers import (
+    merged_env,
     load_provider_statuses,
     ordered_configured_provider_ids,
     provider_status_map,
@@ -1488,6 +1490,63 @@ def _ask(prompt: str, default: str | None = None) -> str:
     return default or ""
 
 
+_ENV_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$")
+
+
+def _ask_secret(prompt: str) -> str:
+    if not sys.stdin.isatty():
+        raise RuntimeError("secret_prompt_requires_tty")
+    return str(getpass.getpass(f"{prompt}: ") or "").strip()
+
+
+def _serialize_env_value(value: str) -> str:
+    v = str(value)
+    if v == "":
+        return ""
+    if any(ch in v for ch in [" ", "#", '"', "'"]):
+        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return v
+
+
+def _read_env_lines(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return path.read_text(encoding="utf-8", errors="ignore").splitlines()
+
+
+def _update_env_file(path: Path, updates: dict[str, str], *, create_backup: bool = True) -> str | None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = _read_env_lines(path)
+    index_map: dict[str, int] = {}
+    for idx, raw in enumerate(lines):
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        m = _ENV_LINE_RE.match(line)
+        if not m:
+            continue
+        index_map[m.group(1)] = idx
+
+    backup_path: str | None = None
+    if create_backup and path.exists():
+        stamp = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+        backup = path.with_name(f"{path.name}.bak.{stamp}")
+        backup.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+        backup_path = str(backup)
+
+    for key, value in (updates or {}).items():
+        new_line = f"{key}={_serialize_env_value(value)}"
+        if key in index_map:
+            lines[index_map[key]] = new_line
+        else:
+            lines.append(new_line)
+
+    text = "\n".join(lines).rstrip() + "\n"
+    path.write_text(text, encoding="utf-8")
+    return backup_path
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     orch = _load_orchestrator()
     workers = args.workers
@@ -1964,6 +2023,179 @@ DENIS_SPRINT_PLACEHOLDER_ALLOW_MARKER=denis:allow-placeholder
     else:
         print(template)
     return 0
+
+
+def cmd_secrets(args: argparse.Namespace) -> int:
+    """
+    Terminal "modal" to ensure credentials are available from env sources.
+    By default, persists to a gitignored `.env.local` so other agents don't need to ask again.
+    """
+    orch = _load_orchestrator()
+    root = Path("/media/jotah/SSD_denis")
+    scope = str(getattr(args, "scope", "root") or "root").strip().lower()
+    persist = bool(getattr(args, "persist", True))
+    non_interactive = bool(getattr(args, "non_interactive", False))
+    show_all = bool(getattr(args, "all", False))
+
+    if getattr(args, "path", None):
+        target_path = Path(str(args.path))
+    else:
+        target_path = (root / ".env.local") if scope == "root" else (orch.config.projects_scan_root / ".env.local")
+
+    env = merged_env(orch.config)
+    resource = str(getattr(args, "resource", "") or "").strip().lower()
+
+    def ensure_keys(specs: list[tuple[str, bool, str | None]]) -> tuple[dict[str, str], list[str]]:
+        updates: dict[str, str] = {}
+        missing: list[str] = []
+        for key, is_secret, default in specs:
+            present = bool((env.get(key) or "").strip())
+            if present and not show_all:
+                continue
+            if present and show_all:
+                # Overwrite requires explicit action; keep current values unless missing.
+                continue
+            if non_interactive:
+                missing.append(key)
+                continue
+            if is_secret:
+                value = _ask_secret(key)
+            else:
+                value = _ask(key, default=default)
+            if value.strip():
+                updates[key] = value.strip()
+            else:
+                missing.append(key)
+        return updates, missing
+
+    if resource == "neo4j":
+        from denis_unified_v1.cortex.neo4j_config_resolver import ensure_neo4j_env_auto
+
+        resolved = ensure_neo4j_env_auto()
+        if str(resolved.get("status")) == "ok":
+            print(ok(f"Neo4j OK: {resolved.get('selected_uri')} user={resolved.get('selected_user')}"))
+            return 0
+
+        specs = [
+            ("NEO4J_URI", False, "bolt://127.0.0.1:7687"),
+            ("NEO4J_USER", False, "neo4j"),
+            ("NEO4J_PASSWORD", True, None),
+        ]
+        updates, missing = ensure_keys(specs)
+        if missing and non_interactive:
+            print(warn(f"Missing keys: {', '.join(missing)}"))
+            return 2
+        if updates and persist:
+            confirmed = _ask_yes_no(
+                prompt=f"Persist {len(updates)} key(s) into {target_path}?",
+                default="yes",
+                mode="ask",
+            )
+            if confirmed:
+                backup = _update_env_file(target_path, updates, create_backup=True)
+                print(ok(f"Updated {target_path}"))
+                if backup:
+                    print(muted(f"backup: {backup}"))
+
+        resolved2 = ensure_neo4j_env_auto()
+        if str(resolved2.get("status")) == "ok":
+            print(ok(f"Neo4j OK: {resolved2.get('selected_uri')} user={resolved2.get('selected_user')}"))
+            return 0
+        print(warn(f"Neo4j not ready: {resolved2.get('error') or 'unknown'}"))
+        return 1
+
+    if resource in {"provider", "providers"}:
+        provider = str(getattr(args, "provider", "") or "").strip().lower()
+        if not provider:
+            print("usage: sprintctl secrets provider --provider <id>")
+            return 2
+
+        provider_specs: dict[str, list[tuple[str, bool, str | None]]] = {
+            "denis_canonical": [
+                ("DENIS_CANONICAL_URL", False, "http://127.0.0.1:8084/v1/chat/completions"),
+                ("DENIS_CANONICAL_MODEL", False, "denis-cognitive"),
+                ("DENIS_CANONICAL_API_KEY", True, None),
+            ],
+            "legacy_core": [
+                ("DENIS_MASTER_URL", False, "http://127.0.0.1:8084/v1/chat/completions"),
+                ("LLM_API_KEY", True, None),
+            ],
+            "openrouter": [
+                ("OPENROUTER_API_KEY", True, None),
+                ("DENIS_OPENROUTER_URL", False, "https://openrouter.ai/api/v1/chat/completions"),
+                ("DENIS_OPENROUTER_MODEL", False, "openai/gpt-4o-mini"),
+            ],
+            "groq": [
+                ("GROQ_API_KEY", True, None),
+                ("DENIS_GROQ_URL", False, "https://api.groq.com/openai/v1/chat/completions"),
+                ("DENIS_GROQ_MODEL", False, "llama-3.1-70b-versatile"),
+            ],
+            "claude": [
+                ("ANTHROPIC_API_KEY", True, None),
+                ("DENIS_ANTHROPIC_URL", False, "https://api.anthropic.com/v1/messages"),
+                ("DENIS_CLAUDE_MODEL", False, "claude-3-5-sonnet-20241022"),
+            ],
+            "vllm": [
+                ("DENIS_VLLM_URL", False, "http://10.10.10.2:9999/v1/chat/completions"),
+                ("DENIS_VLLM_MODEL", False, "deepseek-coder"),
+                ("DENIS_VLLM_API_KEY", True, None),
+            ],
+            "mcp": [
+                ("DENIS_SPRINT_MCP_ENABLED", False, "true"),
+                ("DENIS_SPRINT_MCP_BASE_URL", False, "http://127.0.0.1:8084"),
+                ("DENIS_SPRINT_MCP_TOOLS_PATH", False, "/tools"),
+                ("DENIS_SPRINT_MCP_AUTH_TOKEN", True, None),
+            ],
+        }
+        specs = provider_specs.get(provider)
+        if specs is None:
+            print(warn(f"Unknown provider spec: {provider}"))
+            print(muted(f"known: {', '.join(sorted(provider_specs.keys()))}"))
+            return 2
+
+        updates, missing = ensure_keys(specs)
+        if missing and non_interactive:
+            print(warn(f"Missing keys: {', '.join(missing)}"))
+            return 2
+        if updates and persist:
+            confirmed = _ask_yes_no(
+                prompt=f"Persist {len(updates)} key(s) into {target_path}?",
+                default="yes",
+                mode="ask",
+            )
+            if confirmed:
+                backup = _update_env_file(target_path, updates, create_backup=True)
+                print(ok(f"Updated {target_path} ({provider})"))
+                if backup:
+                    print(muted(f"backup: {backup}"))
+        return 0
+
+    if resource == "custom":
+        keys = [str(k).strip() for k in (getattr(args, "key", None) or []) if str(k).strip()]
+        secret_keys = {str(k).strip() for k in (getattr(args, "secret", None) or []) if str(k).strip()}
+        if not keys:
+            print("usage: sprintctl secrets custom --key KEY [--key KEY2 ...] [--secret KEY]")
+            return 2
+        specs = [(k, k in secret_keys, None) for k in keys]
+        updates, missing = ensure_keys(specs)
+        if missing and non_interactive:
+            print(warn(f"Missing keys: {', '.join(missing)}"))
+            return 2
+        if updates and persist:
+            confirmed = _ask_yes_no(
+                prompt=f"Persist {len(updates)} key(s) into {target_path}?",
+                default="yes",
+                mode="ask",
+            )
+            if confirmed:
+                backup = _update_env_file(target_path, updates, create_backup=True)
+                print(ok(f"Updated {target_path}"))
+                if backup:
+                    print(muted(f"backup: {backup}"))
+        return 0
+
+    print("usage: sprintctl secrets <neo4j|provider|custom> [...]")
+    return 2
 
 
 def cmd_mcp_tools(args: argparse.Namespace) -> int:
@@ -2617,6 +2849,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_template = sub.add_parser("providers-template", help="Print/write provider env template")
     p_template.add_argument("--out", default=None, help="Optional output file path")
     p_template.set_defaults(func=cmd_providers_template)
+
+    p_secrets = sub.add_parser("secrets", help="Credential modal (writes to .env.local by default)")
+    p_secrets.add_argument("resource", choices=["neo4j", "provider", "custom"])
+    p_secrets.add_argument("--provider", default="", help="When resource=provider")
+    p_secrets.add_argument("--key", action="append", default=[], help="When resource=custom (repeatable)")
+    p_secrets.add_argument("--secret", action="append", default=[], help="When resource=custom (repeatable)")
+    p_secrets.add_argument("--scope", choices=["root", "project"], default="root")
+    p_secrets.add_argument("--path", default=None, help="Optional explicit env file (default is scope-based .env.local)")
+    p_secrets.add_argument("--persist", action=argparse.BooleanOptionalAction, default=True)
+    p_secrets.add_argument("--non-interactive", action="store_true")
+    p_secrets.add_argument("--all", action="store_true", help="Show prompts even when key exists (does not overwrite)")
+    p_secrets.set_defaults(func=cmd_secrets)
 
     p_mcp = sub.add_parser("mcp-tools", help="List real MCP tools from Denis MCP endpoint")
     p_mcp.add_argument("--session-id", default=None, help="Optional session id to append catalog event")

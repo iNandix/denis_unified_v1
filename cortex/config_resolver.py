@@ -22,6 +22,7 @@ _CANONICAL_ENV_FILE = PROJECT_ROOT / ".env"
 _LOCAL_ENV_FILE = PROJECT_ROOT / ".env.local"
 _ROOT_LOCAL_ENV_FILE = ROOT / ".env.local"
 _LEGACY_ENV_FILES = [
+    # Prefer local secrets first (project, then root).
     _LOCAL_ENV_FILE,
     _ROOT_LOCAL_ENV_FILE,
     ROOT / ".env.prod.local",
@@ -34,7 +35,7 @@ _LEGACY_ENV_FILES = [
     ROOT / ".env.denis.hass",
     ROOT / "denis-ha-complete" / ".env",
 ]
-_ENV_FILES = [_CANONICAL_ENV_FILE, *_LEGACY_ENV_FILES]
+_ENV_FILES = [*_LEGACY_ENV_FILES, _CANONICAL_ENV_FILE]
 
 _JSON_FILES = [
     ROOT / ".denis_hass_full_config.json",

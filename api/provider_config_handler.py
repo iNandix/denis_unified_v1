@@ -17,6 +17,9 @@ from denis_unified_v1.sprint_orchestrator.providers import load_provider_statuse
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ENV_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$")
+_SECRET_KEY_HINT_RE = re.compile(r"(?:API_KEY|TOKEN|PASSWORD|PASS|SECRET)$")
+
+ROOT = Path("/media/jotah/SSD_denis")
 
 
 PROVIDER_FIELDS: dict[str, list[dict[str, Any]]] = {
@@ -110,6 +113,25 @@ def _env_path() -> Path:
     return cfg.projects_scan_root / ".env"
 
 
+def _env_local_path() -> Path:
+    cfg = load_sprint_config()
+    return cfg.projects_scan_root / ".env.local"
+
+
+def _env_source_paths() -> list[Path]:
+    """
+    Merge env values from known Denis sources (no secret echoing).
+    Precedence: later files override earlier files.
+    """
+    return [
+        ROOT / ".env",
+        ROOT / ".env.denis",
+        ROOT / ".env.local",
+        _env_path(),
+        _env_local_path(),
+    ]
+
+
 def _read_env_lines(path: Path) -> list[str]:
     if not path.exists():
         return []
@@ -130,6 +152,13 @@ def _read_env_dict(path: Path) -> dict[str, str]:
             value = value.split(" #", 1)[0]
         values[key] = value.strip().strip("'").strip('"')
     return values
+
+
+def _read_env_dict_merged(paths: list[Path]) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for p in paths:
+        merged.update(_read_env_dict(p))
+    return merged
 
 
 def _mask_secret(value: str) -> str:
@@ -156,6 +185,24 @@ def _allowed_keys_for_provider(provider: str | None) -> set[str]:
         return set()
     items = PROVIDER_FIELDS.get(provider, [])
     return {str(item.get("key") or "") for item in items if str(item.get("key") or "")}
+
+
+def _secret_keys_for_provider(provider: str | None) -> set[str]:
+    if not provider:
+        return set()
+    items = PROVIDER_FIELDS.get(provider, [])
+    out: set[str] = set()
+    for item in items:
+        key = str(item.get("key") or "")
+        if key and bool(item.get("secret")):
+            out.add(key)
+    return out
+
+
+def _is_secret_key(*, provider: str | None, key: str) -> bool:
+    if provider and key in _secret_keys_for_provider(provider):
+        return True
+    return bool(_SECRET_KEY_HINT_RE.search(key or ""))
 
 
 def _update_env_file(path: Path, updates: dict[str, str], *, create_backup: bool) -> str | None:
@@ -195,6 +242,42 @@ def _write_env_updates(updates: dict[str, str], create_backup: bool) -> str | No
     return _update_env_file(_env_path(), updates, create_backup=create_backup)
 
 
+def _write_env_updates_to(path: Path, updates: dict[str, str], create_backup: bool) -> str | None:
+    if not updates:
+        return None
+    return _update_env_file(path, updates, create_backup=create_backup)
+
+
+def _write_env_updates_auto(
+    *,
+    provider: str | None,
+    updates: dict[str, str],
+    create_backup: bool,
+) -> list[str]:
+    """
+    Persist updates with sane defaults:
+    - secret keys -> .env.local
+    - non-secret keys -> .env
+    """
+    env_path = _env_path()
+    env_local_path = _env_local_path()
+    to_env: dict[str, str] = {}
+    to_local: dict[str, str] = {}
+    for k, v in (updates or {}).items():
+        if _is_secret_key(provider=provider, key=k):
+            to_local[k] = v
+        else:
+            to_env[k] = v
+    backups: list[str] = []
+    b1 = _write_env_updates_to(env_path, to_env, create_backup=create_backup)
+    if b1:
+        backups.append(b1)
+    b2 = _write_env_updates_to(env_local_path, to_local, create_backup=create_backup)
+    if b2:
+        backups.append(b2)
+    return backups
+
+
 def _provider_payload(provider: str, env_file_values: dict[str, str], statuses: dict[str, Any]) -> dict[str, Any]:
     fields = []
     for spec in PROVIDER_FIELDS.get(provider, []):
@@ -229,7 +312,8 @@ def build_provider_config_router() -> APIRouter:
     def get_provider_config() -> dict[str, Any]:
         cfg = load_sprint_config()
         env_path = _env_path()
-        env_file_values = _read_env_dict(env_path)
+        env_local_path = _env_local_path()
+        env_file_values = _read_env_dict_merged(_env_source_paths())
         statuses = {item.provider: item.as_dict() for item in load_provider_statuses(cfg)}
         providers = []
         for provider in sorted(PROVIDER_FIELDS.keys()):
@@ -238,6 +322,13 @@ def build_provider_config_router() -> APIRouter:
             "status": "ok",
             "timestamp_utc": _utc_now(),
             "env_file": str(env_path),
+            "env_files": {
+                "project_env": str(env_path),
+                "project_env_local": str(env_local_path),
+                "root_env": str(ROOT / ".env"),
+                "root_env_denis": str(ROOT / ".env.denis"),
+                "root_env_local": str(ROOT / ".env.local"),
+            },
             "providers": providers,
         }
 
@@ -258,8 +349,11 @@ def build_provider_config_router() -> APIRouter:
                 raise HTTPException(status_code=400, detail=f"key_not_allowed_for_provider:{key}")
             sanitized[key] = str(value)
 
-        env_path = _env_path()
-        backup_path = _update_env_file(env_path, sanitized, create_backup=bool(req.create_backup))
+        backups = _write_env_updates_auto(
+            provider=req.provider,
+            updates=sanitized,
+            create_backup=bool(req.create_backup),
+        )
 
         cfg = load_sprint_config()
         statuses = {item.provider: item.as_dict() for item in load_provider_statuses(cfg)}
@@ -271,7 +365,8 @@ def build_provider_config_router() -> APIRouter:
             "provider": req.provider or "multi",
             "updated_keys": sorted(sanitized.keys()),
             "updated_values_masked": masked,
-            "backup_file": backup_path or "",
+            "backup_file": backups[0] if backups else "",
+            "backup_files": backups,
             "provider_status": scoped_status or {},
         }
 
@@ -291,7 +386,12 @@ def build_provider_config_router() -> APIRouter:
             persist_env=bool(req.persist_env),
             create_backup=bool(req.create_backup),
             extra_env=dict(req.extra_env or {}),
-            env_writer=_write_env_updates,
+            # Provider loads usually persist API keys; keep them in `.env.local`.
+            env_writer=lambda updates, create_backup: _write_env_updates_to(
+                _env_local_path(),
+                updates,
+                create_backup=create_backup,
+            ),
             registry=reg,
         )
         return {

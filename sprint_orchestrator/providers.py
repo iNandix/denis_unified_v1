@@ -14,6 +14,7 @@ from .config import SprintOrchestratorConfig
 
 
 _ENV_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$")
+ROOT = Path("/media/jotah/SSD_denis")
 
 
 @dataclass(frozen=True)
@@ -60,14 +61,20 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def merged_env(config: SprintOrchestratorConfig) -> dict[str, str]:
-    # Precedence: runtime env > project .env > project .env.local
+    # Precedence: runtime env > project .env.local > root .env.local > root .env.denis > project .env > root .env
     # `.env.local` is for machine-local secrets and must never be committed.
     local_env = _load_env_file(config.projects_scan_root / ".env.local")
     project_env = _load_env_file(config.projects_scan_root / ".env")
+    root_env = _load_env_file(ROOT / ".env")
+    root_denis_env = _load_env_file(ROOT / ".env.denis")
+    root_local_env = _load_env_file(ROOT / ".env.local")
 
     env: dict[str, str] = {}
-    env.update(local_env)
+    env.update(root_env)
+    env.update(root_denis_env)
     env.update(project_env)
+    env.update(root_local_env)
+    env.update(local_env)
     env.update(os.environ)
     return env
 
