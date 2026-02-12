@@ -5,4 +5,19 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.sprint_orchestrator/
 
+# Local env (never commit secrets)
+.env
+.env.sprint.providers
+.env.sprint.providers.local
+
+# Local sprint artifacts / reports (generated)
+phase*_*.json
+sprint_review.json
+sprint_review.md
+DUAL_AGENT_LOG.md
+DUAL_AGENT_SYNC.md
+ENV_CONSOLIDATION_REPORT.md
+*.generated.md
+contextpacks/

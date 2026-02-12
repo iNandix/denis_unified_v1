@@ -153,6 +153,13 @@ python3 denis_unified_v1/scripts/phase6_api_smoke.py \
   --out-json denis_unified_v1/phase6_api_smoke.json
 ```
 
+Provider config endpoints for Denis front:
+- `GET /v1/providers/config` -> lista providers + campos editables (secretos enmascarados)
+- `POST /v1/providers/config` -> guarda cambios en `.env` (backup automático)
+- `POST /v1/providers/load` -> pipeline 1/5..5/5 (validación key, discovery free, schema por modelo, registro)
+- `GET /v1/providers/load/{run_id}` -> progreso/resultado por ejecución de carga
+- `GET /v1/providers/models` -> catálogo persistido de modelos por provider (disponibles para inferencia)
+
 Optional run server:
 ```bash
 DENIS_USE_API_UNIFIED=true \
