@@ -65,7 +65,7 @@ python3 scripts/sprintctl.py tail <session_id> --worker worker-1 --kind worker.d
 
 Fallback behavior:
 - If assigned provider is terminal-only or unavailable, dispatcher retries with real providers.
-- Preferred fallback order: `celery_crewai -> llama_node1 -> llama_node2 -> legacy_core -> groq -> openrouter -> vllm -> claude`.
+- Preferred fallback order: `celery_crewai -> llama_node1 -> llama_node2 -> denis_canonical -> legacy_core -> groq -> openrouter -> vllm -> claude`.
 
 ## 5. MCP Tools Visibility
 Use real MCP endpoint (not file catalogs by default):

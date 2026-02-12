@@ -19,7 +19,11 @@ if str(INTEGRATIONS_ROOT) not in sys.path:
     sys.path.insert(0, str(INTEGRATIONS_ROOT))
 
 _CANONICAL_ENV_FILE = PROJECT_ROOT / ".env"
+_LOCAL_ENV_FILE = PROJECT_ROOT / ".env.local"
+_ROOT_LOCAL_ENV_FILE = ROOT / ".env.local"
 _LEGACY_ENV_FILES = [
+    _LOCAL_ENV_FILE,
+    _ROOT_LOCAL_ENV_FILE,
     ROOT / ".env.prod.local",
     ROOT / ".env.platform",
     ROOT / ".env.ultimate",

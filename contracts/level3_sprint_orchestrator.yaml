@@ -3,6 +3,16 @@ layer: level3
 description: "Contratos para Sprint Orchestrator terminal-first y workers multi-provider"
 
 contracts:
+  - id: L3.SPRINT.PRIMARY_PROVIDER_PIN
+    title: "Slot-1 provider pin determinista"
+    description: "El engine debe poder fijar el provider primario (worker-1) via DENIS_SPRINT_PRIMARY_PROVIDER para cablear Denis como backend canonico"
+    severity: critical
+    mutable: true
+    validation:
+      type: env
+      key: "DENIS_SPRINT_PRIMARY_PROVIDER"
+      expected: "denis_canonical"
+
   - id: L3.SPRINT.REAL_TOOLS_ONLY
     title: "Asignación solo con providers reales configurados"
     description: "El planner no puede asignar workers a providers sin configuración válida"

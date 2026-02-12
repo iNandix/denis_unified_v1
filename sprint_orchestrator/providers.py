@@ -60,11 +60,15 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def merged_env(config: SprintOrchestratorConfig) -> dict[str, str]:
-    env = dict(os.environ)
+    # Precedence: runtime env > project .env > project .env.local
+    # `.env.local` is for machine-local secrets and must never be committed.
+    local_env = _load_env_file(config.projects_scan_root / ".env.local")
     project_env = _load_env_file(config.projects_scan_root / ".env")
-    for key, value in project_env.items():
-        if key not in env:
-            env[key] = value
+
+    env: dict[str, str] = {}
+    env.update(local_env)
+    env.update(project_env)
+    env.update(os.environ)
     return env
 
 

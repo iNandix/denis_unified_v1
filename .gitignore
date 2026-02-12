@@ -9,6 +9,8 @@ __pycache__/
 
 # Local env (never commit secrets)
 .env
+.env.local
+.env.secrets
 .env.sprint.providers
 .env.sprint.providers.local
 

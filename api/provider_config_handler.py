@@ -20,6 +20,12 @@ _ENV_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$")
 
 
 PROVIDER_FIELDS: dict[str, list[dict[str, Any]]] = {
+    "denis_canonical": [
+        {"key": "DENIS_CANONICAL_URL", "secret": False, "required": False},
+        {"key": "DENIS_CANONICAL_MODEL", "secret": False, "required": False},
+        {"key": "DENIS_CANONICAL_API_KEY", "secret": True, "required": False},
+        {"key": "DENIS_SPRINT_PRIMARY_PROVIDER", "secret": False, "required": False},
+    ],
     "groq": [
         {"key": "GROQ_API_KEY", "secret": True, "required": True},
         {"key": "DENIS_GROQ_URL", "secret": False, "required": False},

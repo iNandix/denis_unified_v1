@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -15,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from denis_unified_v1.autopoiesis.dashboard import approve_proposal, list_proposals
 from denis_unified_v1.autopoiesis.proposal_engine import generate_proposals
+from denis_unified_v1.cortex.neo4j_config_resolver import ensure_neo4j_env_auto
 from denis_unified_v1.feature_flags import load_feature_flags
 
 
@@ -47,6 +49,15 @@ def main() -> int:
         "feature_flags": flags,
         "steps": [],
     }
+
+    neo4j = ensure_neo4j_env_auto()
+    payload["steps"].append({"step": "neo4j_env_auto", "result": neo4j})
+    if neo4j.get("status") != "ok" and (os.getenv("DENIS_REQUIRE_NEO4J") or "").strip() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        payload["status"] = "error"
 
     if not args.no_refresh:
         generated = generate_proposals(persist_redis=True)
@@ -82,4 +93,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
