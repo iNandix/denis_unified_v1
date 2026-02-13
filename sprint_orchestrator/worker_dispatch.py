@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any
 import time
 import asyncio
+import json
+import urllib.request
 
 from .config import SprintOrchestratorConfig
 from .event_bus import EventBus, publish_event
@@ -109,6 +111,10 @@ def dispatch_worker_task(
             details = result
             status = "ok"
             mode = "local_tool"
+        elif provider_status.request_format == "denis_agent_http":
+            details = _dispatch_denis_agent(config, provider_status, messages, session_id, worker_id, store, bus)
+            status = "ok"
+            mode = "denis_agent"
         elif provider_status.request_format in {
             "openai_chat",
             "anthropic_messages",
@@ -194,6 +200,58 @@ def dispatch_worker_task(
         bus,
     )
     return result
+
+
+def _dispatch_denis_agent(
+    config: SprintOrchestratorConfig,
+    provider_status: ProviderStatus,
+    messages: list[dict[str, str]],
+    session_id: str,
+    worker_id: str,
+    store: SessionStore,
+    bus: EventBus | None,
+) -> dict[str, Any]:
+    url = provider_status.endpoint + "/run/stream"
+    payload = {
+        "messages": messages,
+        "session_id": session_id,
+        "worker_id": worker_id,
+    }
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            for line in response:
+                line = line.decode('utf-8').strip()
+                if not line:
+                    continue
+                try:
+                    event_data = json.loads(line)
+                    sprint_event = SprintEvent(
+                        session_id=session_id,
+                        worker_id=worker_id,
+                        kind=event_data.get("kind", "agent.event"),
+                        message=event_data.get("message", ""),
+                        payload=event_data.get("payload", {}),
+                        task_id=event_data.get("task_id"),
+                        trace_id=event_data.get("trace_id"),
+                    )
+                    publish_event(store, sprint_event, bus)
+                except Exception as exc:
+                    publish_event(
+                        store,
+                        SprintEvent(
+                            session_id=session_id,
+                            worker_id=worker_id,
+                            kind="agent.event.error",
+                            message=f"Failed to parse agent event: {exc}",
+                            payload={"raw_line": line},
+                        ),
+                        bus,
+                    )
+    except Exception as exc:
+        raise RuntimeError(f"denis_agent dispatch failed: {exc}") from exc
+    return {"endpoint": url, "status": "streamed"}
 
 
 def _dispatch_celery(

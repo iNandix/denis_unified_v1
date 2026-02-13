@@ -32,6 +32,7 @@ class GuardReport:
     scanned_files: int
     scanned_added_lines: int
     error: str = ""
+    approval_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -41,6 +42,7 @@ class GuardReport:
             "scanned_files": self.scanned_files,
             "scanned_added_lines": self.scanned_added_lines,
             "error": self.error,
+            "approval_id": self.approval_id,
         }
 
 
@@ -89,7 +91,21 @@ class ChangeGuard:
             re.compile(r"/(?:services?|agents?|crews?|api|models?)/.*\.py$"),
         ]
 
-    def inspect_repo_diff(self, project_path: Path) -> GuardReport:
+    def _has_contract_changes(self, project_path: Path) -> bool:
+        cmd = ["git", "-C", str(project_path), "diff", "--cached", "--name-only"]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            return False
+        files = proc.stdout.splitlines()
+        return any(f.startswith("contracts/") for f in files)
+
+    def inspect_repo_diff(
+        self,
+        project_path: Path,
+        approval_engine=None,
+        session_id: str | None = None,
+        task_id: str | None = None,
+    ) -> GuardReport:
         if not self.enabled:
             return GuardReport(
                 status="disabled",
@@ -201,12 +217,26 @@ class ChangeGuard:
                 )
 
         status = "clean" if not violations else "alert"
+        contract_changes = self._has_contract_changes(project_path)
+        approval_id = None
+        if (violations or contract_changes) and approval_engine and session_id:
+            reason = "Stubs/placeholders detected in diff" if violations else "Contract changes detected"
+            diff_summary = f"Violations: {len(violations)}" if violations else "Contract files modified"
+            risk = "high" if contract_changes else "medium"
+            approval_id = approval_engine.request_approval(
+                session_id=session_id,
+                task_id=task_id,
+                reason=reason,
+                diff_summary=diff_summary,
+                risk=risk,
+            )
         return GuardReport(
             status=status,
             project_path=str(project_path),
             violations=violations,
             scanned_files=len(scanned_files),
             scanned_added_lines=scanned_added_lines,
+            approval_id=approval_id,
         )
 
     def _requires_test(self, file_path: str) -> bool:

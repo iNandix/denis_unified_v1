@@ -34,7 +34,10 @@ import redis
 
 from denis_unified_v1.feature_flags import load_feature_flags
 from opentelemetry import trace
-from denis_unified_v1.observability.metrics import cognitive_router_decisions, l1_pattern_usage
+from denis_unified_v1.observability.metrics import (
+    cognitive_router_decisions,
+    l1_pattern_usage,
+)
 
 tracer = trace.get_tracer(__name__)
 
@@ -342,7 +345,8 @@ def _score_tool_for_task(tool: ToolInfo, features: dict[str, float]) -> float:
     if not tool.available or tool.circuit_breaker_open:
         return 0.0
 
-    base_score = tool.amplitude * tool.success_rate
+    success_rate = tool.success_rate if tool.success_rate is not None else 0.5
+    base_score = tool.amplitude * success_rate
 
     feature_bonus = 0.0
     dimension_bonus = 0.0
@@ -373,10 +377,12 @@ def _score_tool_for_task(tool: ToolInfo, features: dict[str, float]) -> float:
     if features.get("code", 0) > 0.5 and tool.name == "code_interpreter":
         feature_bonus += 0.25
 
-    latency_penalty = max(0, (tool.avg_latency_ms - 50) / 1000)
+    avg_latency = tool.avg_latency_ms if tool.avg_latency_ms is not None else 100
+    latency_penalty = max(0, (avg_latency - 50) / 1000)
     penalty = min(latency_penalty, 0.3)
 
-    error_penalty = tool.error_count * 0.02
+    error_count = tool.error_count if tool.error_count is not None else 0
+    error_penalty = error_count * 0.02
 
     final_score = base_score + feature_bonus - penalty - error_penalty
 
@@ -516,6 +522,7 @@ class BehaviorHandbook:
 
 
 from denis_unified_v1.metacognitive.hooks import metacognitive_trace
+
 
 class CognitiveRouter:
     def __init__(self):
@@ -791,15 +798,19 @@ class CognitiveRouter:
             attributes={
                 "router.intent": request.get("intent"),
                 "router.route_hint": request.get("route_hint"),
-            }
+            },
         ) as span:
             # 1) Consultar patterns L1 del grafo
             patterns = self._get_applicable_patterns(request)
-            
+
             # 2) Seleccionar mejor pattern
             if patterns:
                 best_pattern = patterns[0]  # Ya vienen ordenados por confidence
-                tool_name = best_pattern["tools"][0] if best_pattern["tools"] else "smx_response"
+                tool_name = (
+                    best_pattern["tools"][0]
+                    if best_pattern["tools"]
+                    else "smx_response"
+                )
                 confidence = best_pattern["confidence"]
                 pattern_id = best_pattern["pattern_id"]
             else:
@@ -808,32 +819,34 @@ class CognitiveRouter:
                 tool_name = prediction["tool"]
                 confidence = prediction["confidence"]
                 pattern_id = None
-            
-            cognitive_router_decisions.labels(tool=tool_name, pattern_id=pattern_id or "").inc()
-            
+
+            cognitive_router_decisions.labels(
+                tool=tool_name, pattern_id=pattern_id or ""
+            ).inc()
+
             if pattern_id:
                 l1_pattern_usage.labels(pattern_id=pattern_id).inc()
-            
+
             # 3) Ejecutar tool (simulado aquí, real en router.py)
             result = {
                 "success": True,
                 "latency_ms": 100,  # Placeholder
             }
-            
+
             # 4) Monitoreo metacognitivo
             quality = await self.metacognitive_monitor.evaluate(request, result)
-            
+
             # 5) Aprendizaje
             await self.learning_loop.learn(request, tool_name, result, quality)
-            
+
             # 6) Registrar patrón exitoso
             if quality["score"] > 0.8:
                 await self.behavior_handbook.record_pattern(request, tool_name, result)
-            
+
             span.set_attribute("router.tool_used", tool_name)
             span.set_attribute("router.confidence", confidence)
             span.set_attribute("router.pattern_id", pattern_id)
-            
+
             return {
                 "result": result,
                 "meta": {

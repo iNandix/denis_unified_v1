@@ -258,9 +258,8 @@ class DenisRuntime:
         risk, risk_reasons = self._classify_prompt_injection(user_text)
         gate_prompt_injection.labels(risk=risk).inc()
 
-        high_risk = (
-            risk == "high"
-            and getattr(self.flags, "denis_use_gate_hardening", False)
+        high_risk = risk == "high" and getattr(
+            self.flags, "denis_use_gate_hardening", False
         )
 
         if high_risk:
@@ -374,7 +373,7 @@ class DenisRuntime:
             "usage": {
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                    "total_tokens": prompt_tokens + completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
             },
             "meta": {
                 "path": path,
@@ -399,14 +398,21 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
     async def chat_completions(req: ChatCompletionRequest, request: Request):
         ip = request.client.host if request.client else "unknown"
         user = ip
-        if runtime.budget_manager is None and runtime.flags.get("ENABLE_BUDGETS", False):
+        if runtime.budget_manager is None and getattr(
+            runtime.flags, "denis_use_gate_hardening", False
+        ):
             from denis_unified_v1.budgets import BudgetManager
+
             runtime.budget_manager = BudgetManager()
             await runtime.budget_manager.initialize()
         if runtime.budget_manager:
-            allowed = await runtime.budget_manager.check_total_budget(user, req.max_tokens or 100)
+            allowed = await runtime.budget_manager.check_total_budget(
+                user, req.max_tokens or 100
+            )
             if not allowed:
-                return JSONResponse(status_code=429, content={"error": "budget exceeded"})
+                return JSONResponse(
+                    status_code=429, content={"error": "budget exceeded"}
+                )
         result = await runtime.generate(req)
         if not req.stream:
             return JSONResponse(result)
@@ -432,15 +438,22 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
     async def chat_completions_stream(req: ChatCompletionRequest, request: Request):
         ip = request.client.host if request.client else "unknown"
         user = ip
-        if runtime.budget_manager is None and runtime.flags.get("ENABLE_BUDGETS", False):
+        if runtime.budget_manager is None and getattr(
+            runtime.flags, "denis_use_gate_hardening", False
+        ):
             from denis_unified_v1.budgets import BudgetManager
+
             runtime.budget_manager = BudgetManager()
             await runtime.budget_manager.initialize()
         if runtime.budget_manager:
-            allowed = await runtime.budget_manager.check_total_budget(user, req.max_tokens or 100)
+            allowed = await runtime.budget_manager.check_total_budget(
+                user, req.max_tokens or 100
+            )
             if not allowed:
+
                 async def error_gen():
                     yield f"data: {json.dumps({'type': 'error', 'message': 'budget exceeded'})}\n\n"
+
                 return StreamingResponse(error_gen(), media_type="text/event-stream")
         """
         Streaming SSE con chunking temporal (40-80ms).
@@ -452,7 +465,11 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
             start_time = time.time()
             first_yield_event = asyncio.Event()
             if runtime.budget_manager:
-                asyncio.create_task(runtime.budget_manager.enforce_ttft(user, asyncio.current_task(), first_yield_event))
+                asyncio.create_task(
+                    runtime.budget_manager.enforce_ttft(
+                        user, asyncio.current_task(), first_yield_event
+                    )
+                )
 
             # 1) Emit start event
             yield f"data: {json.dumps({'type': 'status', 'trace_id': trace_id, 'status': 'started'})}\n\n"
@@ -497,7 +514,10 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
             safety_time = time.time() - start_time - nlu_time
             yield f"data: {json.dumps({'type': 'status', 'phase': 'safety', 'latency_ms': int(safety_time * 1000), 'passed': is_safe})}\n\n"
 
-            if getattr(runtime.flags, "denis_use_gate_hardening", False) and not is_safe:
+            if (
+                getattr(runtime.flags, "denis_use_gate_hardening", False)
+                and not is_safe
+            ):
                 # Bloqueo estricto: no continuamos con motores de respuesta.
                 safe_msg = "El contenido ha sido bloqueado por el filtro de seguridad."
                 safe_content, validation_meta = runtime._validate_output(safe_msg)
@@ -534,7 +554,8 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
 
             # Chunking temporal
             chunks = [
-                content_validated[i : i + 50] for i in range(0, len(content_validated), 50)
+                content_validated[i : i + 50]
+                for i in range(0, len(content_validated), 50)
             ]
             ttft = time.time() - start_time
 

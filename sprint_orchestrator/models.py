@@ -40,6 +40,7 @@ class WorkerAssignment:
     project_path: str
     priority: str = "medium"
     status: str = "planned"
+    phase: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -95,6 +96,21 @@ class SprintEvent:
     payload: dict[str, Any] = field(default_factory=dict)
     event_id: str = field(default_factory=lambda: new_id("evt"))
     timestamp_utc: str = field(default_factory=utc_now)
+    trace_id: str | None = None
+    task_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class EventEnvelope:
+    event: SprintEvent
+    envelope_id: str = field(default_factory=lambda: new_id("env"))
+    published_utc: str = field(default_factory=utc_now)
+    source: str = "sprint_orchestrator"  # e.g., "cli", "worker", "bus"
+
+    def as_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["event"] = self.event.as_dict()
+        return payload

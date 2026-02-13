@@ -29,7 +29,8 @@ from .git_projects import read_commit_tree
 from .intent_router_rasa import IntentRoute, RasaIntentRouter
 from .mcp_bridge import MCPBridge
 from .model_adapter import build_provider_request
-from .orchestrator import SprintOrchestrator
+from .approval_engine import ApprovalEngine
+from .crewai_planner import build_plan
 from .proposal_pipeline import ProposalPipeline, pick_file_with_zenity
 from .proposal_normalizer import normalize_proposal_markdown
 from .providers import (
@@ -679,6 +680,7 @@ def _manager_loop(
     interval_sec: float = 1.0,
     follow: bool = True,
 ) -> None:
+    approval_engine = ApprovalEngine(orch.store)
     projects = _resolve_projects_for_commit_view(orch, session_id=session_id, scan_root=None)
     if project_filter:
         token = project_filter.strip().lower()
@@ -788,7 +790,7 @@ def _manager_loop(
                 f"worker_filter={current_worker_filter or 'all'} kind_filter={current_kind_filter or 'all'}",
                 f"max_commits={max_commits} follow={follow} refresh={interval_sec:.1f}s detail={'on' if show_commit_detail else 'off'}",
                 f"event_log={orch.bus.status().get('log_path', '')}",
-                "keys: j/k commits  h/l project  f scope  w/t filters  d detail  r reset  q quit",
+                "keys: j/k commits  h/l project  f scope  w/t filters  d detail  r reset  a approve  r reject  q quit",
             ],
             border_char="#",
         ))
@@ -814,6 +816,10 @@ def _manager_loop(
         print()
         print(panel("Journal Snapshot", [], border_char="-"))
         _render_journal_snapshot(orch, session_id=session_id, limit=8)
+        print()
+        approvals = approval_engine.get_pending_approvals(session_id)
+        if approvals:
+            print(panel("Pending Approvals", [f"{a['approval_id'][:8]}: {a['reason'][:50]}" for a in approvals[:3]], border_char="?"))
         print()
         print(panel("Agent/Worker Chat", [], border_char="-"))
         _print_chat_events(
@@ -883,6 +889,16 @@ def _manager_loop(
                             current = int(commit_cursor_by_path.get(path) or 0)
                             commit_cursor_by_path[path] = max(0, current - 1)
                             refresh = True
+                elif key in {"a", "A"}:
+                    pending = approval_engine.get_pending_approvals(session_id)
+                    if pending:
+                        approval_engine.decision(session_id=session_id, approval_id=pending[0]['approval_id'], decision="approved", reviewer=getpass.getuser())
+                        refresh = True
+                elif key in {"r", "R"}:
+                    pending = approval_engine.get_pending_approvals(session_id)
+                    if pending:
+                        approval_engine.decision(session_id=session_id, approval_id=pending[0]['approval_id'], decision="rejected", reviewer=getpass.getuser())
+                        refresh = True
                 elif key in {"h", "p"}:
                     if projects:
                         focused_project_idx = (focused_project_idx - 1) % len(projects)

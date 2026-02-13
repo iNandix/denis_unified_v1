@@ -10,6 +10,7 @@ from pathlib import Path
 _DEFAULT_PROVIDER_POOL = [
     "denis_canonical",
     "legacy_core",
+    "denis_agent",
     "codex",
     "claude_code",
     "opencode",

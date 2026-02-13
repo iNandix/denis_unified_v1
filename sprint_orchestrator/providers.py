@@ -122,6 +122,19 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
         )
     )
 
+    statuses.append(
+        ProviderStatus(
+            provider="denis_agent",
+            mode="http",
+            request_format="denis_agent_http",
+            configured=True,
+            missing_env=[],
+            endpoint=(env.get("DENIS_AGENT_URL") or "http://127.0.0.1:8084/agent"),
+            queue="",
+            notes="Denis agent for coding tasks",
+        )
+    )
+
     codex_cmd = env.get("DENIS_SPRINT_CODEX_CMD", "codex").strip()
     statuses.append(
         ProviderStatus(

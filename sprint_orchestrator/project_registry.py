@@ -14,6 +14,7 @@ import urllib.request
 from .config import SprintOrchestratorConfig
 from .models import GitProjectStatus, WorkerAssignment, new_id
 from .providers import merged_env
+from .git_projects import read_commit_tree
 
 
 def _utc_now() -> str:
@@ -416,6 +417,10 @@ class ProjectRegistry:
                 "in_progress": in_progress,
                 "done": done,
             }
+
+    def get_commit_tree(self, project_path: str, *, max_commits: int = 30, all_branches: bool = True) -> list[str]:
+        """Get commit tree lines for the project."""
+        return read_commit_tree(Path(project_path), max_commits=max_commits, all_branches=all_branches)
 
     def sync_from_atlas(self) -> dict[str, Any]:
         if not self.atlas_enabled:
