@@ -7,6 +7,12 @@ __pycache__/
 .ruff_cache/
 .sprint_orchestrator/
 
+# Virtual environments
+.venv_preflight/
+.venv*/
+venv/
+env/
+
 # Local env (never commit secrets)
 .env
 .env.local
