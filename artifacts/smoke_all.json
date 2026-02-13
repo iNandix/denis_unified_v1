@@ -1,36 +1,41 @@
 {
-  "ok": true,
-  "reason": "Some failures: 4",
-  "timestamp_utc": 1771017814.0089674,
-  "smokes": [
+  "ok": false,
+  "status": "failed",
+  "releaseable": false,
+  "summary": {
+    "total": 7,
+    "passed": 1,
+    "failed": 6,
+    "skipped": 0,
+    "pass_rate": 0.14285714285714285,
+    "hard_failures": 1
+  },
+  "tests": [
     {
       "name": "boot_import",
-      "ok": true,
-      "status": "passed",
-      "reason": null,
-      "duration_ms": 1889,
+      "ok": false,
+      "status": "failed",
+      "reason": "Exit code 1: ",
+      "duration_ms": 1959,
       "artifact_exists": true,
-      "exit_code": 0,
-      "artifact_ok": true,
-      "artifact_overall_success": true
+      "exit_code": 1,
+      "artifact_ok": false,
+      "artifact_overall_success": false
     },
     {
       "name": "legacy_imports",
-      "ok": true,
-      "status": "passed",
-      "reason": null,
-      "duration_ms": 750,
-      "artifact_exists": true,
-      "exit_code": 0,
-      "artifact_ok": true,
-      "artifact_overall_success": true
+      "ok": false,
+      "status": "timeout",
+      "reason": "Timeout after 10s",
+      "duration_ms": 10012,
+      "artifact_exists": false
     },
     {
       "name": "openai_router",
       "ok": false,
       "status": "failed",
       "reason": "Exit code 1: ",
-      "duration_ms": 814,
+      "duration_ms": 1157,
       "artifact_exists": true,
       "exit_code": 1,
       "artifact_ok": false,
@@ -41,7 +46,7 @@
       "ok": false,
       "status": "failed",
       "reason": "Exit code 1: ",
-      "duration_ms": 816,
+      "duration_ms": 1086,
       "artifact_exists": true,
       "exit_code": 1,
       "artifact_ok": false,
@@ -52,7 +57,7 @@
       "ok": true,
       "status": "passed",
       "reason": null,
-      "duration_ms": 756,
+      "duration_ms": 767,
       "artifact_exists": true,
       "exit_code": 0,
       "artifact_ok": true,
@@ -62,8 +67,8 @@
       "name": "gate_smoke",
       "ok": false,
       "status": "failed",
-      "reason": "Exit code 1: ",
-      "duration_ms": 279,
+      "reason": "Exit code 1:   File \"/media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/phase10_gate_smoke.py\", line 303\n    except Exception as e:\n    ^^^^^^\nSyntaxError: invalid syntax\n",
+      "duration_ms": 89,
       "artifact_exists": true,
       "exit_code": 1,
       "artifact_ok": false,
@@ -74,19 +79,13 @@
       "ok": false,
       "status": "failed",
       "reason": "Exit code 2: usage: phase6_capabilities_registry_smoke.py [-h] [--out-json OUT_JSON]\n                                             [--port PORT]\nphase6_capabilities_registry_smoke.py: error: unrecognized arguments:",
-      "duration_ms": 113,
+      "duration_ms": 107,
       "artifact_exists": true,
       "exit_code": 2,
       "artifact_ok": true,
       "artifact_overall_success": true
     }
   ],
-  "summary": {
-    "total": 7,
-    "passed": 3,
-    "failed": 4,
-    "skipped": 0,
-    "hard_failures": 0
-  },
+  "timestamp_utc": 1771018794.689144,
   "overall_success": false
 }
