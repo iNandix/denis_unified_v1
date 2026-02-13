@@ -1,6 +1,31 @@
 """Legacy namespace shim for voice."""
 
+import time
+
 try:
     from denisunifiedv1.voice import *
+    # Record OK if import succeeds
+    try:
+        from denisunifiedv1.control_plane.registry import get_control_plane_registry
+        registry = get_control_plane_registry()
+        registry.record_ok("voice", {"shim": "direct_import"})
+    except Exception:
+        pass
 except Exception:
-    pass
+    # Record degradation
+    try:
+        from denisunifiedv1.control_plane.registry import get_control_plane_registry, DegradationRecord
+        registry = get_control_plane_registry()
+        registry.record_degraded(DegradationRecord(
+            id="shim.voice.active",
+            component="voice",
+            severity=2,
+            category="shim",
+            reason="noop_shim_active",
+            evidence={"shim": "voice", "target": "denisunifiedv1.voice"},
+            first_seen_utc=time.time(),
+            last_seen_utc=time.time(),
+            count=1,
+        ))
+    except Exception:
+        pass

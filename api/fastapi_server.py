@@ -57,6 +57,23 @@ def create_app() -> FastAPI:
         from feature_flags import load_feature_flags
         raw_flags = load_feature_flags()
     except Exception:
+        # Record degradation for missing feature flags
+        try:
+            from denisunifiedv1.control_plane.registry import get_control_plane_registry, DegradationRecord
+            registry = get_control_plane_registry()
+            registry.record_degraded(DegradationRecord(
+                id="import.feature_flags.missing",
+                component="api.fastapi_server",
+                severity=2,
+                category="import",
+                reason="missing_module",
+                evidence={"module": "feature_flags", "fallback": "default_flags"},
+                first_seen_utc=time.time(),
+                last_seen_utc=time.time(),
+                count=1,
+            ))
+        except Exception:
+            pass
         raw_flags = {"denis_use_voice_pipeline": False, "denis_use_memory_unified": False, "denis_use_atlas": False, "denis_use_inference_router": False}
 
     try:
@@ -325,3 +342,17 @@ async def observability_status():
             "reason": None if (tracing_enabled and metrics_enabled) else "partial_observability"
         }
     }
+
+@app.get("/controlplane/status")
+async def controlplane_status() -> dict[str, Any]:
+    """Control Plane status endpoint."""
+    try:
+        from denisunifiedv1.control_plane.policy import get_control_plane_status
+        return get_control_plane_status()
+    except Exception as e:
+        return {
+            "status": "error",
+            "releaseable": False,
+            "error": str(e),
+            "timestamp_utc": _utc_now(),
+        }

@@ -15,10 +15,20 @@ def main():
         help="Compile work plan from artifacts"
     )
     parser.add_argument(
+        "--from-controlplane",
+        action="store_true",
+        help="Compile work plan from control plane degradations"
+    )
+    parser.add_argument(
         "--artifacts-root",
         type=Path,
         default=Path("artifacts"),
         help="Root directory for artifacts"
+    )
+    parser.add_argument(
+        "--status-url",
+        default="http://127.0.0.1:8085/controlplane/status",
+        help="Control plane status URL"
     )
     parser.add_argument(
         "--out-json",
@@ -31,7 +41,7 @@ def main():
 
     if args.compile_work:
         try:
-            from .work_compiler import compile_work_from_artifacts, ArtifactNormalizer, RemediationRegistry
+            from .work_compiler import ArtifactNormalizer, RemediationRegistry
             # Debug
             normalizer = ArtifactNormalizer()
             registry = RemediationRegistry(args.artifacts_root.parent)

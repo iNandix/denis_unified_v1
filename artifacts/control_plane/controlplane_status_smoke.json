@@ -1,0 +1,12 @@
+{
+  "ok": false,
+  "reason": "HTTP 404",
+  "server_boot": true,
+  "controlplane_endpoint": false,
+  "schema_valid": false,
+  "releaseable": null,
+  "degraded_count": 0,
+  "top_reasons": [],
+  "timestamp_utc": 1771018161.8243177,
+  "overall_success": false
+}
