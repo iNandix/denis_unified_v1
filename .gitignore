@@ -126,6 +126,7 @@ yarn-error.log*
 *.diff
 
 # CI/CD
+!.github/workflows/
 .github/
 .gitlab-ci.yml
 .travis.yml
