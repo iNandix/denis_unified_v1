@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -77,7 +78,13 @@ def run_smoke(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
             cmd.extend(["--out-json", config["artifact"]])
         else:
             cmd.append(config["artifact"])
-        env = {"PYTHONPATH": ".", "DISABLE_OBSERVABILITY": "1", **os.environ}
+        # CRITICAL: os.environ must come FIRST, then our overrides
+        env = {
+            **os.environ,
+            "PYTHONPATH": ".",
+            "DISABLE_OBSERVABILITY": "1",
+            "DENIS_API_BEARER_TOKEN": "",
+        }
         proc = subprocess.run(
             cmd,
             timeout=config["timeout"],
