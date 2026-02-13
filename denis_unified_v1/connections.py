@@ -11,15 +11,24 @@ All other modules should import from here instead of redefining these functions.
 from __future__ import annotations
 
 import os
+import json
 import logging
 from typing import Optional, Any
+from datetime import datetime, timezone
 
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"time": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
+)
 logger = logging.getLogger(__name__)
 
 # Global connection pools (singleton pattern)
 _redis_pool: Optional[Any] = None
 _neo4j_driver: Optional[Any] = None
 _async_neo4j_driver: Optional[Any] = None
+_connection_attempts: int = 0
+_last_successful_connection: Optional[str] = None
 
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -28,12 +37,38 @@ NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "Leon1234$")
 
 
+def _log_connection_event(
+    event_type: str, service: str, status: str, details: dict = None
+):
+    """Log structured connection events."""
+    global _connection_attempts, _last_successful_connection
+
+    log_data = {
+        "event": event_type,
+        "service": service,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "total_attempts": _connection_attempts,
+    }
+
+    if status == "success":
+        _last_successful_connection = service
+        log_data["last_successful"] = _last_successful_connection
+
+    if details:
+        log_data.update(details)
+
+    logger.info(json.dumps(log_data))
+
+
 # ============== REDIS ==============
 
 
 def get_redis_pool() -> Optional[Any]:
     """Get Redis connection pool (singleton)."""
-    global _redis_pool
+    global _redis_pool, _connection_attempts
+    _connection_attempts += 1
+
     if _redis_pool is None:
         try:
             import redis
@@ -41,10 +76,11 @@ def get_redis_pool() -> Optional[Any]:
             _redis_pool = redis.ConnectionPool.from_url(
                 REDIS_URL, decode_responses=True, max_connections=20
             )
-            logger.info("Redis connection pool initialized")
+            _log_connection_event("connect", "redis", "success")
         except Exception as e:
-            logger.warning(f"Redis pool initialization failed: {e}")
+            _log_connection_event("connect", "redis", "failed", {"error": str(e)[:100]})
             _redis_pool = None
+
     return _redis_pool
 
 
@@ -77,7 +113,9 @@ async def get_redis_async() -> Optional[Any]:
 
 def get_neo4j_driver() -> Optional[Any]:
     """Get Neo4j driver (singleton)."""
-    global _neo4j_driver
+    global _neo4j_driver, _connection_attempts
+    _connection_attempts += 1
+
     if _neo4j_driver is None:
         try:
             from neo4j import GraphDatabase
@@ -85,9 +123,9 @@ def get_neo4j_driver() -> Optional[Any]:
             _neo4j_driver = GraphDatabase.driver(
                 NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD)
             )
-            logger.info("Neo4j driver initialized")
+            _log_connection_event("connect", "neo4j", "success")
         except Exception as e:
-            logger.warning(f"Neo4j driver initialization failed: {e}")
+            _log_connection_event("connect", "neo4j", "failed", {"error": str(e)[:100]})
             _neo4j_driver = None
     return _neo4j_driver
 
