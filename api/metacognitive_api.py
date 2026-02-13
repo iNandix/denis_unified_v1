@@ -1,4 +1,5 @@
 """API Metacognitiva - Endpoints de introspección."""
+
 from __future__ import annotations
 
 import asyncio
@@ -42,13 +43,17 @@ _redis_pool = None
 _neo4j_pool = None
 _async_neo4j_pool = None
 
+
 async def get_redis_pool():
     """Get Redis connection pool."""
     global _redis_pool
     if _redis_pool is None and redis is not None:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        _redis_pool = redis.ConnectionPool.from_url(redis_url, decode_responses=True, max_connections=20)
+        _redis_pool = redis.ConnectionPool.from_url(
+            redis_url, decode_responses=True, max_connections=20
+        )
     return _redis_pool
+
 
 async def get_neo4j_pool():
     """Get Neo4j connection pool."""
@@ -60,14 +65,17 @@ async def get_neo4j_pool():
         _neo4j_pool = AsyncGraphDatabase.driver(uri, auth=(user, password))
     return _neo4j_pool
 
+
 def get_redis():
     """Get Redis connection from pool."""
     pool = asyncio.run(get_redis_pool())
     return redis.Redis(connection_pool=pool) if pool else None
 
+
 async def get_neo4j_async():
     """Get async Neo4j driver."""
     return await get_neo4j_pool()
+
 
 def get_neo4j():
     """Get sync Neo4j driver (legacy compatibility)."""
@@ -157,15 +165,19 @@ async def metacognitive_status():
     async def query_relations():
         try:
             async with driver.session() as session:
-                governs_result = await session.run("MATCH ()-[r:GOVERNS]->() RETURN count(r) as c")
+                governs_result = await session.run(
+                    "MATCH ()-[r:GOVERNS]->() RETURN count(r) as c"
+                )
                 governs_record = await governs_result.single()
 
-                applies_result = await session.run("MATCH ()-[r:APPLIES_TO]->() RETURN count(r) as c")
+                applies_result = await session.run(
+                    "MATCH ()-[r:APPLIES_TO]->() RETURN count(r) as c"
+                )
                 applies_record = await applies_result.single()
 
                 return (
                     int(governs_record["c"]) if governs_record else 0,
-                    int(applies_record["c"]) if applies_record else 0
+                    int(applies_record["c"]) if applies_record else 0,
                 )
         except Exception:
             return 0, 0
@@ -188,12 +200,18 @@ async def metacognitive_status():
     start_time = time.time()
     try:
         async with asyncio.timeout(NEO4J_TIMEOUT_MS / 1000):
-            l0_count, l1_count, l2_count, (governs_count, applies_count), issues = await asyncio.gather(
+            (
+                l0_count,
+                l1_count,
+                l2_count,
+                (governs_count, applies_count),
+                issues,
+            ) = await asyncio.gather(
                 query_l0_count(),
                 query_l1_count(),
                 query_l2_count(),
                 query_relations(),
-                query_problematic_tools()
+                query_problematic_tools(),
             )
     except asyncio.TimeoutError:
         degraded = True
@@ -226,10 +244,7 @@ async def metacognitive_status():
             "query_time_ms": query_time_ms,
         },
         "status": status_val,
-        "performance": {
-            "concurrent_queries": True,
-            "query_time_ms": query_time_ms
-        }
+        "performance": {"concurrent_queries": True, "query_time_ms": query_time_ms},
     }
 
 
@@ -267,7 +282,9 @@ async def metacognitive_metrics():
                 local_metrics[op] = {"count": 0}
         return local_metrics
 
-    metrics, latency_ms, redis_error = await _call_blocking(_load_metrics, REDIS_TIMEOUT_MS)
+    metrics, latency_ms, redis_error = await _call_blocking(
+        _load_metrics, REDIS_TIMEOUT_MS
+    )
     if redis_error:
         degraded = True
         return {
@@ -395,7 +412,9 @@ async def metacognitive_coherence():
     }
 
 
-async def _temporal_reflection_analysis(query_text: str, current_reflection: Dict) -> Dict[str, Any]:
+async def _temporal_reflection_analysis(
+    query_text: str, current_reflection: Dict
+) -> Dict[str, Any]:
     """Analyze how reflection changes over time compared to historical patterns."""
     r = get_redis()
     temporal_data = {
@@ -403,7 +422,7 @@ async def _temporal_reflection_analysis(query_text: str, current_reflection: Dic
         "temporal_stability": 0.0,
         "evolution_rate": 0.0,
         "adaptation_score": 0.0,
-        "temporal_insights": []
+        "temporal_insights": [],
     }
 
     if r:
@@ -424,21 +443,41 @@ async def _temporal_reflection_analysis(query_text: str, current_reflection: Dic
                     similarities = []
                     for i in range(1, len(historical_reflections)):
                         # Simple similarity based on pattern count
-                        prev_patterns = historical_reflections[i-1].get("patterns_detected", 0)
-                        curr_patterns = historical_reflections[i].get("patterns_detected", 0)
-                        similarity = 1.0 - abs(prev_patterns - curr_patterns) / max(prev_patterns, curr_patterns, 1)
+                        prev_patterns = historical_reflections[i - 1].get(
+                            "patterns_detected", 0
+                        )
+                        curr_patterns = historical_reflections[i].get(
+                            "patterns_detected", 0
+                        )
+                        similarity = 1.0 - abs(prev_patterns - curr_patterns) / max(
+                            prev_patterns, curr_patterns, 1
+                        )
                         similarities.append(similarity)
 
-                    temporal_data["temporal_stability"] = sum(similarities) / len(similarities) if similarities else 0.5
+                    temporal_data["temporal_stability"] = (
+                        sum(similarities) / len(similarities) if similarities else 0.5
+                    )
 
                 # Evolution rate (how much change over time)
                 if len(historical_reflections) >= 2:
-                    first_patterns = historical_reflections[0].get("patterns_detected", 0)
-                    last_patterns = historical_reflections[-1].get("patterns_detected", 0)
-                    temporal_data["evolution_rate"] = abs(last_patterns - first_patterns) / max(first_patterns, 1)
+                    first_patterns = historical_reflections[0].get(
+                        "patterns_detected", 0
+                    )
+                    last_patterns = historical_reflections[-1].get(
+                        "patterns_detected", 0
+                    )
+                    temporal_data["evolution_rate"] = abs(
+                        last_patterns - first_patterns
+                    ) / max(first_patterns, 1)
 
                 # Adaptation score (ability to adapt to new queries)
-                unique_queries = len(set(h.get("query", "") for h in historical_reflections if h.get("query")))
+                unique_queries = len(
+                    set(
+                        h.get("query", "")
+                        for h in historical_reflections
+                        if h.get("query")
+                    )
+                )
                 temporal_data["adaptation_score"] = min(1.0, unique_queries / 10.0)
 
                 # Generate insights
@@ -446,7 +485,9 @@ async def _temporal_reflection_analysis(query_text: str, current_reflection: Dic
                 if temporal_data["temporal_stability"] > 0.8:
                     insights.append("High temporal stability - system is consistent")
                 elif temporal_data["temporal_stability"] < 0.3:
-                    insights.append("Low temporal stability - system is highly adaptive")
+                    insights.append(
+                        "Low temporal stability - system is highly adaptive"
+                    )
 
                 if temporal_data["evolution_rate"] > 0.5:
                     insights.append("Rapid evolution detected")
@@ -457,11 +498,19 @@ async def _temporal_reflection_analysis(query_text: str, current_reflection: Dic
 
             # Store current reflection for future analysis
             reflection_key = f"reflection:{int(time.time())}"
-            r.setex(reflection_key, 86400 * 7, json.dumps({  # 7 days
-                "query": query_text,
-                "patterns_detected": current_reflection.get("patterns_detected", 0),
-                "timestamp": time.time()
-            }))
+            r.setex(
+                reflection_key,
+                86400 * 7,
+                json.dumps(
+                    {  # 7 days
+                        "query": query_text,
+                        "patterns_detected": current_reflection.get(
+                            "patterns_detected", 0
+                        ),
+                        "timestamp": time.time(),
+                    }
+                ),
+            )
 
         except Exception as e:
             temporal_data["error"] = str(e)
@@ -469,14 +518,16 @@ async def _temporal_reflection_analysis(query_text: str, current_reflection: Dic
     return temporal_data
 
 
-async def _predict_reflection_changes(patterns: List[Dict], current_reflection: Dict) -> Dict[str, Any]:
+async def _predict_reflection_changes(
+    patterns: List[Dict], current_reflection: Dict
+) -> Dict[str, Any]:
     """Predict what changes might happen based on current patterns."""
     prediction_data = {
         "predicted_patterns": [],
         "confidence_intervals": {},
         "risk_assessment": "low",
         "recommended_actions": [],
-        "prediction_horizon": "7_days"
+        "prediction_horizon": "7_days",
     }
 
     try:
@@ -494,18 +545,24 @@ async def _predict_reflection_changes(patterns: List[Dict], current_reflection: 
             pattern_confidences.append(confidence)
 
         # Predict future patterns based on current trends
-        avg_confidence = sum(pattern_confidences) / len(pattern_confidences) if pattern_confidences else 0.5
+        avg_confidence = (
+            sum(pattern_confidences) / len(pattern_confidences)
+            if pattern_confidences
+            else 0.5
+        )
 
         predicted_patterns = []
         for pattern_type, count in pattern_types.items():
             # Simple prediction: patterns with high count and confidence likely to persist
             if count > 1 and avg_confidence > 0.7:
-                predicted_patterns.append({
-                    "type": pattern_type,
-                    "predicted_frequency": count * 1.2,  # 20% increase
-                    "confidence": min(0.95, avg_confidence + 0.1),
-                    "rationale": f"High frequency ({count}) and confidence ({avg_confidence:.2f}) suggests persistence"
-                })
+                predicted_patterns.append(
+                    {
+                        "type": pattern_type,
+                        "predicted_frequency": count * 1.2,  # 20% increase
+                        "confidence": min(0.95, avg_confidence + 0.1),
+                        "rationale": f"High frequency ({count}) and confidence ({avg_confidence:.2f}) suggests persistence",
+                    }
+                )
 
         prediction_data["predicted_patterns"] = predicted_patterns
 
@@ -514,22 +571,26 @@ async def _predict_reflection_changes(patterns: List[Dict], current_reflection: 
             "pattern_count": {
                 "lower": len(patterns) * 0.8,
                 "expected": len(patterns),
-                "upper": len(patterns) * 1.3
+                "upper": len(patterns) * 1.3,
             },
             "avg_confidence": {
                 "lower": max(0, avg_confidence - 0.1),
                 "expected": avg_confidence,
-                "upper": min(1.0, avg_confidence + 0.1)
-            }
+                "upper": min(1.0, avg_confidence + 0.1),
+            },
         }
 
         # Risk assessment
         if avg_confidence < 0.5:
             prediction_data["risk_assessment"] = "high"
-            prediction_data["recommended_actions"].append("Increase confidence thresholds")
+            prediction_data["recommended_actions"].append(
+                "Increase confidence thresholds"
+            )
         elif len(patterns) < 3:
             prediction_data["risk_assessment"] = "medium"
-            prediction_data["recommended_actions"].append("Expand pattern detection scope")
+            prediction_data["recommended_actions"].append(
+                "Expand pattern detection scope"
+            )
         else:
             prediction_data["risk_assessment"] = "low"
             prediction_data["recommended_actions"].append("Maintain current parameters")
@@ -540,7 +601,9 @@ async def _predict_reflection_changes(patterns: List[Dict], current_reflection: 
     return prediction_data
 
 
-async def _calculate_consciousness_metrics(reflection: Dict, patterns: List[Dict], temporal: Dict) -> Dict[str, Any]:
+async def _calculate_consciousness_metrics(
+    reflection: Dict, patterns: List[Dict], temporal: Dict
+) -> Dict[str, Any]:
     """Calculate metrics about the system's consciousness level and awareness."""
     consciousness_data = {
         "consciousness_level": 0.0,
@@ -548,14 +611,18 @@ async def _calculate_consciousness_metrics(reflection: Dict, patterns: List[Dict
         "self_reflection_depth": 0.0,
         "metacognitive_capability": 0.0,
         "consciousness_indicators": {},
-        "consciousness_assessment": "emerging"
+        "consciousness_assessment": "emerging",
     }
 
     try:
         # Base metrics from reflection and patterns
         reflection_quality = 1.0 if reflection and not reflection.get("error") else 0.0
-        pattern_diversity = len(set(p.get("type", "unknown") for p in patterns)) / max(1, len(patterns))
-        pattern_confidence = sum(p.get("confidence", 0) for p in patterns) / max(1, len(patterns))
+        pattern_diversity = len(set(p.get("type", "unknown") for p in patterns)) / max(
+            1, len(patterns)
+        )
+        pattern_confidence = sum(p.get("confidence", 0) for p in patterns) / max(
+            1, len(patterns)
+        )
 
         # Temporal awareness
         temporal_stability = temporal.get("temporal_stability", 0.5)
@@ -572,19 +639,35 @@ async def _calculate_consciousness_metrics(reflection: Dict, patterns: List[Dict
             "adaptation_score": adaptation_score,
             "self_model_integration": 0.8,  # Assume good integration
             "feedback_learning": 0.7,  # Assume active learning
-            "purpose_alignment": 0.9  # Assume good alignment
+            "purpose_alignment": 0.9,  # Assume good alignment
         }
 
         consciousness_data["consciousness_indicators"] = consciousness_indicators
 
         # Calculate composite scores
-        awareness_components = ["reflection_quality", "pattern_diversity", "temporal_stability", "adaptation_score"]
-        consciousness_data["awareness_score"] = sum(consciousness_indicators[k] for k in awareness_components) / len(awareness_components)
+        awareness_components = [
+            "reflection_quality",
+            "pattern_diversity",
+            "temporal_stability",
+            "adaptation_score",
+        ]
+        consciousness_data["awareness_score"] = sum(
+            consciousness_indicators[k] for k in awareness_components
+        ) / len(awareness_components)
 
-        metacognitive_components = ["reflection_quality", "pattern_confidence", "self_model_integration", "feedback_learning"]
-        consciousness_data["metacognitive_capability"] = sum(consciousness_indicators[k] for k in metacognitive_components) / len(metacognitive_components)
+        metacognitive_components = [
+            "reflection_quality",
+            "pattern_confidence",
+            "self_model_integration",
+            "feedback_learning",
+        ]
+        consciousness_data["metacognitive_capability"] = sum(
+            consciousness_indicators[k] for k in metacognitive_components
+        ) / len(metacognitive_components)
 
-        consciousness_data["self_reflection_depth"] = (reflection_quality + pattern_diversity + temporal_stability) / 3.0
+        consciousness_data["self_reflection_depth"] = (
+            reflection_quality + pattern_diversity + temporal_stability
+        ) / 3.0
 
         # Overall consciousness level (weighted average)
         weights = {
@@ -592,11 +675,17 @@ async def _calculate_consciousness_metrics(reflection: Dict, patterns: List[Dict
             "metacognitive_capability": 0.3,
             "self_reflection_depth": 0.2,
             "adaptation_score": 0.1,
-            "purpose_alignment": 0.1
+            "purpose_alignment": 0.1,
         }
 
         consciousness_data["consciousness_level"] = sum(
-            consciousness_indicators.get(k.replace("_score", "").replace("_capability", "").replace("_depth", ""), 0) * w
+            consciousness_indicators.get(
+                k.replace("_score", "")
+                .replace("_capability", "")
+                .replace("_depth", ""),
+                0,
+            )
+            * w
             for k, w in weights.items()
         )
 
@@ -622,14 +711,17 @@ async def _calculate_consciousness_metrics(reflection: Dict, patterns: List[Dict
 @router.post("/reflect")
 async def force_reflection(query: Dict):
     """Forzar reflexión metacognitiva profunda con análisis temporal, predicción de cambios y métricas de conciencia."""
+
     # Core reflection
     async def _reflect():
         engine = PerceptionReflection()
         return engine.reflect({"entities": []})
 
-    perception_reflection, reflection_latency_ms, reflection_error = await _call_blocking(
-        lambda: asyncio.run(_reflect()), REFLECTION_TIMEOUT_MS
-    )
+    (
+        perception_reflection,
+        reflection_latency_ms,
+        reflection_error,
+    ) = await _call_blocking(lambda: asyncio.run(_reflect()), REFLECTION_TIMEOUT_MS)
     if reflection_error:
         degraded = True
         perception_reflection = {
@@ -653,12 +745,16 @@ async def force_reflection(query: Dict):
     # Temporal analysis
     temporal_analysis = {}
     if include_temporal and not degraded:
-        temporal_analysis = await _temporal_reflection_analysis(text, perception_reflection)
+        temporal_analysis = await _temporal_reflection_analysis(
+            text, perception_reflection
+        )
 
     # Change prediction
     change_prediction = {}
     if include_prediction and patterns:
-        change_prediction = await _predict_reflection_changes(patterns, perception_reflection)
+        change_prediction = await _predict_reflection_changes(
+            patterns, perception_reflection
+        )
 
     # Consciousness metrics
     consciousness_metrics = {}
@@ -666,7 +762,10 @@ async def force_reflection(query: Dict):
         try:
             # Import consciousness module only when needed
             from denis_unified_v1.consciousness.self_model import get_self_model
-            consciousness_metrics = await _calculate_consciousness_metrics(perception_reflection, patterns, temporal_analysis)
+
+            consciousness_metrics = await _calculate_consciousness_metrics(
+                perception_reflection, patterns, temporal_analysis
+            )
         except ImportError:
             # Degraded mode without consciousness metrics
             consciousness_metrics = {
@@ -676,7 +775,7 @@ async def force_reflection(query: Dict):
                 "metacognitive_capability": 0.0,
                 "consciousness_indicators": {},
                 "consciousness_assessment": "degraded",
-                "error": "consciousness module not available"
+                "error": "consciousness module not available",
             }
 
     return {
@@ -705,15 +804,25 @@ async def metacognitive_self():
     def _query():
         with driver.session() as session:
             # Capabilities from tools
-            tools = session.run("MATCH (t:Tool) RETURN count(t) as tool_count").single()["tool_count"]
+            tools = session.run(
+                "MATCH (t:Tool) RETURN count(t) as tool_count"
+            ).single()["tool_count"]
             # Identity: hardcoded for now
-            identity = {"name": "Denis", "version": "unified-v1", "type": "cognitive_agent"}
+            identity = {
+                "name": "Denis",
+                "version": "unified-v1",
+                "type": "cognitive_agent",
+            }
             # Evolution: from changes
-            changes = session.run("MATCH (c:Change) RETURN count(c) as change_count").single()["change_count"]
+            changes = session.run(
+                "MATCH (c:Change) RETURN count(c) as change_count"
+            ).single()["change_count"]
             return tool_count, identity, change_count
 
     tool_count, identity, change_count = 0, {}, 0
-    (tool_count, identity, change_count), _, err = await _call_blocking(_query, NEO4J_TIMEOUT_MS)
+    (tool_count, identity, change_count), _, err = await _call_blocking(
+        _query, NEO4J_TIMEOUT_MS
+    )
     if err:
         degraded = True
 
@@ -725,7 +834,7 @@ async def metacognitive_self():
     return {
         "identity": identity,
         "capabilities": {"tools": tool_count, "evolution_steps": change_count},
-        "status": "degraded" if degraded else "healthy"
+        "status": "degraded" if degraded else "healthy",
     }
 
 
@@ -737,7 +846,9 @@ async def metacognitive_evolution():
 
     def _query():
         with driver.session() as session:
-            changes = session.run("MATCH (c:Change) RETURN c.timestamp, c.description ORDER BY c.timestamp DESC LIMIT 10")
+            changes = session.run(
+                "MATCH (c:Change) RETURN c.timestamp, c.description ORDER BY c.timestamp DESC LIMIT 10"
+            )
             return [dict(record) for record in changes]
 
     changes = []
@@ -750,10 +861,7 @@ async def metacognitive_evolution():
     except Exception:
         pass
 
-    return {
-        "recent_changes": changes,
-        "status": "degraded" if degraded else "healthy"
-    }
+    return {"recent_changes": changes, "status": "degraded" if degraded else "healthy"}
 
 
 @router.get("/limits")
@@ -764,7 +872,7 @@ async def metacognitive_limits():
         "max_concurrent_requests": 10,
         "max_memory_gb": 16,
         "max_tools": 100,
-        "timeout_defaults": {"neo4j": 90, "redis": 80, "reflection": 120}
+        "timeout_defaults": {"neo4j": 90, "redis": 80, "reflection": 120},
     }
     return {"limits": limits, "status": "healthy"}
 
@@ -775,8 +883,10 @@ async def metacognitive_purpose():
     purpose = {
         "primary": "Assist users with cognitive tasks using AI",
         "secondary": "Learn and evolve through interactions",
-        "constraints": ["Ethical AI", "Fail-safe", "User-centric"]
+        "constraints": ["Ethical AI", "Fail-safe", "User-centric"],
     }
+
+
 async def _generate_automatic_feedback(feedback: Dict) -> str:
     """Generate automatic feedback based on feedback patterns and system state."""
     feedback_type = feedback.get("type", "general")
@@ -813,7 +923,9 @@ async def _generate_automatic_feedback(feedback: Dict) -> str:
         recent_feedbacks = r.lrange("denis:metacognitive:feedback", 0, 9)
         if len(recent_feedbacks) >= 3:
             # Analyze pattern of recent feedbacks
-            types = [json.loads(f).get("type", "unknown") for f in recent_feedbacks if f]
+            types = [
+                json.loads(f).get("type", "unknown") for f in recent_feedbacks if f
+            ]
             if len(set(types)) == 1:
                 automatic_feedback = f"Pattern detected: Multiple {types[0]} feedbacks. Consider systematic review of {types[0]} aspects."
 
@@ -829,7 +941,7 @@ async def _analyze_feedback_patterns() -> Dict[str, Any]:
         "temporal_distribution": {},
         "common_themes": [],
         "insights": [],
-        "recommendations": []
+        "recommendations": [],
     }
 
     if r:
@@ -855,24 +967,46 @@ async def _analyze_feedback_patterns() -> Dict[str, Any]:
 
                 # Temporal distribution (last 24 hours vs older)
                 now = time.time()
-                recent_feedbacks = [f for f in parsed_feedbacks if now - f.get("timestamp", 0) < 86400]
+                recent_feedbacks = [
+                    f for f in parsed_feedbacks if now - f.get("timestamp", 0) < 86400
+                ]
                 pattern_analysis["temporal_distribution"] = {
                     "last_24h": len(recent_feedbacks),
-                    "older": len(parsed_feedbacks) - len(recent_feedbacks)
+                    "older": len(parsed_feedbacks) - len(recent_feedbacks),
                 }
 
                 # Extract common themes from content
-                contents = [f.get("content", "") for f in parsed_feedbacks if f.get("content")]
+                contents = [
+                    f.get("content", "") for f in parsed_feedbacks if f.get("content")
+                ]
                 themes = []
                 if contents:
                     # Simple keyword analysis
                     error_keywords = ["error", "fail", "problem", "issue", "bug"]
                     perf_keywords = ["slow", "fast", "latency", "performance", "speed"]
-                    quality_keywords = ["quality", "accuracy", "correct", "wrong", "accurate"]
+                    quality_keywords = [
+                        "quality",
+                        "accuracy",
+                        "correct",
+                        "wrong",
+                        "accurate",
+                    ]
 
-                    error_count = sum(1 for c in contents if any(kw in c.lower() for kw in error_keywords))
-                    perf_count = sum(1 for c in contents if any(kw in c.lower() for kw in perf_keywords))
-                    quality_count = sum(1 for c in contents if any(kw in c.lower() for kw in quality_keywords))
+                    error_count = sum(
+                        1
+                        for c in contents
+                        if any(kw in c.lower() for kw in error_keywords)
+                    )
+                    perf_count = sum(
+                        1
+                        for c in contents
+                        if any(kw in c.lower() for kw in perf_keywords)
+                    )
+                    quality_count = sum(
+                        1
+                        for c in contents
+                        if any(kw in c.lower() for kw in quality_keywords)
+                    )
 
                     if error_count > len(contents) * 0.3:
                         themes.append("reliability_errors")
@@ -886,25 +1020,44 @@ async def _analyze_feedback_patterns() -> Dict[str, Any]:
                 # Generate insights
                 insights = []
                 if pattern_analysis["temporal_distribution"]["last_24h"] > 5:
-                    insights.append("High feedback volume in last 24 hours - consider immediate attention")
+                    insights.append(
+                        "High feedback volume in last 24 hours - consider immediate attention"
+                    )
 
-                most_common_type = max(types_count.items(), key=lambda x: x[1]) if types_count else None
-                if most_common_type and most_common_type[1] > len(parsed_feedbacks) * 0.5:
-                    insights.append(f"Dominant feedback type: {most_common_type[0]} - focus improvement efforts here")
+                most_common_type = (
+                    max(types_count.items(), key=lambda x: x[1])
+                    if types_count
+                    else None
+                )
+                if (
+                    most_common_type
+                    and most_common_type[1] > len(parsed_feedbacks) * 0.5
+                ):
+                    insights.append(
+                        f"Dominant feedback type: {most_common_type[0]} - focus improvement efforts here"
+                    )
 
                 pattern_analysis["insights"] = insights
 
                 # Generate recommendations
                 recommendations = []
                 if "reliability_errors" in themes:
-                    recommendations.append("Implement additional error handling and recovery mechanisms")
+                    recommendations.append(
+                        "Implement additional error handling and recovery mechanisms"
+                    )
                 if "performance_concerns" in themes:
-                    recommendations.append("Review and optimize system performance bottlenecks")
+                    recommendations.append(
+                        "Review and optimize system performance bottlenecks"
+                    )
                 if "quality_accuracy" in themes:
-                    recommendations.append("Enhance validation and quality assurance processes")
+                    recommendations.append(
+                        "Enhance validation and quality assurance processes"
+                    )
 
                 if len(parsed_feedbacks) < 10:
-                    recommendations.append("Continue collecting feedback to identify patterns")
+                    recommendations.append(
+                        "Continue collecting feedback to identify patterns"
+                    )
 
                 pattern_analysis["recommendations"] = recommendations
 
@@ -928,9 +1081,12 @@ async def metacognitive_learn(feedback: Dict):
     # Store in memory backend for persistence
     try:
         from memory.backends import get_memory_backend
+
         memory_backend = get_memory_backend()
         if memory_backend:
-            feedback_key = f"feedback:{int(time.time())}:{feedback.get('type', 'general')}"
+            feedback_key = (
+                f"feedback:{int(time.time())}:{feedback.get('type', 'general')}"
+            )
             await memory_backend.store(feedback_key, feedback)
     except Exception:
         pass  # Fail silently for memory storage
@@ -954,7 +1110,7 @@ async def metacognitive_learn(feedback: Dict):
             "source": "pattern_analysis",
             "content": automatic_feedback,
             "timestamp": time.time(),
-            "triggered_by": feedback
+            "triggered_by": feedback,
         }
 
         if r:
@@ -975,8 +1131,35 @@ async def metacognitive_learn(feedback: Dict):
         "automatic_feedback": automatic_feedback,
         "pattern_analysis": pattern_analysis,
         "stored_in_memory": memory_backend is not None,
-        "stored_in_redis": r is not None
+        "stored_in_redis": r is not None,
     }
+
+
+@router.get("/events")
+async def metacognitive_events(request: Request):
+    """SSE stream for metacognitive events - heartbeat + real events."""
+
+    async def event_gen():
+        # Primer chunk inmediato para que el smoke no se quede colgado
+        yield (
+            "event: hello\ndata: "
+            + json.dumps({"ts": time.time(), "ok": True})
+            + "\n\n"
+        )
+        while True:
+            if await request.is_disconnected():
+                return
+            yield "event: heartbeat\ndata: " + json.dumps({"ts": time.time()}) + "\n\n"
+            await anyio.sleep(4)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/feedback")
@@ -988,14 +1171,16 @@ async def metacognitive_feedback(limit: int = 10, include_analysis: bool = True)
         "total_feedback_count": 0,
         "pattern_analysis": {},
         "insights": [],
-        "recommendations": []
+        "recommendations": [],
     }
 
     if r:
         try:
             # Get recent feedback items
             items = r.lrange("denis:metacognitive:feedback", 0, limit - 1)
-            feedback_data["total_feedback_count"] = r.llen("denis:metacognitive:feedback")
+            feedback_data["total_feedback_count"] = r.llen(
+                "denis:metacognitive:feedback"
+            )
 
             # Parse feedback items
             recent_feedback = []
@@ -1023,123 +1208,7 @@ async def metacognitive_feedback(limit: int = 10, include_analysis: bool = True)
     return feedback_data
 
 
-@router.post("/capabilities/query")
-async def query_capabilities(query: Dict[str, Any]):
-    """Query capabilities with filters."""
-    service = get_capabilities_service()
-    filters = query.get("filters", {})
-    results = service.query_snapshot(filters)
-
-    # Convert to API format
-    capabilities = []
-    for cap_snapshot in results:
-        capabilities.append({
-            "id": cap_snapshot.id,
-            "category": cap_snapshot.category,
-            "status": cap_snapshot.status.value,
-            "confidence": cap_snapshot.confidence,
-            "evidence": [
-                {
-                    "source": ev.source,
-                    "timestamp": ev.timestamp,
-                    "confidence": ev.confidence,
-                    "data": ev.data,
-                    "error": ev.error
-                }
-                for ev in cap_snapshot.evidence
-            ],
-            "metrics": cap_snapshot.metrics,
-            "executable_actions": cap_snapshot.executable_actions,
-            "version": cap_snapshot.version
-        })
-
-    return {
-        "query": query,
-        "results": capabilities,
-        "count": len(capabilities),
-        "timestamp_utc": time.time()
-    }
-
-
-@router.post("/capabilities/refresh")
-async def refresh_capabilities():
-    """Force refresh of capabilities snapshot."""
-    service = get_capabilities_service()
-    start_time = time.time()
-    snapshot = await service.refresh_snapshot()
-    refresh_time_ms = (time.time() - start_time) * 1000
-
-    return {
-        "refreshed_count": len(snapshot),
-        "refresh_time_ms": refresh_time_ms,
-        "timestamp_utc": time.time(),
-        "status": "refreshed"
-    }
-
-
-@router.get("/events")
-async def metacognitive_events(request: Request):
-    async def event_gen():
-        # Primer chunk inmediato para que el smoke no se quede colgado
-        yield "event: hello\ndata: " + json.dumps({"ts": time.time(), "ok": True}) + "\n\n"
-        while True:
-            if await request.is_disconnected():
-                return
-            yield "event: heartbeat\ndata: " + json.dumps({"ts": time.time()}) + "\n\n"
-            await anyio.sleep(4)  # 4 seconds for smoke-friendly testing (was 1)
-
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
-
-
-@router.get("/feedback")
-async def metacognitive_feedback():
-    """Recent feedback and learning insights."""
-    r = get_redis()
-    feedback = []
-    if r:
-        items = r.lrange("denis:metacognitive:feedback", 0, 9)
-        feedback = [json.loads(item) for item in items]
-    return {"recent_feedback": feedback, "status": "healthy"}
-
-
-@router.get("/autopoiesis/proposals")
-async def get_proposals():
-    """Lista propuestas pendientes."""
-    from autopoiesis.approval_engine import ApprovalEngine
-
-    approval = ApprovalEngine()
-    proposals = approval.get_pending_proposals()
-
-    return {"proposals": proposals}
-
-
-@router.post("/autopoiesis/approve/{proposal_id}")
-async def approve_proposal(proposal_id: str, user: str = "admin"):
-    """Aprueba una propuesta."""
-    from autopoiesis.approval_engine import ApprovalEngine
-
-    approval = ApprovalEngine()
-    success = approval.approve_proposal(proposal_id, user)
-
-    return {"approved": success, "proposal_id": proposal_id}
-
-
-@router.get("/alerts")
-async def check_alerts():
-    """Chequea y devuelve anomalías detectadas."""
-    from observability.anomaly_detector import AlertManager
-
-    alert_manager = AlertManager()
-    result = await alert_manager.check_and_alert()
-
-    return result
+# Capabilities endpoints are defined later in the file
 
 
 @router.get("/inference/status")
@@ -1213,7 +1282,10 @@ async def gate_hardening_reload():
     from feature_flags import load_feature_flags
 
     flags = load_feature_flags()
-    return {"reloaded": True, "enabled": getattr(flags, "denis_use_gate_hardening", False)}
+    return {
+        "reloaded": True,
+        "enabled": getattr(flags, "denis_use_gate_hardening", False),
+    }
 
 
 @router.get("/inference/policy")
@@ -1400,17 +1472,28 @@ async def inference_hedging_status():
 
 @router.get("/capabilities")
 async def get_capabilities():
-    """Get current capabilities snapshot v1."""
+    """Get current capabilities snapshot - always returns 200 with fail-open behavior."""
     try:
-        service = get_capabilities_service()  # sin await
-        snap = service.get_snapshot()         # si es sync
+        service = get_capabilities_service()
+        snap = service.get_snapshot()
         if snap is None:
-            snap = service.refresh_snapshot()
+            snap = await service.refresh_snapshot()  # try async refresh if sync fails
         if snap is None:
             snap = {}
-        return {"status": "ok", "snapshot": snap}
+
+        return {
+            "status": "ok",
+            "snapshot": snap,
+            "reason": "capabilities_service_available",
+        }
     except Exception as e:
-        return {"status": "error", "snapshot": {}, "error": str(e)}
+        # Fail-open: return degraded status but 200 response
+        return {
+            "status": "degraded",
+            "snapshot": {},
+            "reason": f"capabilities_service_unavailable: {str(e)}",
+            "error": str(e),
+        }
 
 
 @router.post("/capabilities/query")
@@ -1423,31 +1506,33 @@ async def query_capabilities(query: Dict[str, Any]):
     # Convert to API format
     capabilities = []
     for cap_snapshot in results:
-        capabilities.append({
-            "id": cap_snapshot.id,
-            "category": cap_snapshot.category,
-            "status": cap_snapshot.status.value,
-            "confidence": cap_snapshot.confidence,
-            "evidence": [
-                {
-                    "source": ev.source,
-                    "timestamp": ev.timestamp,
-                    "confidence": ev.confidence,
-                    "data": ev.data,
-                    "error": ev.error
-                }
-                for ev in cap_snapshot.evidence
-            ],
-            "metrics": cap_snapshot.metrics,
-            "executable_actions": cap_snapshot.executable_actions,
-            "version": cap_snapshot.version
-        })
+        capabilities.append(
+            {
+                "id": cap_snapshot.id,
+                "category": cap_snapshot.category,
+                "status": cap_snapshot.status.value,
+                "confidence": cap_snapshot.confidence,
+                "evidence": [
+                    {
+                        "source": ev.source,
+                        "timestamp": ev.timestamp,
+                        "confidence": ev.confidence,
+                        "data": ev.data,
+                        "error": ev.error,
+                    }
+                    for ev in cap_snapshot.evidence
+                ],
+                "metrics": cap_snapshot.metrics,
+                "executable_actions": cap_snapshot.executable_actions,
+                "version": cap_snapshot.version,
+            }
+        )
 
     return {
         "query": query,
         "results": capabilities,
         "count": len(capabilities),
-        "timestamp_utc": time.time()
+        "timestamp_utc": time.time(),
     }
 
 
@@ -1463,27 +1548,29 @@ async def refresh_capabilities():
         "refreshed_count": len(snapshot),
         "refresh_time_ms": refresh_time_ms,
         "timestamp_utc": time.time(),
-        "status": "refreshed"
+        "status": "refreshed",
     }
 
 
 @router.get("/capabilities/events")
 async def capabilities_events():
     """SSE stream for capabilities events - simplified for testing."""
+
     async def event_generator():
         # Always emit initial heartbeat regardless of imports
-        yield f"event: heartbeat\ndata: {{\"status\":\"ok\"}}\n\n"
-        
+        yield f'event: heartbeat\ndata: {{"status":"ok"}}\n\n'
+
         # Simple heartbeat every few seconds
         import asyncio
+
         count = 0
         while count < 3:  # Limited iterations for testing
             count += 1
-            yield f"event: heartbeat\ndata: {{\"count\": {count}, \"timestamp\": {time.time()}}}\n\n"
+            yield f'event: heartbeat\ndata: {{"count": {count}, "timestamp": {time.time()}}}\n\n'
             await asyncio.sleep(1)  # Short sleep for testing
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )

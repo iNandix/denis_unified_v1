@@ -1,0 +1,54 @@
+{
+  "ok": true,
+  "server_started": true,
+  "openapi_fetched": true,
+  "required_paths_present": true,
+  "required_paths": [
+    "/metacognitive/status",
+    "/metacognitive/capabilities",
+    "/metacognitive/events"
+  ],
+  "present_paths": [
+    "/metacognitive/status",
+    "/metacognitive/capabilities",
+    "/metacognitive/events"
+  ],
+  "missing_paths": [],
+  "malformed_paths": [],
+  "duplicate_paths": [
+    "/metacognitive/inference/ab-tests"
+  ],
+  "total_routes": 42,
+  "metacognitive_routes": [
+    "/metacognitive/status",
+    "/metacognitive/metrics",
+    "/metacognitive/attention",
+    "/metacognitive/coherence",
+    "/metacognitive/reflect",
+    "/metacognitive/self",
+    "/metacognitive/evolution",
+    "/metacognitive/limits",
+    "/metacognitive/purpose",
+    "/metacognitive/learn",
+    "/metacognitive/events",
+    "/metacognitive/feedback",
+    "/metacognitive/inference/status",
+    "/metacognitive/gate/status",
+    "/metacognitive/gate/reload",
+    "/metacognitive/inference/policy",
+    "/metacognitive/inference/reward",
+    "/metacognitive/inference/decisions",
+    "/metacognitive/inference/circuit-breakers",
+    "/metacognitive/inference/ab-tests",
+    "/metacognitive/inference/ab-tests",
+    "/metacognitive/inference/ab-tests/{test_id}",
+    "/metacognitive/inference/ab-tests/{test_id}/record",
+    "/metacognitive/inference/hedging",
+    "/metacognitive/capabilities",
+    "/metacognitive/capabilities/query",
+    "/metacognitive/capabilities/refresh",
+    "/metacognitive/capabilities/events"
+  ],
+  "live_server_results": null,
+  "timestamp_utc": "2026-02-13T20:42:09.568150+00:00"
+}
