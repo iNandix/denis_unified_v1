@@ -10,6 +10,7 @@
         "ok": false,
         "endpoint_status": "server_not_ready"
       },
+      "remediation_key": "capabilities_endpoint_failed",
       "expected_effect": "capabilities endpoint returns 200 with valid response",
       "commands": [
         [
@@ -36,6 +37,7 @@
       "detected_signal": {
         "endpoint_status": "server_not_ready"
       },
+      "remediation_key": "capabilities_endpoint_failed",
       "expected_effect": "capabilities endpoint returns 200 with valid response",
       "commands": [
         [
@@ -60,7 +62,7 @@
     "commands_exist": true,
     "expected_artifacts_coherent": true
   },
-  "timestamp_utc": 1771017019.5756838,
+  "timestamp_utc": 1771017208.4012897,
   "total_signals": 2,
   "accepted_items": 2,
   "rejected_signals_count": 0

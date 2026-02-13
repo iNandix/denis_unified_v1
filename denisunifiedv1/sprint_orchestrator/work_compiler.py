@@ -234,6 +234,20 @@ class RemediationRegistry:
 
         return None
 
+    def find_remediation_with_key(self, signal_id: str) -> tuple[str, Dict[str, Any]] | None:
+        """Find remediation for a signal ID and return (key, remediation)."""
+        # Direct match
+        if signal_id in self.known_remediations:
+            return signal_id, self.known_remediations[signal_id]
+
+        # Pattern matching
+        signal_lower = signal_id.lower()
+        for key, remediation in self.known_remediations.items():
+            if key.replace("_endpoint_failed", "") in signal_lower:
+                return key, remediation
+
+        return None
+
 
 class PlanBuilder:
     """Build executable sprint plans from normalized signals."""
@@ -247,13 +261,15 @@ class PlanBuilder:
         rejected_signals = []
 
         for signal in signals:
-            remediation = self.registry.find_remediation(signal["signal_id"])
-            if not remediation:
+            remediation_result = self.registry.find_remediation_with_key(signal["signal_id"])
+            if remediation_result is None:
                 rejected_signals.append({
                     **signal,
                     "reason": "no_remediation_found"
                 })
                 continue
+
+            remediation_key, remediation = remediation_result
 
             # Validate commands exist
             if not all(self.registry.command_exists(cmd) for cmd in remediation["commands"]):
@@ -281,6 +297,7 @@ class PlanBuilder:
                 "confidence": signal["confidence"],
                 "source_artifact": signal["source_artifact"],
                 "detected_signal": signal["detected_signal"],
+                "remediation_key": remediation_key,
                 "expected_effect": remediation["expected_effect"],
                 "commands": remediation["commands"],
                 "expected_artifacts": expected_artifacts,
@@ -291,8 +308,8 @@ class PlanBuilder:
                 ]
             })
 
-        return {
-            "ok": True,
+        plan = {
+            "ok": True,  # Compilation successful
             "items": items,
             "rejected_signals": rejected_signals,
             "validation": {
@@ -304,6 +321,15 @@ class PlanBuilder:
             "accepted_items": len(items),
             "rejected_signals_count": len(rejected_signals),
         }
+
+        # Add reason if no executable work
+        if not items:
+            if signals:
+                plan["reason"] = "no_executable_work_found"
+            else:
+                plan["reason"] = "no_signals_detected"
+
+        return plan
 
     def _is_coherent_artifact(self, artifact_path: str) -> bool:
         """Check if artifact path is coherent (relative, in artifacts/, etc.)."""
