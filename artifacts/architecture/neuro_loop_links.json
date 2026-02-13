@@ -1,0 +1,78 @@
+{
+  "ok": true,
+  "status": "skippeddependency",
+  "timestamp_utc": "2026-02-13T20:30:08.640860+00:00",
+  "test_events_processed": 3,
+  "total_relationships_created": 0,
+  "event_results": [
+    {
+      "event": {
+        "event_type": "sensory_input",
+        "event_data": {
+          "input_type": "visual",
+          "intensity": 0.8
+        },
+        "source_layer": "L1_SENSORY",
+        "target_loop": "reflection"
+      },
+      "processing_result": {
+        "status": "processed",
+        "processing_steps": [
+          "sensory_feed_created",
+          "reflection_activated"
+        ],
+        "relationships_created": [],
+        "neo4j_available": false
+      }
+    },
+    {
+      "event": {
+        "event_type": "cognitive_processing",
+        "event_data": {
+          "processing_type": "pattern_matching",
+          "confidence": 0.9
+        },
+        "source_layer": "L2_WORKING",
+        "target_loop": "pattern_recognition"
+      },
+      "processing_result": {
+        "status": "processed",
+        "processing_steps": [
+          "cognitive_feedback_created",
+          "pattern_recognition_engaged"
+        ],
+        "relationships_created": [],
+        "neo4j_available": false
+      }
+    },
+    {
+      "event": {
+        "event_type": "memory_consolidation",
+        "event_data": {
+          "consolidation_type": "episodic_to_semantic",
+          "items_processed": 15
+        },
+        "source_layer": "L3_EPISODIC",
+        "target_loop": "expansive_consciousness"
+      },
+      "processing_result": {
+        "status": "processed",
+        "processing_steps": [
+          "adaptation_created_9"
+        ],
+        "relationships_created": [],
+        "neo4j_available": false
+      }
+    }
+  ],
+  "verification_results": {
+    "neo4j_available": false,
+    "reason": "NEO4J_PASSWORD not set"
+  },
+  "integration_assessment": {
+    "neurolayer_mental_loop_links": 0,
+    "mental_loop_chain": false,
+    "neurolayer_chain": false,
+    "bidirectional_flow": false
+  }
+}

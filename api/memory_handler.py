@@ -445,7 +445,7 @@ def build_memory_router() -> APIRouter:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Feedback processing failed: {str(exc)}")
 
-    @router.get("/neuro/mental-processing")
+    @router.post("/neuro/mental-processing")
     async def neuro_mental_processing() -> dict[str, Any]:
         """Process pending mental-loop feedback to neurolayers."""
         try:
@@ -488,6 +488,159 @@ def build_memory_router() -> APIRouter:
                 "status": "processing_failed",
                 "error": str(exc)[:200]
             }
+
+    # ========== NEURO-MENTAL LOOP INTEGRATION ==========
+
+    @router.post("/neuro/process-event")
+    async def process_neuro_mental_event(
+        event_type: str = Query(...),
+        event_data: dict[str, Any] = None,
+        source_layer: str = Query(None),
+        target_loop: str = Query(None)
+    ) -> dict[str, Any]:
+        """Process event through neuro-mental loop integration."""
+        try:
+            from denis_unified_v1.memory.graph_writer import get_graph_writer
+            writer = get_graph_writer()
+            
+            event_data = event_data or {}
+            event_id = f"{event_type}_{int(__import__('time').time())}"
+            
+            # Process based on event type
+            if event_type == "sensory_input":
+                # Sensory input feeds into reflection mental loop
+                result = await _process_sensory_feed(writer, event_data, source_layer or "L1_SENSORY")
+                
+            elif event_type == "cognitive_processing":
+                # Cognitive processing creates feedback loops
+                result = await _process_cognitive_feedback(writer, event_data, target_loop or "reflection")
+                
+            elif event_type == "memory_consolidation":
+                # Memory operations create neuro-mental adaptations
+                result = await _process_memory_adaptation(writer, event_data)
+                
+            else:
+                result = {"status": "unknown_event_type", "event_type": event_type}
+            
+            # Create canonical relationships
+            if source_layer and target_loop:
+                writer.record_neurolayer_mental_loop(source_layer, target_loop, "reinforcement")
+            
+            # Create mental loop chain relationships
+            await _ensure_mental_loop_chain(writer)
+            
+            # Create neurolayer chain relationships  
+            await _ensure_neurolayer_chain(writer)
+            
+            writer.close()
+            return {
+                "status": "processed",
+                "event_id": event_id,
+                "event_type": event_type,
+                "processing_result": result,
+                "relationships_created": ["FEEDS", "FEEDBACKS", "NEXT"] if writer.neo4j_available else []
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "processing_failed",
+                "error": str(exc)[:200],
+                "event_type": event_type
+            }
+
+    async def _process_sensory_feed(writer, event_data: dict, source_layer: str) -> dict[str, Any]:
+        """Process sensory input feeding into mental loops."""
+        # Create feed relationship from neurolayer to mental loop
+        feed_result = writer.record_neurolayer_mental_loop(source_layer, "reflection", "feed")
+        
+        # Simulate processing through reflection loop
+        processing_steps = [
+            "sensory_input_received",
+            "reflection_loop_activated", 
+            "pattern_recognition_engaged",
+            "adaptive_response_generated"
+        ]
+        
+        return {
+            "feed_processed": feed_result,
+            "processing_steps": processing_steps,
+            "adaptation_generated": True
+        }
+
+    async def _process_cognitive_feedback(writer, event_data: dict, target_loop: str) -> dict[str, Any]:
+        """Process cognitive feedback from mental loops to neurolayers."""
+        # Create feedback relationship from mental loop to neurolayer
+        feedback_result = writer.record_neurolayer_mental_loop("L2_WORKING", target_loop, "feedback")
+        
+        # Simulate feedback processing
+        feedback_steps = [
+            "cognitive_feedback_received",
+            f"{target_loop}_loop_processed",
+            "neurolayer_adaptation_applied",
+            "learning_reinforcement_complete"
+        ]
+        
+        return {
+            "feedback_processed": feedback_result,
+            "processing_steps": feedback_steps,
+            "reinforcement_applied": True
+        }
+
+    async def _process_memory_adaptation(writer, event_data: dict) -> dict[str, Any]:
+        """Process memory consolidation creating neuro-mental adaptations."""
+        # Memory operations create adaptations across multiple layers
+        adaptations = []
+        
+        memory_layers = ["L3_EPISODIC", "L5_PROCEDURAL", "L9_IDENTITY"]
+        mental_functions = ["pattern_recognition", "meta_reflection", "expansive_consciousness"]
+        
+        for neuro_layer in memory_layers:
+            for mental_loop in mental_functions:
+                result = writer.record_neurolayer_mental_loop(neuro_layer, mental_loop, "consolidation")
+                adaptations.append({"neuro": neuro_layer, "mental": mental_loop, "result": result})
+        
+        return {
+            "memory_adaptations_created": len(adaptations),
+            "adaptations": adaptations,
+            "consolidation_complete": True
+        }
+
+    async def _ensure_mental_loop_chain(writer) -> None:
+        """Ensure mental loop chain relationships exist."""
+        loop_sequence = [
+            ("perception", "analysis"),
+            ("analysis", "planning"), 
+            ("planning", "synthesis"),
+            ("synthesis", "perception")  # Circular for continuous processing
+        ]
+        
+        for from_loop, to_loop in loop_sequence:
+            # Create MentalLoopLevel nodes and NEXT relationships
+            writer._execute_write(f"""
+            MERGE (ml1:MentalLoopLevel {{node_ref: $from_loop}})
+            MERGE (ml2:MentalLoopLevel {{node_ref: $to_loop}})
+            MERGE (ml1)-[:NEXT]->(ml2)
+            """, {"from_loop": from_loop, "to_loop": to_loop})
+
+    async def _ensure_neurolayer_chain(writer) -> None:
+        """Ensure neurolayer chain relationships exist."""
+        layer_sequence = [
+            ("L1_SENSORY", "L2_WORKING"),
+            ("L2_WORKING", "L3_EPISODIC"),
+            ("L3_EPISODIC", "L5_PROCEDURAL"),
+            ("L5_PROCEDURAL", "L8_SOCIAL"),
+            ("L8_SOCIAL", "L9_IDENTITY"),
+            ("L9_IDENTITY", "L10_RELATIONAL"),
+            ("L10_RELATIONAL", "L12_METACOG")
+        ]
+        
+        for from_layer, to_layer in layer_sequence:
+            # Create NeuroLayer nodes and NEXT relationships
+            writer._execute_write(f"""
+            MERGE (nl1:NeuroLayer {{node_ref: $from_layer}})
+            MERGE (nl2:NeuroLayer {{node_ref: $to_layer}})
+            MERGE (nl1)-[:NEXT]->(nl2)
+            """, {"from_layer": from_layer, "to_layer": to_layer})
 
     @router.get("/contracts/verify/{user_id}")
     async def contracts_verify(user_id: str) -> dict[str, Any]:
