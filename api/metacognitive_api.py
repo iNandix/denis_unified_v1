@@ -138,12 +138,37 @@ def _healthy_response(component: str, data: Dict = None) -> Dict:
 async def metacognitive_status():
     """Estado general del sistema metacognitivo con consultas concurrentes."""
     driver = await get_neo4j_async()
-    if driver is None:
-        return _degraded_response(
-            "metacognitive", "neo4j_driver_unavailable", _status_fallback()
-        )
     degraded = False
     errors = []
+    missing_modules = []
+
+    # Check dependencies
+    if driver is None:
+        degraded = True
+        errors.append("neo4j_driver_unavailable")
+        missing_modules.append("neo4j")
+
+    # Check Redis
+    try:
+        r = get_redis()
+        if r is None:
+            degraded = True
+            errors.append("redis_unavailable")
+            missing_modules.append("redis")
+    except Exception as e:
+        degraded = True
+        errors.append(f"redis_error: {str(e)[:50]}")
+
+    if driver is None:
+        return _degraded_response(
+            "metacognitive",
+            "neo4j_driver_unavailable",
+            {
+                **_status_fallback(),
+                "degraded_reasons": errors,
+                "missing_optional_modules": missing_modules,
+            },
+        )
 
     async def query_l0_count():
         try:
@@ -1572,6 +1597,7 @@ async def get_capabilities():
                 "capabilities": capabilities,
                 "raw": snapshot_raw if isinstance(snapshot_raw, dict) else None,
             },
+            "snapshot_capabilities_count": len(capabilities),
             "reason": reason,
         }
 
