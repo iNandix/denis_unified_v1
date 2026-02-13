@@ -266,8 +266,11 @@ try:
     if os.getenv("ENABLE_TRACING", "true").lower() == "true":
         from observability.tracing import setup_tracing
         setup_tracing()
+        tracing_enabled = True
+    else:
+        tracing_enabled = False
 except (ImportError, Exception):
-    pass  # Tracing not available
+    tracing_enabled = False
 
 # Create app with complete fail-open
 try:
@@ -289,13 +292,36 @@ except Exception as e:
         }
 
     # Try to include at least the agent heart
-    # API Metacognitiva
-    app.include_router(metacognitive_router, prefix="/metacognitive")
-    app.include_router(agent_heart_router)
+    try:
+        from .metacognitive_api import router as metacognitive_router
+        app.include_router(metacognitive_router, prefix="/metacognitive")
+    except Exception:
+        pass
+    
+    try:
+        from .agent_heart_api import router as agent_heart_router
+        app.include_router(agent_heart_router)
+    except Exception:
+        pass
 
 # Setup metrics with fail-open
+metrics_enabled = False
 try:
     from observability.metrics import setup_metrics
     setup_metrics(app)
+    metrics_enabled = True
 except (ImportError, Exception):
-    pass  # Metrics not available
+    metrics_enabled = False
+
+# Add observability status to /health endpoint
+@app.get("/observability")
+async def observability_status():
+    return {
+        "status": "ok",
+        "timestamp_utc": _utc_now(),
+        "observability": {
+            "tracing_enabled": tracing_enabled,
+            "metrics_enabled": metrics_enabled,
+            "reason": None if (tracing_enabled and metrics_enabled) else "partial_observability"
+        }
+    }
