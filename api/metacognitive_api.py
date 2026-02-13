@@ -22,12 +22,15 @@ from enum import Enum
 import threading
 from pathlib import Path
 
-from neo4j import GraphDatabase
-from neo4j import AsyncGraphDatabase
+# Use centralized connections module
+from denis_unified_v1.connections import (
+    get_redis as _get_redis,
+    get_neo4j as _get_neo4j,
+    get_neo4j_async as _get_neo4j_async,
+    get_redis_pool as _get_redis_pool,
+)
 
 from .sse_handler import sse_event
-
-from capabilities_service import get_capabilities_service
 
 router = APIRouter(tags=["metacognitive"])
 
@@ -38,51 +41,25 @@ SSE_HEARTBEAT_INTERVAL_SEC = float(os.getenv("METACOG_SSE_HEARTBEAT_SEC", "2.0")
 SSE_IDLE_SLEEP_SEC = float(os.getenv("METACOG_SSE_IDLE_SLEEP_SEC", "0.25"))
 SSE_WATCHDOG_SEC = float(os.getenv("METACOG_SSE_WATCHDOG_SEC", "10.0"))
 
-# Connection pools for performance
-_redis_pool = None
-_neo4j_pool = None
-_async_neo4j_pool = None
-
-
-async def get_redis_pool():
-    """Get Redis connection pool."""
-    global _redis_pool
-    if _redis_pool is None and redis is not None:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        _redis_pool = redis.ConnectionPool.from_url(
-            redis_url, decode_responses=True, max_connections=20
-        )
-    return _redis_pool
-
-
-async def get_neo4j_pool():
-    """Get Neo4j connection pool."""
-    global _neo4j_pool
-    if _neo4j_pool is None:
-        uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        user = os.getenv("NEO4J_USER", "neo4j")
-        password = os.getenv("NEO4J_PASSWORD", "Leon1234$")
-        _neo4j_pool = AsyncGraphDatabase.driver(uri, auth=(user, password))
-    return _neo4j_pool
-
 
 def get_redis():
-    """Get Redis connection from pool."""
-    pool = asyncio.run(get_redis_pool())
-    return redis.Redis(connection_pool=pool) if pool else None
-
-
-async def get_neo4j_async():
-    """Get async Neo4j driver."""
-    return await get_neo4j_pool()
+    """Get Redis client - uses centralized connections module."""
+    return _get_redis()
 
 
 def get_neo4j():
-    """Get sync Neo4j driver (legacy compatibility)."""
-    uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    user = os.getenv("NEO4J_USER", "neo4j")
-    password = os.getenv("NEO4J_PASSWORD", "Leon1234$")
-    return GraphDatabase.driver(uri, auth=(user, password))
+    """Get Neo4j driver - uses centralized connections module."""
+    return _get_neo4j()
+
+
+async def get_neo4j_async():
+    """Get async Neo4j driver - uses centralized connections module."""
+    return await _get_neo4j_async()
+
+
+async def get_redis_pool():
+    """Get Redis pool - uses centralized connections module."""
+    return _get_redis_pool()
 
 
 async def _call_blocking(func, timeout_ms: int):
@@ -113,20 +90,6 @@ def _status_fallback() -> Dict:
 
 def _metrics_fallback() -> Dict:
     return {"operations": {}, "timestamp": time.time(), "status": "degraded"}
-
-
-def get_redis():
-    if redis is None:
-        return None
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    return redis.Redis.from_url(redis_url, decode_responses=True)
-
-
-def get_neo4j():
-    uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    user = os.getenv("NEO4J_USER", "neo4j")
-    password = os.getenv("NEO4J_PASSWORD", "Leon1234$")
-    return GraphDatabase.driver(uri, auth=(user, password))
 
 
 @router.get("/status")
@@ -1474,6 +1437,7 @@ async def inference_hedging_status():
 async def get_capabilities():
     """Get current capabilities snapshot - always returns 200 with fail-open behavior."""
     try:
+        from capabilities_service import get_capabilities_service
         service = get_capabilities_service()
         snap = service.get_snapshot()
         if snap is None:
@@ -1499,6 +1463,8 @@ async def get_capabilities():
 @router.post("/capabilities/query")
 async def query_capabilities(query: Dict[str, Any]):
     """Query capabilities with filters."""
+    from capabilities_service import get_capabilities_service
+
     service = get_capabilities_service()
     filters = query.get("filters", {})
     results = service.query_snapshot(filters)
@@ -1539,6 +1505,8 @@ async def query_capabilities(query: Dict[str, Any]):
 @router.post("/capabilities/refresh")
 async def refresh_capabilities():
     """Force refresh of capabilities snapshot."""
+    from capabilities_service import get_capabilities_service
+
     service = get_capabilities_service()
     start_time = time.time()
     snapshot = await service.refresh_snapshot()

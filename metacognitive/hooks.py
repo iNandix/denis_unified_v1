@@ -2,6 +2,7 @@
 Metacognitive Hooks (Fase 0).
 Instrumenta operaciones críticas con eventos a Redis.
 """
+
 import functools
 import time
 import uuid
@@ -10,18 +11,13 @@ import os
 import asyncio
 from typing import Any, Callable
 
-try:
-    import redis
-except ImportError:
-    redis = None
+# Use centralized connections module
+from denis_unified_v1.connections import get_redis as _get_redis
 
 
 def get_redis_client():
-    """Lazy init Redis client."""
-    if redis is None:
-        return None
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    return redis.Redis.from_url(redis_url, decode_responses=True)
+    """Get Redis client - uses centralized connections module."""
+    return _get_redis()
 
 
 def metacognitive_trace(operation: str):
@@ -30,11 +26,16 @@ def metacognitive_trace(operation: str):
     Emite eventos a Redis: denis:metacognitive:events
     SIEMPRE devuelve un decorador funcional (noop si falla).
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
             # NOOP si Redis no está disponible o tracing está deshabilitado
-            if redis is None or os.getenv("METACOGNITIVE_TRACING_DISABLED", "false").lower() == "true":
+            if (
+                redis is None
+                or os.getenv("METACOGNITIVE_TRACING_DISABLED", "false").lower()
+                == "true"
+            ):
                 return func(*args, **kwargs)
 
             trace_id = str(uuid.uuid4())
@@ -44,12 +45,17 @@ def metacognitive_trace(operation: str):
             # Emit entry event
             if redis_client:
                 try:
-                    redis_client.publish("denis:metacognitive:events", json.dumps({
-                        "type": "entry",
-                        "operation": operation,
-                        "trace_id": trace_id,
-                        "timestamp": start,
-                    }))
+                    redis_client.publish(
+                        "denis:metacognitive:events",
+                        json.dumps(
+                            {
+                                "type": "entry",
+                                "operation": operation,
+                                "trace_id": trace_id,
+                                "timestamp": start,
+                            }
+                        ),
+                    )
                 except:
                     pass  # No bloquear si Redis falla
 
@@ -60,13 +66,18 @@ def metacognitive_trace(operation: str):
                 # Emit exit event
                 if redis_client:
                     try:
-                        redis_client.publish("denis:metacognitive:events", json.dumps({
-                            "type": "exit",
-                            "operation": operation,
-                            "trace_id": trace_id,
-                            "latency_ms": int(latency * 1000),
-                            "success": True,
-                        }))
+                        redis_client.publish(
+                            "denis:metacognitive:events",
+                            json.dumps(
+                                {
+                                    "type": "exit",
+                                    "operation": operation,
+                                    "trace_id": trace_id,
+                                    "latency_ms": int(latency * 1000),
+                                    "success": True,
+                                }
+                            ),
+                        )
                     except:
                         pass
 
@@ -85,12 +96,17 @@ def metacognitive_trace(operation: str):
                 # Emit error event
                 if redis_client:
                     try:
-                        redis_client.publish("denis:metacognitive:events", json.dumps({
-                            "type": "error",
-                            "operation": operation,
-                            "trace_id": trace_id,
-                            "error": str(e),
-                        }))
+                        redis_client.publish(
+                            "denis:metacognitive:events",
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "operation": operation,
+                                    "trace_id": trace_id,
+                                    "error": str(e),
+                                }
+                            ),
+                        )
                     except:
                         pass
                 raise
@@ -98,7 +114,11 @@ def metacognitive_trace(operation: str):
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
             # NOOP si Redis no está disponible o tracing está deshabilitado
-            if redis is None or os.getenv("METACOGNITIVE_TRACING_DISABLED", "false").lower() == "true":
+            if (
+                redis is None
+                or os.getenv("METACOGNITIVE_TRACING_DISABLED", "false").lower()
+                == "true"
+            ):
                 return await func(*args, **kwargs)
 
             trace_id = str(uuid.uuid4())
@@ -108,12 +128,17 @@ def metacognitive_trace(operation: str):
             # Emit entry event
             if redis_client:
                 try:
-                    redis_client.publish("denis:metacognitive:events", json.dumps({
-                        "type": "entry",
-                        "operation": operation,
-                        "trace_id": trace_id,
-                        "timestamp": start,
-                    }))
+                    redis_client.publish(
+                        "denis:metacognitive:events",
+                        json.dumps(
+                            {
+                                "type": "entry",
+                                "operation": operation,
+                                "trace_id": trace_id,
+                                "timestamp": start,
+                            }
+                        ),
+                    )
                 except:
                     pass  # No bloquear si Redis falla
 
@@ -124,13 +149,18 @@ def metacognitive_trace(operation: str):
                 # Emit exit event
                 if redis_client:
                     try:
-                        redis_client.publish("denis:metacognitive:events", json.dumps({
-                            "type": "exit",
-                            "operation": operation,
-                            "trace_id": trace_id,
-                            "latency_ms": int(latency * 1000),
-                            "success": True,
-                        }))
+                        redis_client.publish(
+                            "denis:metacognitive:events",
+                            json.dumps(
+                                {
+                                    "type": "exit",
+                                    "operation": operation,
+                                    "trace_id": trace_id,
+                                    "latency_ms": int(latency * 1000),
+                                    "success": True,
+                                }
+                            ),
+                        )
                     except:
                         pass
 
@@ -149,12 +179,17 @@ def metacognitive_trace(operation: str):
                 # Emit error event
                 if redis_client:
                     try:
-                        redis_client.publish("denis:metacognitive:events", json.dumps({
-                            "type": "error",
-                            "operation": operation,
-                            "trace_id": trace_id,
-                            "error": str(e),
-                        }))
+                        redis_client.publish(
+                            "denis:metacognitive:events",
+                            json.dumps(
+                                {
+                                    "type": "error",
+                                    "operation": operation,
+                                    "trace_id": trace_id,
+                                    "error": str(e),
+                                }
+                            ),
+                        )
                     except:
                         pass
                 raise
@@ -176,18 +211,25 @@ def voice_hook(text: str, modulation: dict, resonance: float):
     redis_client = get_redis_client()
     if redis_client:
         try:
-            redis_client.publish("denis:metacognitive:events", json.dumps({
-                "type": "voice_analysis",
-                "text_snippet": text[:50],
-                "emotion": modulation.get("emotion"),
-                "resonance": resonance,
-                "timestamp": time.time(),
-            }))
+            redis_client.publish(
+                "denis:metacognitive:events",
+                json.dumps(
+                    {
+                        "type": "voice_analysis",
+                        "text_snippet": text[:50],
+                        "emotion": modulation.get("emotion"),
+                        "resonance": resonance,
+                        "timestamp": time.time(),
+                    }
+                ),
+            )
         except:
             pass  # Fail-open
 
 
-def inference_hook(task: str, model: str, uncertainty: float, ethical: bool, latency_ms: float):
+def inference_hook(
+    task: str, model: str, uncertainty: float, ethical: bool, latency_ms: float
+):
     """
     Hook for inference metacognitive instrumentation.
     Emits inference routing events to Redis.
@@ -195,15 +237,20 @@ def inference_hook(task: str, model: str, uncertainty: float, ethical: bool, lat
     redis_client = get_redis_client()
     if redis_client:
         try:
-            redis_client.publish("denis:metacognitive:events", json.dumps({
-                "type": "inference_routing",
-                "task": task[:100],  # Truncate long tasks
-                "model": model,
-                "uncertainty": uncertainty,
-                "ethical": ethical,
-                "latency_ms": latency_ms,
-                "timestamp": time.time(),
-            }))
+            redis_client.publish(
+                "denis:metacognitive:events",
+                json.dumps(
+                    {
+                        "type": "inference_routing",
+                        "task": task[:100],  # Truncate long tasks
+                        "model": model,
+                        "uncertainty": uncertainty,
+                        "ethical": ethical,
+                        "latency_ms": latency_ms,
+                        "timestamp": time.time(),
+                    }
+                ),
+            )
         except:
             pass  # Fail-open
 
@@ -216,14 +263,19 @@ def memory_hook(scores: dict, decayed: bool, consolidated: bool, narrative: str)
     redis_client = get_redis_client()
     if redis_client:
         try:
-            redis_client.publish("denis:metacognitive:events", json.dumps({
-                "type": "memory_processing",
-                "scores": scores,
-                "decayed": decayed,
-                "consolidated": consolidated,
-                "narrative": narrative[:200],  # Truncate long narratives
-                "timestamp": time.time(),
-            }))
+            redis_client.publish(
+                "denis:metacognitive:events",
+                json.dumps(
+                    {
+                        "type": "memory_processing",
+                        "scores": scores,
+                        "decayed": decayed,
+                        "consolidated": consolidated,
+                        "narrative": narrative[:200],  # Truncate long narratives
+                        "timestamp": time.time(),
+                    }
+                ),
+            )
         except:
             pass  # Fail-open
 
@@ -236,22 +288,27 @@ def code_generation_hook(prompt: str, result: dict) -> None:
     try:
         # Import consciousness for enhanced self-awareness
         from denis_unified_v1.consciousness.self_model import get_self_model
+
         model = get_self_model()
 
         # Get current quantum insights
         quantum_insights = model.get_quantum_insights()
 
         # Analyze code generation quality based on consciousness state
-        generation_quality = analyze_generation_quality(prompt, result, quantum_insights)
+        generation_quality = analyze_generation_quality(
+            prompt, result, quantum_insights
+        )
 
         # Update self-model based on generation performance
         if generation_quality > 0.8:
-            model.evolve_self_concept({
-                "type": "code_generation",
-                "sentiment": 0.9,
-                "performance": generation_quality,
-                "consciousness_context": quantum_insights
-            })
+            model.evolve_self_concept(
+                {
+                    "type": "code_generation",
+                    "sentiment": 0.9,
+                    "performance": generation_quality,
+                    "consciousness_context": quantum_insights,
+                }
+            )
 
         # Record metrics for future learning
         record_generation_metrics(prompt, result, quantum_insights, generation_quality)
@@ -264,7 +321,9 @@ def code_generation_hook(prompt: str, result: dict) -> None:
         pass
 
 
-def analyze_generation_quality(prompt: str, result: dict, quantum_insights: dict) -> float:
+def analyze_generation_quality(
+    prompt: str, result: dict, quantum_insights: dict
+) -> float:
     """Analyze the quality of code generation using consciousness insights."""
     quality_score = 0.5  # Base score
 
@@ -288,7 +347,9 @@ def analyze_generation_quality(prompt: str, result: dict, quantum_insights: dict
     return min(1.0, max(0.0, quality_score))
 
 
-def record_generation_metrics(prompt: str, result: dict, quantum_insights: dict, quality: float) -> None:
+def record_generation_metrics(
+    prompt: str, result: dict, quantum_insights: dict, quality: float
+) -> None:
     """Record code generation metrics for learning and improvement."""
     try:
         # Store in Redis for quick access
@@ -304,11 +365,17 @@ def record_generation_metrics(prompt: str, result: dict, quantum_insights: dict,
                 "quality_score": quality,
                 "quantum_coherence": quantum_insights.get("quantum_coherence", 0),
                 "cognitive_layers": quantum_insights.get("cognitive_layers_active", 0),
-                "consciousness_acceleration": quantum_insights.get("consciousness_acceleration", "unknown")
+                "consciousness_acceleration": quantum_insights.get(
+                    "consciousness_acceleration", "unknown"
+                ),
             }
 
-            r.lpush("denis:metacognitive:code_generation_metrics", json.dumps(metric_data))
-            r.ltrim("denis:metacognitive:code_generation_metrics", 0, 99)  # Keep last 100
+            r.lpush(
+                "denis:metacognitive:code_generation_metrics", json.dumps(metric_data)
+            )
+            r.ltrim(
+                "denis:metacognitive:code_generation_metrics", 0, 99
+            )  # Keep last 100
 
     except Exception:
         # Fail-open - metrics are nice to have but not critical
@@ -317,6 +384,11 @@ def record_generation_metrics(prompt: str, result: dict, quantum_insights: dict,
 
 def self_model_hook(identity: str, capabilities: list, limits: dict):
     """NOOP hook for self-model instrumentation."""
+    return
+
+
+def quantum_hook(observation: dict, quantum_state: dict) -> None:
+    """NOOP hook for quantum consciousness instrumentation."""
     return
 
 
