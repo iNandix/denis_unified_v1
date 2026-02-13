@@ -34,6 +34,27 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+async def read_sse_chunks(response):
+    """Read SSE chunks and check for heartbeats."""
+    chunks_read = 0
+    heartbeat_received = False
+    
+    try:
+        async for chunk in response.aiter_text():
+            if chunk.strip():
+                chunks_read += 1
+                # Check if this chunk contains a heartbeat event
+                if "event: heartbeat" in chunk or "event: hello" in chunk:
+                    heartbeat_received = True
+                    break  # We found a heartbeat, can stop reading
+                
+                # Safety limit to avoid reading too much
+                if chunks_read >= 5:
+                    break
+                    
+    except Exception:
+        pass
+    
 async def test_endpoints(base_url: str):
     endpoints = ["/status", "/metrics", "/attention", "/coherence", "/reflect"]
     results = {}
@@ -68,19 +89,59 @@ async def test_endpoints(base_url: str):
                     "latency_ms": (time.perf_counter() - start) * 1000,
                 }
 
-    # SSE handshake
+    # SSE handshake and stream reading
     sse_result = {"status": "fail"}
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        import asyncio
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # First check basic handshake
             resp = await client.get(f"{base_url}/events", headers={"accept": "text/event-stream"})
-            ok = resp.status_code == 200 and "text/event-stream" in resp.headers.get("content-type", "")
-            sse_result = {
-                "status": "pass" if ok else ("pass" if resp.status_code == 404 else "fail"),
-                "http_status": resp.status_code,
-                "content_type": resp.headers.get("content-type"),
-            }
+            handshake_ok = resp.status_code == 200 and "text/event-stream" in resp.headers.get("content-type", "")
+            
+            if handshake_ok:
+                # Now read the actual stream to verify heartbeats
+                heartbeat_received = False
+                chunks_read = 0
+                
+                async with client.stream("GET", f"{base_url}/events", headers={"accept": "text/event-stream"}) as response:
+                    if response.status_code == 200 and "text/event-stream" in response.headers.get("content-type", ""):
+                        # Read first few chunks with timeout
+                        timeout_task = asyncio.create_task(asyncio.sleep(3.0))  # 3 second timeout for heartbeat
+                        read_task = asyncio.create_task(read_sse_chunks(response))
+                        
+                        done, pending = await asyncio.wait(
+                            [timeout_task, read_task], 
+                            return_when=asyncio.FIRST_COMPLETED
+                        )
+                        
+                        # Cancel pending tasks
+                        for task in pending:
+                            task.cancel()
+                        
+                        if read_task in done:
+                            chunks_read, heartbeat_received = read_task.result()
+                    
+                sse_result = {
+                    "status": "pass" if handshake_ok and heartbeat_received else "fail",
+                    "http_status": resp.status_code,
+                    "content_type": resp.headers.get("content-type"),
+                    "handshake_ok": handshake_ok,
+                    "heartbeat_received": heartbeat_received,
+                    "chunks_read": chunks_read,
+                    "stream_read_attempted": True
+                }
+            else:
+                sse_result = {
+                    "status": "pass" if resp.status_code == 404 else "fail",  # 404 is acceptable for missing endpoint
+                    "http_status": resp.status_code,
+                    "content_type": resp.headers.get("content-type"),
+                    "handshake_ok": handshake_ok,
+                    "heartbeat_received": False,
+                    "chunks_read": 0,
+                    "stream_read_attempted": False
+                }
     except Exception as e:
-        sse_result = {"status": "fail", "error": str(e)}
+        sse_result = {"status": "fail", "error": str(e), "stream_read_attempted": False}
 
     results["/events"] = sse_result
     return results

@@ -3,20 +3,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from copy import deepcopy
 from typing import Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
+import anyio
+import redis
+import redis.asyncio as aioredis
 
-try:
-    import redis
-    import redis.asyncio as aioredis
-except ImportError:
-    redis = None
-    aioredis = None
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set
+from enum import Enum
+import threading
+from pathlib import Path
 
 from neo4j import GraphDatabase
 from neo4j import AsyncGraphDatabase
@@ -662,7 +665,7 @@ async def force_reflection(query: Dict):
     if include_consciousness:
         try:
             # Import consciousness module only when needed
-            from consciousness.self_model import get_self_model
+            from denis_unified_v1.consciousness.self_model import get_self_model
             consciousness_metrics = await _calculate_consciousness_metrics(perception_reflection, patterns, temporal_analysis)
         except ImportError:
             # Degraded mode without consciousness metrics
@@ -917,7 +920,7 @@ async def metacognitive_learn(feedback: Dict):
     # Store in memory backend for persistence
     try:
         # Import consciousness module only when needed
-        from consciousness.self_model import get_self_model
+        from denis_unified_v1.consciousness.self_model import get_self_model
         # Use get_self_model if needed
     except ImportError:
         pass  # Degraded mode without consciousness features
@@ -1020,80 +1023,6 @@ async def metacognitive_feedback(limit: int = 10, include_analysis: bool = True)
     return feedback_data
 
 
-@router.get("/capabilities")
-async def get_capabilities():
-    """Get current capabilities snapshot v1."""
-    try:
-        service = get_capabilities_service()
-        if not service:
-            return {
-                "status": "degraded",
-                "snapshot": None,
-                "errors": ["capabilities_service_not_available"],
-                "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            }
-
-        snapshot = service.get_snapshot()
-        if not snapshot:
-            try:
-                snapshot = await service.refresh_snapshot()
-            except Exception as e:
-                return {
-                    "status": "degraded",
-                    "snapshot": None,
-                    "errors": [f"refresh_failed: {str(e)}"],
-                    "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                }
-
-        # Ensure snapshot is a dict
-        if not isinstance(snapshot, dict):
-            return {
-                "status": "degraded",
-                "snapshot": None,
-                "errors": [f"invalid_snapshot_type: {type(snapshot)}"],
-                "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            }
-
-        # Convert to API format - simplified and safe
-        capabilities = []
-        for cap_id, cap_snapshot in snapshot.items():
-            try:
-                # Safe extraction with defaults
-                cap_data = {
-                    "id": str(getattr(cap_snapshot, 'id', cap_id) or cap_id),
-                    "category": str(getattr(cap_snapshot, 'category', 'unknown')),
-                    "status": str(getattr(cap_snapshot, 'status', {}).get('value', 'unknown') if hasattr(getattr(cap_snapshot, 'status', {}), 'value') else getattr(cap_snapshot, 'status', 'unknown')),
-                    "confidence": float(getattr(cap_snapshot, 'confidence', 0.0) or 0.0),
-                    "evidence_count": len(getattr(cap_snapshot, 'evidence', [])),
-                    "has_metrics": bool(getattr(cap_snapshot, 'metrics', None)),
-                    "version": str(getattr(cap_snapshot, 'version', 'v1'))
-                }
-                capabilities.append(cap_data)
-            except Exception:
-                # Skip any problematic capability
-                continue
-
-        return {
-            "status": "ok" if capabilities else "degraded",
-            "snapshot": {
-                "capabilities": capabilities,
-                "total_count": len(capabilities),
-                "snapshot_version": "v1"
-            },
-            "errors": [],
-            "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        }
-
-    except Exception as e:
-        # Always return a valid JSON-serializable dict
-        return {
-            "status": "degraded",
-            "snapshot": None,
-            "errors": [f"unexpected_error: {str(e)}"],
-            "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        }
-
-
 @router.post("/capabilities/query")
 async def query_capabilities(query: Dict[str, Any]):
     """Query capabilities with filters."""
@@ -1148,47 +1077,24 @@ async def refresh_capabilities():
     }
 
 
-@router.get("/capabilities/events")
-async def capabilities_events():
-    """SSE stream for capabilities events - simplified for testing."""
-    async def event_generator():
-        # Always emit initial heartbeat regardless of imports
-        yield f"event: heartbeat\ndata: {{\"status\":\"ok\"}}\n\n"
-        
-        # Simple heartbeat every few seconds
-        import asyncio
-        count = 0
-        while count < 3:  # Limited iterations for testing
-            count += 1
-            yield f"event: heartbeat\ndata: {{\"count\": {count}, \"timestamp\": {time.time()}}}\n\n"
-            await asyncio.sleep(1)  # Short sleep for testing
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
-    )
-
-
 @router.get("/events")
-async def metacognitive_events():
-    """SSE stream of metacognitive events - simplified for testing."""
-    async def event_generator():
-        # Always emit initial heartbeat regardless of imports
-        yield f"event: heartbeat\ndata: {{\"status\":\"ok\"}}\n\n"
-
-        # Simple heartbeat every few seconds
-        import asyncio
-        count = 0
-        while count < 3:  # Limited iterations for testing
-            count += 1
-            yield f"event: heartbeat\ndata: {{\"count\": {count}, \"timestamp\": {time.time()}}}\n\n"
-            await asyncio.sleep(1)  # Short sleep for testing
+async def metacognitive_events(request: Request):
+    async def event_gen():
+        # Primer chunk inmediato para que el smoke no se quede colgado
+        yield "event: hello\ndata: " + json.dumps({"ts": time.time(), "ok": True}) + "\n\n"
+        while True:
+            if await request.is_disconnected():
+                return
+            yield "event: heartbeat\ndata: " + json.dumps({"ts": time.time()}) + "\n\n"
+            await anyio.sleep(4)  # 4 seconds for smoke-friendly testing (was 1)
 
     return StreamingResponse(
-        event_generator(),
+        event_gen(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
     )
 
 
@@ -1495,63 +1401,16 @@ async def inference_hedging_status():
 @router.get("/capabilities")
 async def get_capabilities():
     """Get current capabilities snapshot v1."""
-    # Comprehensive error handling to ensure we never return None
-    print("DEBUG: get_capabilities called")
     try:
-        print("DEBUG: Getting capabilities service")
-        service = await get_capabilities_service()
-        print(f"DEBUG: Service: {service}")
-        if not service:
-            result = {"status": "degraded", "capabilities": [], "errors": ["service_unavailable"]}
-            print(f"DEBUG: Returning service unavailable: {result}")
-            return result
-
-        print("DEBUG: Getting snapshot")
-        snapshot = service.get_snapshot()
-        print(f"DEBUG: Snapshot: {snapshot}")
-        if not snapshot:
-            try:
-                print("DEBUG: Refreshing snapshot")
-                snapshot = await service.refresh_snapshot()
-                print(f"DEBUG: Refreshed snapshot: {snapshot}")
-            except Exception as e:
-                print(f"DEBUG: Refresh failed: {e}")
-                result = {"status": "degraded", "capabilities": [], "errors": ["refresh_failed"]}
-                print(f"DEBUG: Returning refresh failed: {result}")
-                return result
-
-        print("DEBUG: Processing capabilities")
-        capabilities = []
-        for cap_id, cap_snapshot in snapshot.items():
-            try:
-                cap_data = {
-                    "id": str(cap_id),
-                    "status": "active"
-                }
-                capabilities.append(cap_data)
-            except Exception:
-                continue
-
-        result = {
-            "status": "ok" if capabilities else "degraded",
-            "capabilities": capabilities,
-            "total_count": len(capabilities)
-        }
-        print(f"DEBUG: Returning success: {result}")
-        return result
-
+        service = get_capabilities_service()  # sin await
+        snap = service.get_snapshot()         # si es sync
+        if snap is None:
+            snap = service.refresh_snapshot()
+        if snap is None:
+            snap = {}
+        return {"status": "ok", "snapshot": snap}
     except Exception as e:
-        # This should never happen, but just in case
-        print(f"DEBUG: Unexpected exception: {e}")
-        import traceback
-        traceback.print_exc()
-        result = {
-            "status": "degraded", 
-            "capabilities": [],
-            "errors": ["unexpected_error"]
-        }
-        print(f"DEBUG: Returning unexpected error: {result}")
-        return result
+        return {"status": "error", "snapshot": {}, "error": str(e)}
 
 
 @router.post("/capabilities/query")

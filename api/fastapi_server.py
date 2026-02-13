@@ -194,7 +194,7 @@ def create_app() -> FastAPI:
         pass
 
     # Metacognitive + Heart (siempre)
-    app.include_router(metacognitive_router)
+    app.include_router(metacognitive_router, prefix="/metacognitive")
     app.include_router(agent_heart_router)
 
     # Voice/Memory/Metagraph/Autopoiesis/Registry (gated + fail-open)
@@ -271,11 +271,9 @@ except Exception as e:
         }
 
     # Try to include at least the agent heart
-    try:
-        app.include_router(metacognitive_router)
-        app.include_router(agent_heart_router)
-    except Exception:
-        pass
+    # API Metacognitiva
+    app.include_router(metacognitive_router, prefix="/metacognitive")
+    app.include_router(agent_heart_router)
 
 # Setup metrics with fail-open
 try:

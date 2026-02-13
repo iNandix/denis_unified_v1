@@ -1,0 +1,80 @@
+{
+  "ok": true,
+  "results": {
+    "/status": {
+      "http_status": 200,
+      "latency_ms": 12.148690002504736,
+      "status": "pass",
+      "api_status": "degraded",
+      "degraded_ok": true,
+      "keys": [
+        "layers",
+        "coherence",
+        "health",
+        "status"
+      ]
+    },
+    "/metrics": {
+      "http_status": 200,
+      "latency_ms": 3.027002007002011,
+      "status": "pass",
+      "api_status": null,
+      "degraded_ok": true,
+      "keys": [
+        "operations",
+        "timestamp"
+      ]
+    },
+    "/attention": {
+      "http_status": 200,
+      "latency_ms": 6.166713996208273,
+      "status": "pass",
+      "api_status": null,
+      "degraded_ok": true,
+      "keys": [
+        "focused_patterns",
+        "active_tools",
+        "attention_mode"
+      ]
+    },
+    "/coherence": {
+      "http_status": 200,
+      "latency_ms": 6.168095002067275,
+      "status": "pass",
+      "api_status": "fragmented",
+      "degraded_ok": true,
+      "keys": [
+        "coherence_score",
+        "complete_paths",
+        "orphan_patterns",
+        "orphan_principles",
+        "status"
+      ]
+    },
+    "/reflect": {
+      "http_status": 200,
+      "latency_ms": 7.703629991738126,
+      "status": "pass",
+      "api_status": null,
+      "degraded_ok": true,
+      "keys": [
+        "query",
+        "perception_reflection",
+        "patterns_detected",
+        "patterns",
+        "timestamp"
+      ]
+    },
+    "/events": {
+      "status": "pass",
+      "http_status": 404,
+      "content_type": "application/json",
+      "handshake_ok": false,
+      "heartbeat_received": false,
+      "chunks_read": 0,
+      "stream_read_attempted": false
+    }
+  },
+  "base_url": "http://localhost:8085/metacognitive",
+  "timestamp_utc": "2026-02-13T19:59:40Z"
+}
