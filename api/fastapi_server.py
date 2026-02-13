@@ -51,14 +51,26 @@ class InMemoryRateLimiter:
         q.append(now)
         return True, len(q)
 
+    def is_allowed(self, key: str) -> bool:
+        allowed, _ = self.check(key)
+        return allowed
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Denis Cognitive Engine", version="1.0.0")
     flags = load_feature_flags()
     runtime = DenisRuntime()
-    limiter = InMemoryRateLimiter(
-        limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100"))
-    )
+    if flags.get("ENABLE_ADVANCED_RATE_LIMITING", False):
+        from denis_unified_v1.rate_limiting import RateLimiter
+        limiter = RateLimiter(
+            redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
+            limit=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100")),
+            window=60
+        )
+    else:
+        limiter = InMemoryRateLimiter(
+            limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100"))
+        )
     auth_token = (os.getenv("DENIS_API_BEARER_TOKEN") or "").strip()
 
     @app.on_event("startup")
@@ -69,6 +81,16 @@ def create_app() -> FastAPI:
         
         alert_manager = AlertManager()
         await alert_manager.check_and_alert()
+
+    @app.on_event("startup")
+    async def init_limiter():
+        if isinstance(limiter, RateLimiter):
+            await limiter.initialize()
+
+    @app.on_event("shutdown")
+    async def shutdown_limiter():
+        if isinstance(limiter, RateLimiter):
+            await limiter.close()
 
     raw_origins = os.getenv("DENIS_CORS_ORIGINS", "*")
     cors_origins = [x.strip() for x in raw_origins.split(",") if x.strip()]
@@ -102,14 +124,12 @@ def create_app() -> FastAPI:
                     },
                 )
 
-        ok, used = limiter.check(ip)
-        if not ok:
+        if not limiter.is_allowed(ip):
             return JSONResponse(
                 status_code=429,
                 content={
                     "error": "rate_limited",
                     "request_id": request_id,
-                    "hits_last_minute": used,
                     "timestamp_utc": _utc_now(),
                 },
             )
