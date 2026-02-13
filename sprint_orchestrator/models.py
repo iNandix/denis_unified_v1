@@ -58,8 +58,32 @@ class SprintSession:
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["projects"] = [project.as_dict() for project in self.projects]
-        payload["assignments"] = [assignment.as_dict() for assignment in self.assignments]
+        payload["assignments"] = [
+            assignment.as_dict() for assignment in self.assignments
+        ]
         return payload
+
+
+@dataclass(frozen=True)
+class SprintTask:
+    """A concrete task assigned to a worker."""
+
+    task_id: str
+    session_id: str
+    worker_id: str
+    kind: str  # e.g., "qcli.search", "implementation", "validation"
+    description: str
+    project_path: str  # Path to project root for this task
+    payload: dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"  # pending, running, done, error
+    created_utc: str = field(default_factory=utc_now)
+    started_utc: str | None = None
+    completed_utc: str | None = None
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)

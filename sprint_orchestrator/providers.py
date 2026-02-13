@@ -159,7 +159,8 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
             mode="api",
             request_format="openai_chat",
             configured=not opencode_missing and bool(opencode_endpoint),
-            missing_env=opencode_missing + (["LLM_BASE_URL"] if not opencode_endpoint else []),
+            missing_env=opencode_missing
+            + (["LLM_BASE_URL"] if not opencode_endpoint else []),
             endpoint=opencode_endpoint,
             queue="",
             notes="uses LLM_BASE_URL + OPENAI_API_KEY",
@@ -180,7 +181,9 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
     )
 
     groq_missing = _missing(env, ["GROQ_API_KEY"])
-    groq_endpoint = (env.get("DENIS_GROQ_URL") or "https://api.groq.com/openai/v1/chat/completions").strip()
+    groq_endpoint = (
+        env.get("DENIS_GROQ_URL") or "https://api.groq.com/openai/v1/chat/completions"
+    ).strip()
     statuses.append(
         ProviderStatus(
             provider="groq",
@@ -196,7 +199,8 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
 
     openrouter_missing = _missing(env, ["OPENROUTER_API_KEY"])
     openrouter_endpoint = (
-        env.get("DENIS_OPENROUTER_URL") or "https://openrouter.ai/api/v1/chat/completions"
+        env.get("DENIS_OPENROUTER_URL")
+        or "https://openrouter.ai/api/v1/chat/completions"
     ).strip()
     statuses.append(
         ProviderStatus(
@@ -212,7 +216,9 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
     )
 
     claude_missing = _missing(env, ["ANTHROPIC_API_KEY"])
-    claude_endpoint = (env.get("DENIS_ANTHROPIC_URL") or "https://api.anthropic.com/v1/messages").strip()
+    claude_endpoint = (
+        env.get("DENIS_ANTHROPIC_URL") or "https://api.anthropic.com/v1/messages"
+    ).strip()
     statuses.append(
         ProviderStatus(
             provider="claude",
@@ -226,7 +232,9 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
         )
     )
 
-    vllm_endpoint = (env.get("DENIS_VLLM_URL") or "http://10.10.10.2:9999/v1/chat/completions").strip()
+    vllm_endpoint = (
+        env.get("DENIS_VLLM_URL") or "http://10.10.10.2:9999/v1/chat/completions"
+    ).strip()
     statuses.append(
         ProviderStatus(
             provider="vllm",
@@ -248,7 +256,8 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
             mode="api",
             request_format="openai_chat",
             configured=not ollama_missing and bool(ollama_endpoint),
-            missing_env=ollama_missing + (["DENIS_OLLAMA_CLOUD_URL"] if not ollama_endpoint else []),
+            missing_env=ollama_missing
+            + (["DENIS_OLLAMA_CLOUD_URL"] if not ollama_endpoint else []),
             endpoint=ollama_endpoint,
             queue="",
             notes="",
@@ -285,6 +294,22 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
             notes="recommended for distributed execution",
         )
     )
+
+    # qcli local tools (always available if qcli integration is installed)
+    qcli_available = True  # Assume qcli_integration module is present
+    for tool_name in ["qcli.search", "qcli.crossref", "qcli.index", "qcli.context"]:
+        statuses.append(
+            ProviderStatus(
+                provider=tool_name,  # e.g., "qcli.search"
+                mode="local",
+                request_format="local_tool",
+                configured=qcli_available,
+                missing_env=[],
+                endpoint="",
+                queue="",
+                notes=f"qcli local tool: {tool_name}",
+            )
+        )
 
     return statuses
 
@@ -376,7 +401,11 @@ def ordered_configured_provider_ids(
             ordered.append(provider_id)
 
     primary = (config.primary_provider or "").strip()
-    if config.pin_legacy_first and (not primary or primary == "legacy_core") and "legacy_core" in ordered:
+    if (
+        config.pin_legacy_first
+        and (not primary or primary == "legacy_core")
+        and "legacy_core" in ordered
+    ):
         ordered = ["legacy_core"] + [item for item in ordered if item != "legacy_core"]
     elif primary and primary in ordered:
         ordered = [primary] + [item for item in ordered if item != primary]

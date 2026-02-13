@@ -5,10 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 import time
+import asyncio
 
 from .config import SprintOrchestratorConfig
 from .event_bus import EventBus, publish_event
-from .model_adapter import build_provider_request, invoke_provider_request, parse_provider_response
+from .model_adapter import (
+    build_provider_request,
+    invoke_provider_request,
+    parse_provider_response,
+)
 from .models import SprintEvent
 from .providers import ProviderStatus, merged_env
 from .session_store import SessionStore
@@ -51,7 +56,10 @@ def dispatch_worker_task(
             worker_id=worker_id,
             kind="worker.dispatch.start",
             message=f"dispatch provider={provider_status.provider} mode={provider_status.mode}",
-            payload={"provider": provider_status.provider, "mode": provider_status.mode},
+            payload={
+                "provider": provider_status.provider,
+                "mode": provider_status.mode,
+            },
         ),
         bus,
     )
@@ -61,7 +69,51 @@ def dispatch_worker_task(
             details = _dispatch_celery(config, provider_status, messages)
             status = "ok"
             mode = "celery"
-        elif provider_status.request_format in {"openai_chat", "anthropic_messages", "denis_chat"}:
+        elif provider_status.request_format == "local_tool":
+            # Execute local qcli tool
+            from .tool_executor import ToolExecutor
+            from .session_store import SessionStore as _SessionStore  # type: ignore
+
+            # Get session store path from config (we need store for events)
+            # Since we don't have store directly here, we create a minimal one?
+            # Better: pass store as additional arg? But dispatch_worker_task receives store.
+            executor = ToolExecutor(config, store, bus)
+            # Extract tool arguments from messages (last user message)
+            # messages is list of {role, content}. For tool calls, content is JSON
+            if not messages:
+                raise ValueError("No messages provided for local_tool")
+            last_msg = messages[-1]
+            if last_msg["role"] != "user":
+                raise ValueError("Expected user message for local_tool")
+            try:
+                # Parse JSON content as tool call arguments
+                import json as _json
+
+                args = _json.loads(last_msg["content"])
+            except Exception:
+                args = {}
+            # tool name is the provider
+            tool_name = provider_status.provider
+            loop = (
+                asyncio.get_event_loop() if hasattr(asyncio, "get_event_loop") else None
+            )
+            if loop and loop.is_running():
+                result = loop.run_until_complete(
+                    executor.execute(session_id, worker_id, tool_name, args)
+                )
+            else:
+                # Fallback to sync
+                result = asyncio.run(
+                    executor.execute(session_id, worker_id, tool_name, args)
+                )
+            details = result
+            status = "ok"
+            mode = "local_tool"
+        elif provider_status.request_format in {
+            "openai_chat",
+            "anthropic_messages",
+            "denis_chat",
+        }:
             request = build_provider_request(
                 config=config,
                 status=provider_status,
@@ -95,7 +147,10 @@ def dispatch_worker_task(
                 worker_id=worker_id,
                 kind="worker.dispatch.error",
                 message=str(exc)[:400],
-                payload={"provider": provider_status.provider, "mode": provider_status.mode},
+                payload={
+                    "provider": provider_status.provider,
+                    "mode": provider_status.mode,
+                },
             ),
             bus,
         )
@@ -148,7 +203,10 @@ def _dispatch_celery(
 ) -> dict[str, Any]:
     env = merged_env(config)
     task_name = (env.get("DENIS_SPRINT_CELERY_TASK") or "denis.sprint.execute").strip()
-    queue = provider_status.queue or (env.get("DENIS_SPRINT_CREW_QUEUE") or "sprint:crewai").strip()
+    queue = (
+        provider_status.queue
+        or (env.get("DENIS_SPRINT_CREW_QUEUE") or "sprint:crewai").strip()
+    )
     app_name = (env.get("DENIS_SPRINT_CELERY_APP") or "denis_crew_tasks").strip()
 
     try:
