@@ -1,10 +1,17 @@
 """Cliente unificado para los 6 motores SMX."""
+
 import asyncio
 import httpx
 from typing import Dict, List, Optional
 from dataclasses import dataclass
+import time
 
-from metacognitive.hooks import metacognitive_trace
+from denis_unified_v1.metacognitive.hooks import metacognitive_trace
+from opentelemetry import trace
+from denis_unified_v1.observability.metrics import smx_motor_calls, smx_motor_latency
+
+tracer = trace.get_tracer(__name__)
+
 
 @dataclass
 class SMXMotor:
@@ -14,6 +21,7 @@ class SMXMotor:
     port: int
     node: str
     healthy: bool = True
+
 
 class SMXClient:
     """Cliente para orquestar llamadas a los 6 motores SMX."""
@@ -31,12 +39,12 @@ class SMXClient:
 
         # Semáforos por capacidad real de cada motor
         self.semaphores = {
-            "fast_check": asyncio.Semaphore(4),   # Qwen 0.5B: 4 slots
-            "tokenize": asyncio.Semaphore(3),     # SmolLM2: 3 slots
-            "safety": asyncio.Semaphore(2),       # Gemma 1B: 2 slots
-            "intent": asyncio.Semaphore(2),       # Qwen 1.5B: 2 slots
-            "response": asyncio.Semaphore(4),     # Qwen 3B: 4 slots
-            "macro": asyncio.Semaphore(2),        # QwenCoder 7B: 2 slots
+            "fast_check": asyncio.Semaphore(4),  # Qwen 0.5B: 4 slots
+            "tokenize": asyncio.Semaphore(3),  # SmolLM2: 3 slots
+            "safety": asyncio.Semaphore(2),  # Gemma 1B: 2 slots
+            "intent": asyncio.Semaphore(2),  # Qwen 1.5B: 2 slots
+            "response": asyncio.Semaphore(4),  # Qwen 3B: 4 slots
+            "macro": asyncio.Semaphore(2),  # QwenCoder 7B: 2 slots
         }
 
     async def health_check_all(self) -> Dict[str, bool]:
@@ -53,7 +61,13 @@ class SMXClient:
         return results
 
     @metacognitive_trace(operation="smx_motor_call")
-    async def call_motor(self, role: str, messages: List[Dict], max_tokens: int = 50, stream: bool = False):
+    async def call_motor(
+        self,
+        role: str,
+        messages: List[Dict],
+        max_tokens: int = 50,
+        stream: bool = False,
+    ):
         """Llama a motor con rate limiting por slot."""
         motor = next((m for m in self.motors if m.role == role), None)
         if not motor or not motor.healthy:
@@ -64,16 +78,43 @@ class SMXClient:
         if not sem:
             raise ValueError(f"No semaphore for {role}")
 
-        async with sem:  # Bloquea si slots llenos
-            payload = {
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "stream": stream,
-            }
+        with tracer.start_as_current_span(
+            "smx.call_motor",
+            attributes={
+                "smx.motor.role": role,
+                "smx.max_tokens": max_tokens,
+            },
+        ) as span:
+            start_time = time.time()
+            success = False
+            latency_ms = 0
 
-            resp = await self.client.post(
-                f"{motor.url}:{motor.port}/v1/chat/completions",
-                json=payload,
-            )
-            resp.raise_for_status()
-            return resp.json()
+            try:
+                async with sem:  # Bloquea si slots llenos
+                    payload = {
+                        "messages": messages,
+                        "max_tokens": max_tokens,
+                        "stream": stream,
+                    }
+
+                    resp = await self.client.post(
+                        f"{motor.url}:{motor.port}/v1/chat/completions",
+                        json=payload,
+                    )
+                    resp.raise_for_status()
+                    success = True
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    result = resp.json()
+
+                smx_motor_calls.labels(motor=role, status="success").inc()
+            except Exception:
+                smx_motor_calls.labels(motor=role, status="error").inc()
+                raise
+            finally:
+                latency = time.time() - start_time
+                smx_motor_latency.labels(motor=role).observe(latency)
+
+            span.set_attribute("smx.latency_ms", latency_ms)
+            span.set_attribute("smx.success", success)
+
+            return result

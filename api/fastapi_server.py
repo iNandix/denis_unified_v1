@@ -12,6 +12,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi_utils.tasks import repeat_every
 
 from denis_unified_v1.api.openai_compatible import DenisRuntime, build_openai_router
 from denis_unified_v1.api.memory_handler import build_memory_router
@@ -26,6 +27,8 @@ from denis_unified_v1.autopoiesis.dashboard import (
 from denis_unified_v1.feature_flags import load_feature_flags
 from denis_unified_v1.metagraph.dashboard import build_router as build_metagraph_router
 from denis_unified_v1.api.metacognitive_api import router as metacognitive_router
+from denis_unified_v1.observability.tracing import setup_tracing
+from denis_unified_v1.observability.metrics import setup_metrics
 
 
 def _utc_now() -> str:
@@ -57,6 +60,15 @@ def create_app() -> FastAPI:
         limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100"))
     )
     auth_token = (os.getenv("DENIS_API_BEARER_TOKEN") or "").strip()
+
+    @app.on_event("startup")
+    @repeat_every(seconds=60)  # Check every minute
+    async def check_anomalies_background():
+        """Background task para chequear anomalías."""
+        from denis_unified_v1.observability.anomaly_detector import AlertManager
+        
+        alert_manager = AlertManager()
+        await alert_manager.check_and_alert()
 
     raw_origins = os.getenv("DENIS_CORS_ORIGINS", "*")
     cors_origins = [x.strip() for x in raw_origins.split(",") if x.strip()]
@@ -154,4 +166,11 @@ def create_app() -> FastAPI:
     return app
 
 
+# Setup tracing (before app creation)
+if os.getenv("ENABLE_TRACING", "true").lower() == "true":
+    setup_tracing()
+
 app = create_app()
+
+# Setup metrics
+setup_metrics(app)

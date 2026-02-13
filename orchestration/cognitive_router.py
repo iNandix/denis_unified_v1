@@ -33,6 +33,10 @@ from typing import Any, Dict, List, Optional
 import redis
 
 from denis_unified_v1.feature_flags import load_feature_flags
+from opentelemetry import trace
+from denis_unified_v1.observability.metrics import cognitive_router_decisions, l1_pattern_usage
+
+tracer = trace.get_tracer(__name__)
 
 
 class RoutingStrategy(Enum):
@@ -782,48 +786,64 @@ class CognitiveRouter:
         """
         Ruta request usando patterns L1 del grafo.
         """
-        # 1) Consultar patterns L1 del grafo
-        patterns = self._get_applicable_patterns(request)
-        
-        # 2) Seleccionar mejor pattern
-        if patterns:
-            best_pattern = patterns[0]  # Ya vienen ordenados por confidence
-            tool_name = best_pattern["tools"][0] if best_pattern["tools"] else "smx_response"
-            confidence = best_pattern["confidence"]
-            pattern_id = best_pattern["pattern_id"]
-        else:
-            # Fallback: predictor heurístico
-            prediction = await self.tool_selection_model.predict(request)
-            tool_name = prediction["tool"]
-            confidence = prediction["confidence"]
-            pattern_id = None
-        
-        # 3) Ejecutar tool (simulado aquí, real en router.py)
-        result = {
-            "success": True,
-            "latency_ms": 100,  # Placeholder
-        }
-        
-        # 4) Monitoreo metacognitivo
-        quality = await self.metacognitive_monitor.evaluate(request, result)
-        
-        # 5) Aprendizaje
-        await self.learning_loop.learn(request, tool_name, result, quality)
-        
-        # 6) Registrar patrón exitoso
-        if quality["score"] > 0.8:
-            await self.behavior_handbook.record_pattern(request, tool_name, result)
-        
-        return {
-            "result": result,
-            "meta": {
-                "tool_used": tool_name,
-                "confidence": confidence,
-                "quality_score": quality["score"],
-                "pattern_id": pattern_id,
-                "patterns_consulted": len(patterns),
-            },
-        }
+        with tracer.start_as_current_span(
+            "cognitive_router.route",
+            attributes={
+                "router.intent": request.get("intent"),
+                "router.route_hint": request.get("route_hint"),
+            }
+        ) as span:
+            # 1) Consultar patterns L1 del grafo
+            patterns = self._get_applicable_patterns(request)
+            
+            # 2) Seleccionar mejor pattern
+            if patterns:
+                best_pattern = patterns[0]  # Ya vienen ordenados por confidence
+                tool_name = best_pattern["tools"][0] if best_pattern["tools"] else "smx_response"
+                confidence = best_pattern["confidence"]
+                pattern_id = best_pattern["pattern_id"]
+            else:
+                # Fallback: predictor heurístico
+                prediction = await self.tool_selection_model.predict(request)
+                tool_name = prediction["tool"]
+                confidence = prediction["confidence"]
+                pattern_id = None
+            
+            cognitive_router_decisions.labels(tool=tool_name, pattern_id=pattern_id or "").inc()
+            
+            if pattern_id:
+                l1_pattern_usage.labels(pattern_id=pattern_id).inc()
+            
+            # 3) Ejecutar tool (simulado aquí, real en router.py)
+            result = {
+                "success": True,
+                "latency_ms": 100,  # Placeholder
+            }
+            
+            # 4) Monitoreo metacognitivo
+            quality = await self.metacognitive_monitor.evaluate(request, result)
+            
+            # 5) Aprendizaje
+            await self.learning_loop.learn(request, tool_name, result, quality)
+            
+            # 6) Registrar patrón exitoso
+            if quality["score"] > 0.8:
+                await self.behavior_handbook.record_pattern(request, tool_name, result)
+            
+            span.set_attribute("router.tool_used", tool_name)
+            span.set_attribute("router.confidence", confidence)
+            span.set_attribute("router.pattern_id", pattern_id)
+            
+            return {
+                "result": result,
+                "meta": {
+                    "tool_used": tool_name,
+                    "confidence": confidence,
+                    "quality_score": quality["score"],
+                    "pattern_id": pattern_id,
+                    "patterns_consulted": len(patterns),
+                },
+            }
 
     def _get_applicable_patterns(self, request: Dict) -> List[Dict]:
         """Consulta patrones L1 aplicables desde grafo Neo4j."""

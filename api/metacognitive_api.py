@@ -216,3 +216,13 @@ async def approve_proposal(proposal_id: str, user: str = "admin"):
     success = approval.approve_proposal(proposal_id, user)
     
     return {"approved": success, "proposal_id": proposal_id}
+
+@router.get("/alerts")
+async def check_alerts():
+    """Chequea y devuelve anomalías detectadas."""
+    from denis_unified_v1.observability.anomaly_detector import AlertManager
+    
+    alert_manager = AlertManager()
+    result = await alert_manager.check_and_alert()
+    
+    return result
