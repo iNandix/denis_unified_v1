@@ -27,7 +27,8 @@ from enum import Enum
 import json
 import os
 import re
-from typing import Any
+import time
+from typing import Any, Dict, List, Optional
 
 import redis
 
@@ -105,9 +106,11 @@ class Neo4jClient:
         if cls._driver is None:
             from neo4j import GraphDatabase
 
-            uri = os.getenv("NEO4J_URI", "bolt://localhost:19040")
+            uri = os.getenv("NEO4J_URI", "bolt://10.10.10.1:7687")
             user = os.getenv("NEO4J_USER", "neo4j")
-            password = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS", "Leon1234$")
+            password = os.getenv("NEO4J_PASSWORD") or os.getenv(
+                "NEO4J_PASS", "Leon1234$"
+            )
             if password:
                 cls._driver = GraphDatabase.driver(uri, auth=(user, password))
         return cls._driver
@@ -169,7 +172,7 @@ def _get_tools_from_neo4j() -> dict[str, ToolInfo]:
     """Carga herramientas del grafo Neo4j REAL de Denis."""
     try:
         driver = Neo4jClient.get_driver()
-        
+
         with driver.session() as session:
             # Query: obtener nodos Tool del grafo
             result = session.run("""
@@ -181,7 +184,7 @@ def _get_tools_from_neo4j() -> dict[str, ToolInfo]:
                        t.cost_per_call as cost
                 ORDER BY t.success_rate DESC
             """)
-            
+
             tools = {}
             for record in result:
                 tool_name = record["name"]
@@ -193,7 +196,7 @@ def _get_tools_from_neo4j() -> dict[str, ToolInfo]:
                     success_rate=record.get("success_rate", 0.0),
                     avg_latency_ms=record.get("latency", 0),
                 )
-            
+
             # Si el grafo está vacío, NO devuelvas {}
             # Devuelve herramientas mínimas pero REALES del sistema
             if not tools:
@@ -215,16 +218,20 @@ def _get_tools_from_neo4j() -> dict[str, ToolInfo]:
                         avg_latency_ms=200,
                     ),
                 }
-            
+
             return tools
-    
+
     except Exception as e:
         # Si Neo4j falla, log el error pero NO rompas el sistema
         print(f"WARNING: Neo4j tools load failed: {e}")
         # Fallback mínimo
         return {
-            "smx_response": ToolInfo(name="smx_response", available=True, success_rate=0.95),
-            "smx_fast_path": ToolInfo(name="smx_fast_path", available=True, success_rate=0.90),
+            "smx_response": ToolInfo(
+                name="smx_response", available=True, success_rate=0.95
+            ),
+            "smx_fast_path": ToolInfo(
+                name="smx_fast_path", available=True, success_rate=0.90
+            ),
         }
 
 
@@ -371,35 +378,6 @@ def _score_tool_for_task(tool: ToolInfo, features: dict[str, float]) -> float:
 
     return max(0.0, min(1.0, final_score))
 
-
-def _analyze_failure(tool_name: str, error: str) -> dict[str, Any]:
-    analysis = {
-        "tool": tool_name,
-        "error_type": "unknown",
-        "suggestion": "Review tool implementation",
-        "retry_recommended": True,
-    }
-
-    error_lower = error.lower()
-
-    if "timeout" in error_lower:
-        analysis["error_type"] = "timeout"
-        analysis["suggestion"] = "Consider increasing timeout or using alternative tool"
-    elif "not found" in error_lower or "does not exist" in error_lower:
-        analysis["error_type"] = "not_found"
-        analysis["suggestion"] = "Verify resource exists before retry"
-    elif "permission" in error_lower or "access" in error_lower:
-        analysis["error_type"] = "permission"
-        analysis["suggestion"] = "Check permissions or use different approach"
-    elif "syntax" in error_lower or "invalid" in error_lower:
-        analysis["error_type"] = "syntax"
-        analysis["suggestion"] = "Fix syntax error before retry"
-    elif "memory" in error_lower:
-        analysis["error_type"] = "memory"
-        analysis["suggestion"] = "Consider splitting task into smaller parts"
-    else:
-        analysis["error_type"] = "generic"
-        analysis["suggestion"] = "Review error and adjust approach"
 
 def _analyze_failure(tool_name: str, error: str) -> dict[str, Any]:
     analysis = {
@@ -799,41 +777,129 @@ class CognitiveRouter:
 
     async def route(self, request: Dict) -> Dict:
         """
-        Ruta request a tool apropiado con metacognición.
+        Ruta request a tool apropiado con metacognición L1/L2.
 
-        Flujo:
-        1. Predice mejor tool (ToolSelectionPredictor)
-        2. Ejecuta tool
-        3. Monitorea calidad (RoutingQualityMonitor)
-        4. Aprende de resultado (RoutingLearner)
-        5. Registra patrón exitoso (BehaviorHandbook)
+        Nuevo flujo:
+        1) Consulta patterns aplicables del grafo metacognitivo
+        2) Si hay match de alto confidence, usa patrón L1
+        3) Si no, fallback a predicción por modelo
+        4) Monitorea calidad y aprende
         """
-        # 1) Predicción
-        prediction = await self.tool_selection_model.predict(request)
-        tool_name = prediction["tool"]
-        confidence = prediction["confidence"]
+        # 1) Consultar patrones L1 aplicables
+        patterns = await self._get_applicable_patterns(request)
 
-        # 2) Ejecución
+        # 2) Usar pattern con mayor confidence si existe
+        if patterns:
+            best_pattern = patterns[0]  # Ya vienen ordenados por confidence
+            tool_name = best_pattern["tools"][0] if best_pattern["tools"] else None
+            confidence = best_pattern["confidence"]
+            reasoning = f"Usando patrón L1 '{best_pattern['pattern_id']}' con confianza {confidence:.2f}"
+
+            if not tool_name:
+                # Si por alguna razón no hay tools, hacer fallback
+                tool_name = "smx_response"
+                reasoning = "Patrón L1 sin tools asociados, usando fallback"
+        else:
+            # Fallback sin patterns: usar modelo de predicción
+            prediction = await self.tool_selection_model.predict(request)
+            tool_name = prediction["tool"]
+            confidence = prediction["confidence"]
+            reasoning = f"Sin patrón L1 aplicable, usando modelo predictivo con confianza {confidence:.2f}"
+
+        # Ejecución
         result = await self._execute_tool(tool_name, request)
 
-        # 3) Monitoreo
+        # Monitoreo
         quality = await self.metacognitive_monitor.evaluate(request, result)
+        quality_score = quality["score"]
 
-        # 4) Aprendizaje
+        # Registro metacognitivo (con pattern si aplica)
+        result["patterns"] = patterns
+
+        # Aprendizaje
+        if "pattern_id" in locals():
+            # Solo aprender si usamos patrón L1
+            await self._record_pattern_usage(
+                "L1", best_pattern["pattern_id"], quality_score
+            )
+
         await self.learning_loop.learn(request, tool_name, result, quality)
-
-        # 5) Registro
-        if quality["score"] > 0.8:
-            await self.behavior_handbook.record_pattern(request, tool_name, result)
 
         return {
             "result": result,
             "meta": {
                 "tool_used": tool_name,
                 "confidence": confidence,
-                "quality_score": quality["score"],
+                "quality_score": quality_score,
+                "reasoning": reasoning,
+                "patterns_considered": patterns,
             },
         }
+
+    async def _get_applicable_patterns(self, request: Dict) -> List[Dict]:
+        """Consulta patrones L1 aplicables desde grafo Neo4j."""
+        patterns = []
+        intent = request.get("intent", "unknown")
+        text = request.get("text", "")
+        word_count = len(text.split())
+
+        try:
+            driver = Neo4jClient.get_driver()
+            with driver.session() as session:
+                result = session.run(
+                    """
+                    MATCH (p:Pattern)-[:APPLIES_TO]->(t:Tool)
+                    WHERE $wordCount <= 3 AND p.id CONTAINS 'fast'  // Heurística simple
+                       OR p.type = $intent  // Coincidencia directa
+                       OR p.type = 'generic'
+                    RETURN p.id as pattern_id, 
+                           p.description as description,
+                           p.confidence as confidence,
+                           collect(t.name) as tools
+                    ORDER BY p.confidence DESC
+                    LIMIT 5
+                """,
+                    intent=intent,
+                    wordCount=word_count,
+                )
+
+                patterns = [dict(record) for record in result]
+
+                # Transformar a estructura estándar
+                return [
+                    {
+                        "pattern_id": p["pattern_id"],
+                        "type": intent,
+                        "description": p["description"],
+                        "confidence": p["confidence"],
+                        "tools": p["tools"],
+                    }
+                    for p in patterns
+                ]
+
+        except Exception as e:
+            print(f"Error consultando patrones L1: {e}")
+            return []
+
+    async def _record_pattern_usage(
+        self, layer: str, pattern_id: str, quality_score: float
+    ) -> None:
+        """Registra uso de patrón en grafo Neo4j."""
+        try:
+            driver = Neo4jClient.get_driver()
+            with driver.session() as session:
+                session.run(
+                    """
+                    MATCH (p:Pattern {id: $pattern_id})
+                    SET p.last_used = datetime(),
+                        p.usage_count = COALESCE(p.usage_count, 0) + 1,
+                        p.success_rate = COALESCE(p.success_rate, 0) * 0.9 + $quality_score * 0.1
+                """,
+                    pattern_id=pattern_id,
+                    quality_score=quality_score,
+                )
+        except Exception as e:
+            print(f"Error registrando uso de patrón: {e}")
 
     async def _execute_tool(self, tool_name: str, request: Dict) -> Dict:
         """
@@ -843,6 +909,7 @@ class CognitiveRouter:
         # Placeholder para ejecución real
         # Aquí se llamaría al tool correspondiente (SMX, code_interpreter, etc.)
         import asyncio
+
         await asyncio.sleep(0.1)  # Simular latencia
         return {
             "content": f"Executed {tool_name} for request {request.get('text', '')[:50]}",
