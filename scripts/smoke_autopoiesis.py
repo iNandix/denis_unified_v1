@@ -4,11 +4,9 @@ import asyncio, httpx, json
 
 async def test_autopoiesis():
     async with httpx.AsyncClient(timeout=15.0) as client:
-        # Ejecutar ciclo
         resp1 = await client.post("http://localhost:8085/metacognitive/autopoiesis/run")
         cycle_result = resp1.json()
         
-        # Listar propuestas
         resp2 = await client.get("http://localhost:8085/metacognitive/autopoiesis/proposals")
         proposals = resp2.json()
         
