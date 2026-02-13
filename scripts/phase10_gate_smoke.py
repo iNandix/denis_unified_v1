@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
+import time
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
@@ -184,37 +186,98 @@ async def check_rate_limit() -> CheckResult:
 
 
 async def main() -> Dict[str, Any]:
-    # Aseguramos flags mínimos de Phase10.
-    os.environ.setdefault("DENIS_USE_GATE_HARDENING", "true")
-
-    checks: List[CheckResult] = []
-    checks.append(await check_normal_request())
-    checks.append(await check_prompt_injection())
-    checks.append(await check_output_validation())
-    checks.append(await check_rate_limit())
-
-    passed = sum(1 for c in checks if c.ok)
-    total = len(checks)
-
-    status = "ok" if passed == total else "partial" if passed > 0 else "error"
-
-    payload = {
-        "status": status,
-        "passed": passed,
-        "total": total,
-        "checks": [c.as_dict() for c in checks],
+    artifact = {
+        "gatestatus": "unknown",
+        "totaltests": 0,
+        "passedtests": 0,
+        "failedtests": 0,
+        "skippedtests": 0,
+        "hardfailures": 0,
+        "gatereason": None,
+        "timestamp_utc": time.time(),
+        "ok": False,
+        "overall_success": False,
     }
+    try:
+        # Aseguramos flags mínimos de Phase10.
+        os.environ.setdefault("DENIS_USE_GATE_HARDENING", "true")
 
-    out_file = "phase10_gate_smoke.json"
-    with open(out_file, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        checks: List[CheckResult] = []
+        checks.append(await check_normal_request())
+        checks.append(await check_prompt_injection())
+        checks.append(await check_output_validation())
+        checks.append(await check_rate_limit())
 
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    print(f"\nResultados guardados en: {out_file}")
+        passed = sum(1 for c in checks if c.ok)
+        total = len(checks)
 
-    return payload
+        status = "ok" if passed == total else "partial" if passed > 0 else "error"
+
+        payload = {
+            "status": status,
+            "passed": passed,
+            "total": total,
+            "checks": [c.as_dict() for c in checks],
+        }
+
+        out_file = "phase10_gate_smoke.json"
+        with open(out_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        print(f"\nResultados guardados en: {out_file}")
+
+        return payload
+    except Exception as e:
+        payload = {
+            "status": "error",
+            "error": str(e),
+            "passed": 0,
+            "total": 0,
+            "checks": [],
+        }
+        out_file = "phase10_gate_smoke.json"
+        with open(out_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return payload
+    finally:
+        # Normalize artifact schema
+        if "status" in payload:
+            artifact["gatestatus"] = payload["status"]
+        artifact["totaltests"] = payload.get("total", 0)
+        artifact["passedtests"] = payload.get("passed", 0)
+        artifact["failedtests"] = artifact["totaltests"] - artifact["passedtests"]
+        artifact["skippedtests"] = 0
+        artifact["hardfailures"] = 1 if payload.get("status") == "error" else 0
+        artifact["gatereason"] = payload.get("error") or payload.get("status")
+        artifact["ok"] = artifact["passedtests"] == artifact["totaltests"] and artifact["hardfailures"] == 0
+        artifact["overall_success"] = artifact["ok"]
+        # Write final artifact
+        with open(out_file, "w", encoding="utf-8") as f:
+            json.dump({**payload, **artifact}, f, indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    try:
+        result = asyncio.run(main())
+        sys.exit(0 if result.get("ok", False) else 1)
+    except Exception as e:
+        # Fallback artifact for unhandled exceptions
+        artifact = {
+            "gatestatus": "error",
+            "totaltests": 0,
+            "passedtests": 0,
+            "failedtests": 0,
+            "skippedtests": 0,
+            "hardfailures": 1,
+            "gatereason": f"Unhandled exception: {str(e)}",
+            "timestamp_utc": time.time(),
+            "ok": False,
+            "overall_success": False,
+        }
+        with open("phase10_gate_smoke.json", "w", encoding="utf-8") as f:
+            json.dump(artifact, f, indent=2, ensure_ascii=False)
+        sys.exit(1)
 
