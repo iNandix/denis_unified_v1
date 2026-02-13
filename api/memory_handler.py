@@ -642,11 +642,180 @@ def build_memory_router() -> APIRouter:
             MERGE (nl1)-[:NEXT]->(nl2)
             """, {"from_layer": from_layer, "to_layer": to_layer})
 
-    @router.get("/contracts/verify/{user_id}")
-    async def contracts_verify(user_id: str) -> dict[str, Any]:
-        try:
-            return await legacy.contracts_verify(user_id)
-        except Exception as exc:
-            return {"status": "degraded", "error": str(exc)[:200], "user_id": user_id}
+    # ========== VOICE + LLM MODEL CONNECTIVITY ==========
 
-    return router
+    @router.post("/voice/register-turn")
+    async def register_voice_turn(
+        voice_component_id: str = Query(...),
+        turn_id: str = Query(...),
+        voice_data: dict[str, Any] = None
+    ) -> dict[str, Any]:
+        """Register voice component producing a turn in the cognitive trace."""
+        try:
+            from denis_unified_v1.memory.graph_writer import get_graph_writer
+            writer = get_graph_writer()
+            
+            voice_data = voice_data or {}
+            result = writer.record_voice_turn(voice_component_id, turn_id, voice_data)
+            
+            writer.close()
+            return {
+                "status": "voice_turn_registered" if result else "registration_deferred",
+                "voice_component_id": voice_component_id,
+                "turn_id": turn_id,
+                "relationship_created": result
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "registration_failed",
+                "error": str(exc)[:200],
+                "voice_component_id": voice_component_id,
+                "turn_id": turn_id
+            }
+
+    @router.post("/inference/model-selection")
+    async def register_model_selection(
+        turn_id: str = Query(...),
+        model_id: str = Query(...),
+        selection_data: dict[str, Any] = None
+    ) -> dict[str, Any]:
+        """Register model selection for a turn in the cognitive trace."""
+        try:
+            from denis_unified_v1.memory.graph_writer import get_graph_writer
+            writer = get_graph_writer()
+            
+            selection_data = selection_data or {}
+            result = writer.record_model_selection(turn_id, model_id, selection_data)
+            
+            # Also record model influence on reasoning trace if available
+            trace_id = selection_data.get("trace_id")
+            if trace_id and result:
+                influence_data = {
+                    "type": "model_selection",
+                    "strength": selection_data.get("confidence", 1.0),
+                    "selection_reason": selection_data.get("reason", "routing")
+                }
+                writer.record_model_influence(model_id, trace_id, influence_data)
+            
+            writer.close()
+            return {
+                "status": "model_selection_registered" if result else "registration_deferred",
+                "turn_id": turn_id,
+                "model_id": model_id,
+                "relationships_created": ["USED_MODEL"] + (["INFLUENCED"] if trace_id else [])
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "registration_failed",
+                "error": str(exc)[:200],
+                "turn_id": turn_id,
+                "model_id": model_id
+            }
+
+    @router.post("/voice/trace-connection")
+    async def register_voice_trace_connection(
+        voice_component_id: str = Query(...),
+        trace_id: str = Query(...),
+        connection_data: dict[str, Any] = None
+    ) -> dict[str, Any]:
+        """Register voice component connection to reasoning trace."""
+        try:
+            from denis_unified_v1.memory.graph_writer import get_graph_writer
+            writer = get_graph_writer()
+            
+            connection_data = connection_data or {}
+            result = writer.record_voice_trace_connection(voice_component_id, trace_id, connection_data)
+            
+            writer.close()
+            return {
+                "status": "voice_trace_connected" if result else "connection_deferred",
+                "voice_component_id": voice_component_id,
+                "trace_id": trace_id,
+                "relationships_created": ["CONTRIBUTED_TO", "INFLUENCED_BY"] if result else []
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "connection_failed",
+                "error": str(exc)[:200],
+                "voice_component_id": voice_component_id,
+                "trace_id": trace_id
+            }
+
+    @router.get("/connectivity/voice-llm-status")
+    async def get_voice_llm_connectivity_status() -> dict[str, Any]:
+        """Get current status of voice and LLM model connectivity in the graph."""
+        try:
+            # Try to get connectivity stats from Neo4j
+            import os
+            uri = os.getenv("NEO4J_URI", "bolt://10.10.10.1:7687")
+            user = os.getenv("NEO4J_USER", "neo4j")
+            password = os.getenv("NEO4J_PASSWORD", "")
+
+            if not password:
+                return {
+                    "status": "skippeddependency",
+                    "reason": "Neo4j not available for connectivity check",
+                    "voice_turns": 0,
+                    "model_selections": 0,
+                    "voice_trace_connections": 0,
+                    "cognitive_trace_integrity": 0.0
+                }
+
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(uri, auth=(user, password))
+            
+            with driver.session() as session:
+                # Count voice-related relationships
+                voice_query = """
+                MATCH (vc:VoiceComponent)-[:PRODUCED]->(t:Turn)
+                RETURN count(*) as voice_turns
+                """
+                voice_result = session.run(voice_query).single()
+                
+                # Count model-related relationships
+                model_query = """
+                MATCH (t:Turn)-[:USED_MODEL]->(llm:LLMModel)
+                RETURN count(*) as model_selections
+                """
+                model_result = session.run(model_query).single()
+                
+                # Count voice-trace connections
+                connection_query = """
+                MATCH (vc:VoiceComponent)-[:CONTRIBUTED_TO]->(rt:ReasoningTrace)
+                RETURN count(*) as voice_trace_connections
+                """
+                connection_result = session.run(connection_query).single()
+                
+                # Calculate cognitive trace integrity (turns with complete voice→model→trace chain)
+                integrity_query = """
+                MATCH (vc:VoiceComponent)-[:PRODUCED]->(t:Turn)-[:USED_MODEL]->(llm:LLMModel),
+                      (vc)-[:CONTRIBUTED_TO]->(rt:ReasoningTrace)<-[:INFLUENCED]-(llm)
+                RETURN count(DISTINCT t) as complete_chains,
+                       count(DISTINCT t) * 1.0 / count(DISTINCT t) as integrity_ratio
+                """
+                integrity_result = session.run(integrity_query).single()
+                
+            driver.close()
+            
+            return {
+                "status": "connected",
+                "neo4j_available": True,
+                "voice_turns": voice_result["voice_turns"],
+                "model_selections": model_result["model_selections"],
+                "voice_trace_connections": connection_result["voice_trace_connections"],
+                "cognitive_trace_integrity": integrity_result.get("integrity_ratio", 0.0),
+                "complete_chains": integrity_result.get("complete_chains", 0)
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "connectivity_check_failed",
+                "error": str(exc)[:200],
+                "voice_turns": 0,
+                "model_selections": 0,
+                "voice_trace_connections": 0,
+                "cognitive_trace_integrity": 0.0
+            }

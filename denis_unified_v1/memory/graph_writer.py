@@ -364,10 +364,100 @@ class GraphWriter:
 
         return flushed
 
-    def close(self):
-        """Clean up resources."""
-        if self.driver:
-            self.driver.close()
+    def record_voice_turn(self, voice_component_id: str, turn_id: str, voice_data: Dict[str, Any]) -> bool:
+        """Record VoiceComponent → Turn relationship for voice pipeline integration."""
+        query = """
+        // Ensure nodes exist
+        MERGE (vc:VoiceComponent {id: $voice_component_id})
+        SET vc.last_used = datetime(), vc.pipeline_status = $pipeline_status
+        
+        MERGE (t:Turn {id: $turn_id})
+        SET t.voice_source = $voice_component_id, t.voice_data = $voice_data
+        
+        // Create PRODUCED relationship
+        MERGE (vc)-[:PRODUCED {timestamp: datetime()}]->(t)
+        """
+        
+        params = {
+            "voice_component_id": voice_component_id,
+            "turn_id": turn_id,
+            "voice_data": json.dumps(voice_data),
+            "pipeline_status": voice_data.get("pipeline_status", "unknown")
+        }
+        
+        return self._execute_write(query, params)
+
+    def record_model_selection(self, turn_id: str, model_id: str, selection_data: Dict[str, Any]) -> bool:
+        """Record Turn → LLMModel relationship for model selection tracking."""
+        query = """
+        // Ensure nodes exist
+        MERGE (t:Turn {id: $turn_id})
+        
+        MERGE (llm:LLMModel {id: $model_id})
+        SET llm.name = $model_name,
+            llm.provider = $provider,
+            llm.last_selected = datetime(),
+            llm.selection_data = $selection_data
+        
+        // Create USED_MODEL relationship
+        MERGE (t)-[:USED_MODEL {timestamp: datetime(), confidence: $confidence}]->(llm)
+        """
+        
+        params = {
+            "turn_id": turn_id,
+            "model_id": model_id,
+            "model_name": selection_data.get("model_name", model_id),
+            "provider": selection_data.get("provider", "unknown"),
+            "selection_data": json.dumps(selection_data),
+            "confidence": selection_data.get("confidence", 0.0)
+        }
+        
+        return self._execute_write(query, params)
+
+    def record_model_influence(self, model_id: str, trace_id: str, influence_data: Dict[str, Any]) -> bool:
+        """Record LLMModel → ReasoningTrace relationship for model influence tracking."""
+        query = """
+        // Ensure nodes exist
+        MERGE (llm:LLMModel {id: $model_id})
+        
+        MERGE (rt:ReasoningTrace {id: $trace_id})
+        
+        // Create INFLUENCED relationship
+        MERGE (llm)-[:INFLUENCED {
+            timestamp: datetime(),
+            influence_type: $influence_type,
+            strength: $strength
+        }]->(rt)
+        """
+        
+        params = {
+            "model_id": model_id,
+            "trace_id": trace_id,
+            "influence_type": influence_data.get("type", "reasoning"),
+            "strength": influence_data.get("strength", 1.0)
+        }
+        
+        return self._execute_write(query, params)
+
+    def record_voice_trace_connection(self, voice_component_id: str, trace_id: str, connection_data: Dict[str, Any]) -> bool:
+        """Record VoiceComponent ↔ ReasoningTrace relationship for voice pipeline integration."""
+        query = """
+        // Ensure nodes exist
+        MERGE (vc:VoiceComponent {id: $voice_component_id})
+        MERGE (rt:ReasoningTrace {id: $trace_id})
+        
+        // Create bidirectional relationships
+        MERGE (vc)-[:CONTRIBUTED_TO {timestamp: datetime(), role: $voice_role}]->(rt)
+        MERGE (rt)-[:INFLUENCED_BY {timestamp: datetime(), source: 'voice'}]->(vc)
+        """
+        
+        params = {
+            "voice_component_id": voice_component_id,
+            "trace_id": trace_id,
+            "voice_role": connection_data.get("role", "input")
+        }
+        
+        return self._execute_write(query, params)
 
 
 # Global instance for application-wide use
