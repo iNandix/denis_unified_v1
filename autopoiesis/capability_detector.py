@@ -524,3 +524,105 @@ if __name__ == "__main__":
     print(f"Total: {len(all_gaps)}")
     for gap in all_gaps[:3]:
         print(f"- {gap.id}: {gap.title}")
+
+
+class CapabilityGapDetector:
+    """Detecta cuándo Denis necesita nuevas capacidades."""
+    
+    def __init__(self):
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        self.redis = redis.Redis.from_url(redis_url, decode_responses=True)
+    
+    def detect_gaps(self) -> List[Dict]:
+        """
+        Analiza errores recurrentes, latencias altas, patterns fallidos.
+        Devuelve lista de gaps detectados.
+        """
+        gaps = []
+        
+        # 1) Errores recurrentes en Redis
+        error_keys = self.redis.keys("errors:*")
+        for key in error_keys[:10]:  # Limit
+            error_data = self.redis.get(key)
+            if error_data:
+                gaps.append({
+                    "type": "error_recurrent",
+                    "description": f"Error recurrente: {key}",
+                    "severity": "medium",
+                    "proposal": "Implementar handler para este caso",
+                })
+        
+        # 2) Operaciones lentas (latencia > 2s)
+        operations = ["smx_motor_call", "cognitive_router_route"]
+        for op in operations:
+            latencies = self.redis.lrange(f"metrics:{op}:latency", 0, 99)
+            if latencies:
+                latencies_int = [int(x) for x in latencies]
+                avg = sum(latencies_int) // len(latencies_int)
+                
+                if avg > 2000:
+                    gaps.append({
+                        "type": "high_latency",
+                        "operation": op,
+                        "avg_latency_ms": avg,
+                        "severity": "high",
+                        "proposal": f"Optimizar {op} o añadir caché",
+                    })
+        
+        # 3) Tools con baja success_rate (desde Neo4j via metagraph)
+        from denis_unified_v1.metagraph.active_metagraph import L1PatternDetector
+        detector = L1PatternDetector()
+        patterns = detector.detect_patterns()
+        
+        for pattern in patterns:
+            if pattern["type"] == "low_success_rate":
+                gaps.append({
+                    "type": "tool_unreliable",
+                    "tool": pattern["tool"],
+                    "metric": pattern["metric"],
+                    "severity": "medium",
+                    "proposal": f"Revisar implementación de {pattern['tool']}",
+                })
+        
+        return gaps
+
+
+class ExtensionProposer:
+    """Propone extensiones concretas basadas en gaps."""
+    
+    def propose_extensions(self, gaps: List[Dict]) -> List[Dict]:
+        """Genera propuestas de código/configuración para cerrar gaps."""
+        proposals = []
+        
+        for gap in gaps:
+            if gap["type"] == "high_latency":
+                proposals.append({
+                    "id": f"cache_{gap['operation']}",
+                    "type": "add_cache",
+                    "target": gap["operation"],
+                    "code_template": f"# Add Redis cache for {gap['operation']}\n# ...",
+                    "priority": "high",
+                    "estimated_impact": "Reduce latency by 50%",
+                })
+            
+            elif gap["type"] == "tool_unreliable":
+                proposals.append({
+                    "id": f"fallback_{gap['tool']}",
+                    "type": "add_fallback",
+                    "target": gap["tool"],
+                    "code_template": f"# Add fallback for {gap['tool']}\n# ...",
+                    "priority": "medium",
+                    "estimated_impact": "Increase success_rate to 0.95+",
+                })
+            
+            elif gap["type"] == "error_recurrent":
+                proposals.append({
+                    "id": f"handler_{gap['description'][:20]}",
+                    "type": "add_error_handler",
+                    "description": gap["description"],
+                    "code_template": "# Add try/except wrapper\n# ...",
+                    "priority": "low",
+                    "estimated_impact": "Reduce error rate",
+                })
+        
+        return proposals
