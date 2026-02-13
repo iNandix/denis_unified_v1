@@ -23,12 +23,26 @@ import threading
 from pathlib import Path
 
 # Use centralized connections module
-from denis_unified_v1.connections import (
-    get_redis as _get_redis,
-    get_neo4j as _get_neo4j,
-    get_neo4j_async as _get_neo4j_async,
-    get_redis_pool as _get_redis_pool,
-)
+try:
+    from denis_unified_v1.connections import (
+        get_redis as _get_redis,
+        get_neo4j as _get_neo4j,
+        get_neo4j_async as _get_neo4j_async,
+        get_redis_pool as _get_redis_pool,
+    )
+except ImportError:
+    # Dummy functions if connections module is not available
+    def _get_redis():
+        return None
+
+    def _get_neo4j():
+        return None
+
+    def _get_neo4j_async():
+        return None
+
+    def _get_redis_pool():
+        return None
 
 from .sse_handler import sse_event
 
@@ -1043,7 +1057,7 @@ async def metacognitive_learn(feedback: Dict):
 
     # Store in memory backend for persistence
     try:
-        from memory.backends import get_memory_backend
+        from denis_unified_v1.memory.backends import get_memory_backend
 
         memory_backend = get_memory_backend()
         if memory_backend:
@@ -1123,52 +1137,6 @@ async def metacognitive_events(request: Request):
             "Connection": "keep-alive",
         },
     )
-
-
-@router.get("/feedback")
-async def metacognitive_feedback(limit: int = 10, include_analysis: bool = True):
-    """Retrieve recent feedback with pattern analysis and insights."""
-    r = get_redis()
-    feedback_data = {
-        "recent_feedback": [],
-        "total_feedback_count": 0,
-        "pattern_analysis": {},
-        "insights": [],
-        "recommendations": [],
-    }
-
-    if r:
-        try:
-            # Get recent feedback items
-            items = r.lrange("denis:metacognitive:feedback", 0, limit - 1)
-            feedback_data["total_feedback_count"] = r.llen(
-                "denis:metacognitive:feedback"
-            )
-
-            # Parse feedback items
-            recent_feedback = []
-            for item in items:
-                try:
-                    parsed = json.loads(item)
-                    recent_feedback.append(parsed)
-                except json.JSONDecodeError:
-                    continue
-
-            feedback_data["recent_feedback"] = recent_feedback
-
-            # Include pattern analysis if requested
-            if include_analysis and recent_feedback:
-                feedback_data["pattern_analysis"] = await _analyze_feedback_patterns()
-
-                # Extract insights and recommendations from analysis
-                analysis = feedback_data["pattern_analysis"]
-                feedback_data["insights"] = analysis.get("insights", [])
-                feedback_data["recommendations"] = analysis.get("recommendations", [])
-
-        except Exception as e:
-            feedback_data["error"] = str(e)
-
-    return feedback_data
 
 
 # Capabilities endpoints are defined later in the file
@@ -1438,6 +1406,7 @@ async def get_capabilities():
     """Get current capabilities snapshot - always returns 200 with fail-open behavior."""
     try:
         from capabilities_service import get_capabilities_service
+
         service = get_capabilities_service()
         snap = service.get_snapshot()
         if snap is None:

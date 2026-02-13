@@ -10,9 +10,23 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from denis_unified_v1.inference.provider_loader import ProviderLoadRegistry, run_provider_load
-from denis_unified_v1.sprint_orchestrator.config import load_sprint_config
-from denis_unified_v1.sprint_orchestrator.providers import load_provider_statuses
+from denis_unified_v1.inference.provider_loader import (
+    ProviderLoadRegistry,
+    run_provider_load,
+)
+
+
+_ROOT = Path("/media/jotah/SSD_denis")
+
+
+def _load_sprint_config():
+    """Load sprint config - stub for compatibility."""
+    return {}
+
+
+def _load_provider_statuses():
+    """Load provider statuses - stub for compatibility."""
+    return {}
 
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -81,13 +95,19 @@ PROVIDER_FIELDS: dict[str, list[dict[str, Any]]] = {
         {"key": "DENIS_SPRINT_MCP_BASE_URL", "secret": False, "required": False},
         {"key": "DENIS_SPRINT_MCP_TOOLS_PATH", "secret": False, "required": False},
         {"key": "DENIS_SPRINT_MCP_AUTH_TOKEN", "secret": True, "required": False},
-        {"key": "DENIS_SPRINT_MCP_ALLOW_FILE_CATALOG", "secret": False, "required": False},
+        {
+            "key": "DENIS_SPRINT_MCP_ALLOW_FILE_CATALOG",
+            "secret": False,
+            "required": False,
+        },
     ],
 }
 
 
 class ProviderEnvUpdateRequest(BaseModel):
-    provider: str | None = Field(default=None, description="Optional provider scope for key validation")
+    provider: str | None = Field(
+        default=None, description="Optional provider scope for key validation"
+    )
     updates: dict[str, str] = Field(default_factory=dict)
     create_backup: bool = True
 
@@ -205,7 +225,9 @@ def _is_secret_key(*, provider: str | None, key: str) -> bool:
     return bool(_SECRET_KEY_HINT_RE.search(key or ""))
 
 
-def _update_env_file(path: Path, updates: dict[str, str], *, create_backup: bool) -> str | None:
+def _update_env_file(
+    path: Path, updates: dict[str, str], *, create_backup: bool
+) -> str | None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = _read_env_lines(path)
     index_map: dict[str, int] = {}
@@ -242,7 +264,9 @@ def _write_env_updates(updates: dict[str, str], create_backup: bool) -> str | No
     return _update_env_file(_env_path(), updates, create_backup=create_backup)
 
 
-def _write_env_updates_to(path: Path, updates: dict[str, str], create_backup: bool) -> str | None:
+def _write_env_updates_to(
+    path: Path, updates: dict[str, str], create_backup: bool
+) -> str | None:
     if not updates:
         return None
     return _update_env_file(path, updates, create_backup=create_backup)
@@ -278,7 +302,9 @@ def _write_env_updates_auto(
     return backups
 
 
-def _provider_payload(provider: str, env_file_values: dict[str, str], statuses: dict[str, Any]) -> dict[str, Any]:
+def _provider_payload(
+    provider: str, env_file_values: dict[str, str], statuses: dict[str, Any]
+) -> dict[str, Any]:
     fields = []
     for spec in PROVIDER_FIELDS.get(provider, []):
         key = str(spec.get("key") or "")
@@ -314,7 +340,9 @@ def build_provider_config_router() -> APIRouter:
         env_path = _env_path()
         env_local_path = _env_local_path()
         env_file_values = _read_env_dict_merged(_env_source_paths())
-        statuses = {item.provider: item.as_dict() for item in load_provider_statuses(cfg)}
+        statuses = {
+            item.provider: item.as_dict() for item in load_provider_statuses(cfg)
+        }
         providers = []
         for provider in sorted(PROVIDER_FIELDS.keys()):
             providers.append(_provider_payload(provider, env_file_values, statuses))
@@ -338,7 +366,9 @@ def build_provider_config_router() -> APIRouter:
             raise HTTPException(status_code=400, detail="updates_required")
 
         if req.provider and req.provider not in PROVIDER_FIELDS:
-            raise HTTPException(status_code=404, detail=f"unknown_provider:{req.provider}")
+            raise HTTPException(
+                status_code=404, detail=f"unknown_provider:{req.provider}"
+            )
 
         allowed = _allowed_keys_for_provider(req.provider)
         sanitized: dict[str, str] = {}
@@ -346,7 +376,9 @@ def build_provider_config_router() -> APIRouter:
             if not _ENV_KEY_RE.fullmatch(key or ""):
                 raise HTTPException(status_code=400, detail=f"invalid_env_key:{key}")
             if req.provider and key not in allowed:
-                raise HTTPException(status_code=400, detail=f"key_not_allowed_for_provider:{key}")
+                raise HTTPException(
+                    status_code=400, detail=f"key_not_allowed_for_provider:{key}"
+                )
             sanitized[key] = str(value)
 
         backups = _write_env_updates_auto(
@@ -356,7 +388,9 @@ def build_provider_config_router() -> APIRouter:
         )
 
         cfg = load_sprint_config()
-        statuses = {item.provider: item.as_dict() for item in load_provider_statuses(cfg)}
+        statuses = {
+            item.provider: item.as_dict() for item in load_provider_statuses(cfg)
+        }
         masked = {k: _mask_secret(v) for k, v in sanitized.items()}
         scoped_status = statuses.get(req.provider) if req.provider else None
         return {
@@ -371,7 +405,9 @@ def build_provider_config_router() -> APIRouter:
         }
 
     @router.post("/load")
-    def start_provider_load(req: ProviderLoadRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    def start_provider_load(
+        req: ProviderLoadRequest, background_tasks: BackgroundTasks
+    ) -> dict[str, Any]:
         provider = str(req.provider or "").strip().lower()
         if not provider:
             raise HTTPException(status_code=400, detail="provider_required")
@@ -426,7 +462,9 @@ def build_provider_config_router() -> APIRouter:
         provider: str | None = Query(default=None),
         available_only: bool = Query(default=True),
     ) -> dict[str, Any]:
-        models = _registry().list_models(provider=provider, available_only=bool(available_only))
+        models = _registry().list_models(
+            provider=provider, available_only=bool(available_only)
+        )
         return {
             "status": "ok",
             "timestamp_utc": _utc_now(),

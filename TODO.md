@@ -16,10 +16,14 @@
   - `denis_unified_v1/connections.py` - CREADO
 - **Estado**: ✅ Completado
 
-### 1.2 [PENDIENTE] Estandarizar imports
+### 1.2 [EN CURSO] Estandarizar imports
 - **Problema**: Múltiples patrones de import
 - **Solución**: Unificar a `from denis_unified_v1.xxx import`
-- **Estado**: Pendiente
+- **Archivos modificados**:
+  - `api/memory_handler.py` - memory → denis_unified_v1.memory
+  - `api/metacognitive_api.py` - memory.backends → denis_unified_v1.memory.backends
+- **Nota**: Memoria real dividida: long-term en HD, resto en SSD
+- **Estado**: En progreso
 
 ### 1.3 [PENDIENTE] Añadir smoke de relaciones graph
 - **Problema**: No hay forma de verificar que relaciones existen

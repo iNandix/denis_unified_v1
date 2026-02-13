@@ -15,9 +15,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from denis_unified_v1.api.sse_handler import stream_text_chunks
-from denis_unified_v1.feature_flags import load_feature_flags
-from denis_unified_v1.observability.metrics import (
+from .sse_handler import stream_text_chunks
+from feature_flags import load_feature_flags
+from observability.metrics import (
     gate_prompt_injection,
     gate_output_blocked,
     gate_budget_exceeded,
@@ -430,7 +430,7 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
         if runtime.budget_manager is None and getattr(
             runtime.flags, "denis_use_gate_hardening", False
         ):
-            from denis_unified_v1.gates.budget import BudgetEnforcer, BudgetConfig
+            from gates.budget import BudgetEnforcer, BudgetConfig
 
             runtime.budget_manager = BudgetEnforcer(BudgetConfig())
         if runtime.budget_manager:
