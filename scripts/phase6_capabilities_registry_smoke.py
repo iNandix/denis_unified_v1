@@ -24,6 +24,7 @@ if str(denis_pkg) not in sys.path:
 
 def _utc_now() -> str:
     import datetime
+
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
@@ -32,7 +33,7 @@ def wait_for_server_ready(base_url: str, timeout_sec: int = 20) -> bool:
     start_time = time.time()
     while time.time() - start_time < timeout_sec:
         try:
-            resp = requests.get(f"{base_url}/health", timeout=2)
+            resp = requests.get(f"{base_url}/status", timeout=2)
             if resp.status_code == 200:
                 return True
         except requests.RequestException:
@@ -50,28 +51,19 @@ def test_simple_endpoint(base_url: str) -> dict[str, Any]:
         latency_ms = (time.time() - start_time) * 1000
 
         print(f"Status response: {resp.status_code}")
-        
+
         if resp.status_code == 200:
-            return {
-                "ok": True,
-                "status_code": 200,
-                "latency_ms": latency_ms
-            }
+            return {"ok": True, "status_code": 200, "latency_ms": latency_ms}
         else:
             return {
                 "ok": False,
                 "status_code": resp.status_code,
                 "latency_ms": latency_ms,
-                "error": f"HTTP {resp.status_code}"
+                "error": f"HTTP {resp.status_code}",
             }
     except requests.RequestException as e:
         print(f"Request exception: {e}")
-        return {
-            "ok": False,
-            "status_code": None,
-            "latency_ms": 5000,
-            "error": str(e)
-        }
+        return {"ok": False, "status_code": None, "latency_ms": 5000, "error": str(e)}
 
 
 def test_capabilities_endpoint(base_url: str) -> dict[str, Any]:
@@ -84,16 +76,18 @@ def test_capabilities_endpoint(base_url: str) -> dict[str, Any]:
 
         print(f"Response status: {resp.status_code}")
         print(f"Response headers: {dict(resp.headers)}")
-        
+
         if resp.status_code == 200:
             try:
                 data = resp.json()
-                print(f"Response data keys: {list(data.keys()) if isinstance(data, dict) else 'not dict'}")
+                print(
+                    f"Response data keys: {list(data.keys()) if isinstance(data, dict) else 'not dict'}"
+                )
                 return {
                     "ok": True,
                     "status_code": 200,
                     "latency_ms": latency_ms,
-                    "data": data
+                    "data": data,
                 }
             except Exception as e:
                 print(f"Failed to parse JSON: {e}")
@@ -102,7 +96,7 @@ def test_capabilities_endpoint(base_url: str) -> dict[str, Any]:
                     "status_code": 200,
                     "latency_ms": latency_ms,
                     "error": f"Invalid JSON: {e}",
-                    "data": None
+                    "data": None,
                 }
         else:
             print(f"Error response: {resp.text[:200]}")
@@ -111,7 +105,7 @@ def test_capabilities_endpoint(base_url: str) -> dict[str, Any]:
                 "status_code": resp.status_code,
                 "latency_ms": latency_ms,
                 "error": f"HTTP {resp.status_code}",
-                "data": None
+                "data": None,
             }
     except requests.RequestException as e:
         print(f"Request exception: {e}")
@@ -120,21 +114,25 @@ def test_capabilities_endpoint(base_url: str) -> dict[str, Any]:
             "status_code": None,
             "latency_ms": 5000,
             "error": str(e),
-            "data": None
+            "data": None,
         }
 
 
 def test_capabilities_events_endpoint(base_url: str) -> dict[str, Any]:
     """Test the capabilities events endpoint with timeout."""
-    print(f"Testing capabilities events endpoint: {base_url}/metacognitive/capabilities/events")
+    print(
+        f"Testing capabilities events endpoint: {base_url}/metacognitive/capabilities/events"
+    )
     try:
         start_time = time.time()
-        resp = requests.get(f"{base_url}/metacognitive/capabilities/events", timeout=5, stream=True)
+        resp = requests.get(
+            f"{base_url}/metacognitive/capabilities/events", timeout=5, stream=True
+        )
         latency_ms = (time.time() - start_time) * 1000
 
         print(f"Response status: {resp.status_code}")
         print(f"Response headers: {dict(resp.headers)}")
-        
+
         if resp.status_code == 200:
             # Check if it's SSE stream or JSON
             content_type = resp.headers.get("content-type", "").lower()
@@ -145,15 +143,17 @@ def test_capabilities_events_endpoint(base_url: str) -> dict[str, Any]:
                     lines.append(line)
                     if i >= 2:  # Read first 3 lines
                         break
-                
-                sse_valid = any("event:" in line for line in lines) and any("data:" in line for line in lines)
+
+                sse_valid = any("event:" in line for line in lines) and any(
+                    "data:" in line for line in lines
+                )
                 return {
                     "ok": True,
                     "status_code": 200,
                     "latency_ms": latency_ms,
                     "stream_type": "sse",
                     "sse_valid": sse_valid,
-                    "first_lines": lines
+                    "first_lines": lines,
                 }
             else:
                 # Try to parse as JSON
@@ -164,7 +164,7 @@ def test_capabilities_events_endpoint(base_url: str) -> dict[str, Any]:
                         "status_code": 200,
                         "latency_ms": latency_ms,
                         "stream_type": "json",
-                        "data": data
+                        "data": data,
                     }
                 except Exception as e:
                     return {
@@ -172,7 +172,7 @@ def test_capabilities_events_endpoint(base_url: str) -> dict[str, Any]:
                         "status_code": 200,
                         "latency_ms": latency_ms,
                         "stream_type": "unknown",
-                        "parse_error": str(e)
+                        "parse_error": str(e),
                     }
         else:
             print(f"Error response: {resp.text[:200]}")
@@ -181,7 +181,7 @@ def test_capabilities_events_endpoint(base_url: str) -> dict[str, Any]:
                 "status_code": resp.status_code,
                 "latency_ms": latency_ms,
                 "error": f"HTTP {resp.status_code}",
-                "data": None
+                "data": None,
             }
     except requests.RequestException as e:
         print(f"Request exception: {e}")
@@ -190,7 +190,7 @@ def test_capabilities_events_endpoint(base_url: str) -> dict[str, Any]:
             "status_code": None,
             "latency_ms": 5000,
             "error": str(e),
-            "data": None
+            "data": None,
         }
 
 
@@ -201,7 +201,7 @@ def validate_capabilities_schema(data: dict) -> dict[str, Any]:
         "snapshot_version_ok": False,
         "capabilities_present": False,
         "core_evidence": {},
-        "errors": []
+        "errors": [],
     }
 
     # Check snapshot version
@@ -209,7 +209,9 @@ def validate_capabilities_schema(data: dict) -> dict[str, Any]:
     if snapshot_version == "v1":
         result["snapshot_version_ok"] = True
     else:
-        result["errors"].append(f"Expected snapshot_version 'v1', got '{snapshot_version}'")
+        result["errors"].append(
+            f"Expected snapshot_version 'v1', got '{snapshot_version}'"
+        )
 
     # Check capabilities presence
     snapshot = data.get("snapshot", {})
@@ -237,8 +239,7 @@ def validate_capabilities_schema(data: dict) -> dict[str, Any]:
 
     # Schema is valid if we have the basics
     result["schema_valid"] = (
-        result["snapshot_version_ok"] and
-        result["capabilities_present"]
+        result["snapshot_version_ok"] and result["capabilities_present"]
     )
 
     return result
@@ -252,73 +253,60 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
         import time
         import signal
         import os
-        
+
         # Find free port
         if port == 0:
-            s = socket.socket()
-            s.bind(("127.0.0.1", 0))
-            port = s.getsockname()[1]
-            s.close()
-            
-            # Check if the port is still free
-            try:
-                s2 = socket.socket()
-                s2.bind(("127.0.0.1", port))
-                s2.close()
-            except OSError:
-                # Port not free, choose another
-                s2 = socket.socket()
-                s2.bind(("127.0.0.1", 0))
-                port = s2.getsockname()[1]
-                s2.close()
-        
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", 0))
+                port = s.getsockname()[1]
+
         print(f"Starting server on port {port}...")
-        
-        # Test create_app in main thread
-        try:
-            from api.fastapi_server import create_app
-            app = create_app()
-            print("create_app() succeeded")
-        except Exception as e:
-            print(f"create_app() failed: {e}")
-            import traceback
-            traceback.print_exc()
-            return {
-                "ok": False,
-                "endpoint_status": "create_app_failed",
-                "error": str(e),
-                "port": port
+
+        # Use subprocess like other smokes - more reliable
+        env = dict(os.environ)
+        env.update(
+            {
+                "DISABLE_OBSERVABILITY": "1",
+                "DENIS_API_BEARER_TOKEN": "",
+                "PYTHONPATH": ".",
             }
-        
-        # Start uvicorn server in a thread
-        import threading
-        server_thread = None
-        
-        def run_server():
-            try:
-                import uvicorn
-                uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning')
-            except Exception as e:
-                print(f"Server thread failed: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        server_thread = threading.Thread(target=run_server, daemon=True)
-        server_thread.start()
-        
+        )
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "api.fastapi_server:create_app",
+            "--factory",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "warning",
+        ]
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+
         try:
             # Wait for server to be ready
             base_url = f"http://127.0.0.1:{port}"
-            if not wait_for_server_ready(base_url, timeout_sec=30):
+            if not wait_for_server_ready(base_url, timeout_sec=45):
+                proc.kill()
                 return {
                     "ok": False,
                     "endpoint_status": "server_not_ready",
-                    "error": "Server failed to start within 15 seconds",
-                    "port": port
+                    "error": "Server failed to start within 45 seconds",
+                    "port": port,
                 }
-            
+
             print("Server ready, testing endpoints...")
-            
+
             # Test health endpoint first
             health_result = test_simple_endpoint(base_url)
             if not health_result["ok"]:
@@ -326,40 +314,49 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
                     "ok": False,
                     "endpoint_status": "health_failed",
                     "health_error": health_result.get("error"),
-                    "port": port
+                    "port": port,
                 }
-            
+
             # Test capabilities endpoint
             capabilities_result = test_capabilities_endpoint(base_url)
             # Test capabilities events endpoint
             capabilities_events_result = test_capabilities_events_endpoint(base_url)
-            
+
             # Check if status endpoint worked but capabilities failed (indicates router mounting issue)
             router_mounted = True
-            if health_result["ok"] and not (capabilities_result["ok"] and capabilities_events_result["ok"]):
+            if health_result["ok"] and not (
+                capabilities_result["ok"] and capabilities_events_result["ok"]
+            ):
                 router_mounted = False
-            
+
             if capabilities_result["ok"] and capabilities_events_result["ok"]:
                 # Validate schema if we got data for main capabilities endpoint
                 data = capabilities_result.get("data")
                 if data and isinstance(data, dict):
                     schema_validation = validate_capabilities_schema(data)
                 else:
-                    schema_validation = {"schema_valid": False, "errors": ["No data returned"]}
-                
+                    schema_validation = {
+                        "schema_valid": False,
+                        "errors": ["No data returned"],
+                    }
+
                 return {
                     "ok": True,
                     "endpoint_status": "success",
                     "port": port,
                     "server_started": True,
                     "status_endpoint_code": 200,
-                    "capabilities_endpoint_code": capabilities_result.get("status_code", None),
-                    "capabilities_events_endpoint_code": capabilities_events_result.get("status_code", None),
+                    "capabilities_endpoint_code": capabilities_result.get(
+                        "status_code", None
+                    ),
+                    "capabilities_events_endpoint_code": capabilities_events_result.get(
+                        "status_code", None
+                    ),
                     "router_mounted": router_mounted,
                     "capabilities_result": capabilities_result,
                     "capabilities_events_result": capabilities_events_result,
                     "schema_validation": schema_validation,
-                    "overall_success": schema_validation.get("schema_valid", False)
+                    "overall_success": schema_validation.get("schema_valid", False),
                 }
             else:
                 # Fail with evidence if router mounting issue detected
@@ -369,47 +366,54 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
                     "capabilities_events_ok": capabilities_events_result["ok"],
                     "router_mounted": router_mounted,
                     "capabilities_error": capabilities_result.get("error"),
-                    "capabilities_events_error": capabilities_events_result.get("error")
+                    "capabilities_events_error": capabilities_events_result.get(
+                        "error"
+                    ),
                 }
-                
+
                 return {
                     "ok": False,
                     "endpoint_status": "capabilities_failed",
                     "port": port,
                     "server_started": True,
                     "status_endpoint_code": 200,
-                    "capabilities_endpoint_code": capabilities_result.get("status_code", None),
-                    "capabilities_events_endpoint_code": capabilities_events_result.get("status_code", None),
+                    "capabilities_endpoint_code": capabilities_result.get(
+                        "status_code", None
+                    ),
+                    "capabilities_events_endpoint_code": capabilities_events_result.get(
+                        "status_code", None
+                    ),
                     "router_mounted": router_mounted,
                     "evidence": evidence,
                     "capabilities_error": capabilities_result.get("error"),
-                    "capabilities_events_error": capabilities_events_result.get("error")
+                    "capabilities_events_error": capabilities_events_result.get(
+                        "error"
+                    ),
                 }
-                
+
         finally:
             # Clean up server
             try:
-                server.terminate()
-                server.wait(timeout=5)
+                proc.terminate()
+                proc.wait(timeout=5)
             except Exception:
                 try:
-                    server.kill()
+                    proc.kill()
                 except Exception:
                     pass
-                    
+
     except Exception as e:
         print(f"Error in self-hosted smoke test: {e}")
         import traceback
+
         traceback.print_exc()
-        return {
-            "ok": False,
-            "error": str(e),
-            "endpoint_status": "setup_error"
-        }
+        return {"ok": False, "error": str(e), "endpoint_status": "setup_error"}
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run phase-6 capabilities registry smoke (self-hosted)")
+    parser = argparse.ArgumentParser(
+        description="Run phase-6 capabilities registry smoke (self-hosted)"
+    )
     parser.add_argument(
         "--out-json",
         default="artifacts/api/phase6_capabilities_registry_smoke.json",
@@ -421,11 +425,20 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Port to run server on",
     )
+    parser.add_argument(
+        "extra_arg",
+        nargs="?",
+        default=None,
+        help="Legacy positional arg for output path",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+
+    if args.extra_arg:
+        args.out_json = args.extra_arg
 
     print("Running self-hosted capabilities smoke test...")
     result = run_self_hosted_smoke(port=args.port)
