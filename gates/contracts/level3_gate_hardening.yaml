@@ -1,0 +1,25 @@
+version: 3.0
+domain: gate_hardening
+description: "Hardening de inferencia + herramientas (Phase 10)"
+
+contracts:
+  - id: L3.GATE.BUDGETS_ENFORCED
+    title: "Budgets de inferencia obligatorios"
+    severity: critical
+    rule: "Toda request se ejecuta con budget total y TTFT; si excede, cancelar y fallback controlado."
+
+  - id: L3.GATE.NO_TOOL_ESCALATION
+    title: "Ejecución de tools restringida por intent"
+    severity: critical
+    rule: "No se permite ejecutar tools fuera de allowlist por intent ni bajo prompt-injection."
+
+  - id: L3.GATE.OUTPUT_VALIDATION
+    title: "Validación estricta de salida"
+    severity: critical
+    rule: "Respuestas deben pasar validador de tamaño, encoding, formato y no-leak de secretos."
+
+  - id: L3.GATE.AUDIT
+    title: "Auditoría de decisiones de gate"
+    severity: critical
+    rule: "Registrar métricas y trazas de budgets, rate limit, prompt injection y output blocking."
+

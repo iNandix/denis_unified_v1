@@ -8,7 +8,7 @@
     },
     {
       "check": "episodic_store",
-      "legacy_mirror": "error",
+      "legacy_mirror": "ok",
       "ok": true,
       "status_code": 200
     },
@@ -54,18 +54,30 @@
       "projects": []
     },
     "episodic_store": {
-      "conv_id": "phase9-59be8ff758",
+      "conv_id": "phase9-96a17f4780",
       "legacy_mirror": {
-        "error": "legacy_memory_http_500:{'detail': '{neo4j_code: Neo.ClientError.Security.AuthenticationRateLimit} {message: The client has provided incorrect authentication details too many times in a row.} {gql_stat",
-        "status": "error"
+        "result": {
+          "importance": 0.7,
+          "layer": "episodic",
+          "memory_id": "9397055a7a039329",
+          "success": true
+        },
+        "status": "ok"
       },
-      "neo4j_written": false,
+      "neo4j_written": true,
       "status": "ok"
     },
     "health": {
+      "backends": {
+        "neo4j": true,
+        "redis": true
+      },
       "components": {
+        "consolidator": true,
+        "contradiction_detector": true,
         "episodic": true,
         "procedural": true,
+        "retrieval": true,
         "semantic": true,
         "working": true
       },
@@ -234,5 +246,5 @@
     }
   },
   "status": "ok",
-  "timestamp_utc": "2026-02-11T22:41:33.578346+00:00"
+  "timestamp_utc": "2026-02-13T13:08:25.708871+00:00"
 }

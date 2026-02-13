@@ -1,0 +1,13 @@
+{
+  "prometheus": {
+    "status": "pass",
+    "metrics_count": 159
+  },
+  "alerting": {
+    "status": "pass",
+    "anomalies": 0
+  },
+  "jaeger": {
+    "status": "pass"
+  }
+}

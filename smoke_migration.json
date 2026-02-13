@@ -1,0 +1,6 @@
+{
+  "load_balancer": "pass",
+  "backend_8084": "pass",
+  "backend_8085": "pass",
+  "status": "pass"
+}

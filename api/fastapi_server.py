@@ -60,37 +60,11 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Denis Cognitive Engine", version="1.0.0")
     flags = load_feature_flags()
     runtime = DenisRuntime()
-    if flags.get("ENABLE_ADVANCED_RATE_LIMITING", False):
-        from denis_unified_v1.rate_limiting import RateLimiter
-        limiter = RateLimiter(
-            redis_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
-            limit=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100")),
-            window=60
-        )
-    else:
-        limiter = InMemoryRateLimiter(
-            limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100"))
-        )
+    limiter = InMemoryRateLimiter(
+        limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100"))
+    )
+
     auth_token = (os.getenv("DENIS_API_BEARER_TOKEN") or "").strip()
-
-    @app.on_event("startup")
-    @repeat_every(seconds=60)  # Check every minute
-    async def check_anomalies_background():
-        """Background task para chequear anomalías."""
-        from denis_unified_v1.observability.anomaly_detector import AlertManager
-        
-        alert_manager = AlertManager()
-        await alert_manager.check_and_alert()
-
-    @app.on_event("startup")
-    async def init_limiter():
-        if isinstance(limiter, RateLimiter):
-            await limiter.initialize()
-
-    @app.on_event("shutdown")
-    async def shutdown_limiter():
-        if isinstance(limiter, RateLimiter):
-            await limiter.close()
 
     raw_origins = os.getenv("DENIS_CORS_ORIGINS", "*")
     cors_origins = [x.strip() for x in raw_origins.split(",") if x.strip()]
@@ -105,7 +79,14 @@ def create_app() -> FastAPI:
 
     # Mount static files
     from fastapi.staticfiles import StaticFiles
-    app.mount("/static", StaticFiles(directory="/media/jotah/SSD_denis/home_jotah/denis_unified_v1/api/static"), name="static")
+
+    app.mount(
+        "/static",
+        StaticFiles(
+            directory="/media/jotah/SSD_denis/home_jotah/denis_unified_v1/api/static"
+        ),
+        name="static",
+    )
 
     @app.middleware("http")
     async def trace_and_security_middleware(request: Request, call_next):

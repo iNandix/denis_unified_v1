@@ -261,6 +261,26 @@ contracts:
     file: level3_sprint_orchestrator.yaml
     status: active
     owner: denis_unified_v1
+  - id: L3.GATE.BUDGETS_ENFORCED
+    level: 3
+    file: gates/contracts/level3_gate_hardening.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.GATE.NO_TOOL_ESCALATION
+    level: 3
+    file: gates/contracts/level3_gate_hardening.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.GATE.OUTPUT_VALIDATION
+    level: 3
+    file: gates/contracts/level3_gate_hardening.yaml
+    status: active
+    owner: denis_unified_v1
+  - id: L3.GATE.AUDIT
+    level: 3
+    file: gates/contracts/level3_gate_hardening.yaml
+    status: active
+    owner: denis_unified_v1
   - id: L3.SPRINT.CONTRACT_CHANGE_REVIEW
     level: 3
     file: level3_sprint_orchestrator.yaml

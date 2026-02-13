@@ -1,0 +1,19 @@
+version: 3.0
+domain: voice_pipeline
+description: Contratos de gobernanza para Fase 8 (voice pipeline)
+contracts:
+  - id: L3.VOICE.NO_RETENTION
+    severity: critical
+    rule: "No persistir audio si phase8_voice_store_audio=false"
+  - id: L3.VOICE.NEVER_BLOCK_CORE
+    severity: critical
+    rule: "Si STT falla, fallback a modo texto con error claro"
+  - id: L3.VOICE.LATENCY_BUDGET
+    severity: warning
+    rule: "STT p50 < 900ms, TTS start < 400ms para frases cortas"
+  - id: L3.VOICE.OBSERVABILITY
+    severity: critical
+    rule: "Métricas y spans obligatorios en todo componente"
+  - id: L3.VOICE.SAFETY
+    severity: critical
+    rule: "Audio unsafe o sospechoso no se procesa ni guarda"

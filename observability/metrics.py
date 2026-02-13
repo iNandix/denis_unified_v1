@@ -85,6 +85,55 @@ inference_shadow_mode_matches = Counter(
     ["engine_id"],
 )
 
+inference_circuit_breaker_state = Gauge(
+    "denis_inference_circuit_breaker_state",
+    "Circuit breaker state (0=closed, 1=open, 2=half_open)",
+    ["engine_id"],
+)
+
+inference_circuit_breaker_failures = Counter(
+    "denis_inference_circuit_breaker_failures_total",
+    "Circuit breaker failure count",
+    ["engine_id"],
+)
+
+inference_ab_test_assignments = Counter(
+    "denis_inference_ab_test_assignments_total",
+    "A/B test variant assignments",
+    ["test_id", "variant"],
+)
+
+inference_hedging_decisions = Counter(
+    "denis_inference_hedging_decisions_total",
+    "Hedging decisions (hedge vs direct)",
+    ["engine_id", "hashed"],
+)
+
+# Gate hardening (Phase 10) metrics
+gate_budget_exceeded = Counter(
+    "denis_gate_budget_exceeded_total",
+    "Number of times inference budgets were exceeded",
+    ["budget"],
+)
+
+gate_rate_limited = Counter(
+    "denis_gate_rate_limited_total",
+    "Number of requests limited by Phase10 gate",
+    ["scope"],
+)
+
+gate_prompt_injection = Counter(
+    "denis_gate_prompt_injection_total",
+    "Prompt injection risk classifications",
+    ["risk"],
+)
+
+gate_output_blocked = Counter(
+    "denis_gate_output_blocked_total",
+    "Number of responses blocked or modified by output validation",
+    ["reason"],
+)
+
 # Memory metrics
 memory_consolidations = Counter(
     "denis_memory_consolidations_total",

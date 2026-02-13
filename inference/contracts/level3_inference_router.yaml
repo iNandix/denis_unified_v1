@@ -1,0 +1,22 @@
+version: 3.0
+domain: inference_router
+description: Contratos de gobernanza para Fase 7 (selección de engine)
+contracts:
+  - id: L3.INF.NEVER_BLOCK_CORE
+    severity: critical
+    rule: "El router nunca bloquea respuesta; si falla, fallback inmediato."
+  - id: L3.INF.SAFETY_ALWAYS
+    severity: critical
+    rule: "Toda respuesta pasa por safety gate (SMX safety o equivalente)."
+  - id: L3.INF.BUDGET_ENFORCED
+    severity: warning
+    rule: "Tiempo de decisión del router <= PHASE7_ROUTER_BUDGET_MS; si excede, fallback."
+  - id: L3.INF.HEDGING_LIMIT
+    severity: warning
+    rule: "Hedged requests max 2 y cancelación del perdedor al primer token."
+  - id: L3.INF.COST_AWARE
+    severity: warning
+    rule: "Si un provider tiene coste>0, solo se usa si utilidad esperada supera umbral."
+  - id: L3.INF.AUDIT_TRAIL
+    severity: critical
+    rule: "Toda decisión escribe meta (engine, razón, latencia, reward) a Redis y Neo4j."
