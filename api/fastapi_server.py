@@ -14,21 +14,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi_utils.tasks import repeat_every
 
-from denis_unified_v1.api.openai_compatible import DenisRuntime, build_openai_router
-from denis_unified_v1.api.memory_handler import build_memory_router
-from denis_unified_v1.api.query_interface import build_query_router
-from denis_unified_v1.api.provider_config_handler import build_provider_config_router
-from denis_unified_v1.api.voice_handler import build_voice_router
-from denis_unified_v1.api.websocket_handler import build_ws_router
-from denis_unified_v1.api.api_registry import build_registry_router
-from denis_unified_v1.autopoiesis.dashboard import (
+from .openai_compatible import DenisRuntime, build_openai_router
+from .memory_handler import build_memory_router
+from .query_interface import build_query_router
+from .provider_config_handler import build_provider_config_router
+from .voice_handler import build_voice_router
+from .websocket_handler import build_ws_router
+from .api_registry import build_registry_router
+from autopoiesis.dashboard import (
     build_router as build_autopoiesis_router,
 )
-from denis_unified_v1.feature_flags import load_feature_flags
-from denis_unified_v1.metagraph.dashboard import build_router as build_metagraph_router
-from denis_unified_v1.api.metacognitive_api import router as metacognitive_router
-from denis_unified_v1.observability.tracing import setup_tracing
-from denis_unified_v1.observability.metrics import setup_metrics
+from feature_flags import load_feature_flags
+from metagraph.dashboard import build_router as build_metagraph_router
+from .metacognitive_api import router as metacognitive_router
+from .agent_heart_api import router as agent_heart_router
+from observability.tracing import setup_tracing
+from observability.metrics import setup_metrics
 
 
 def _utc_now() -> str:
@@ -158,6 +159,9 @@ def create_app() -> FastAPI:
 
     # API Metacognitiva
     app.include_router(metacognitive_router)
+
+    # Agent Heart API
+    app.include_router(agent_heart_router)
 
     # API Registry Router
     registry_router = build_registry_router()

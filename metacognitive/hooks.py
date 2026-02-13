@@ -320,6 +320,6 @@ def self_model_hook(identity: str, capabilities: list, limits: dict):
     return
 
 
-def infra_hook(pipeline_result: dict) -> None:
-    """NOOP hook for infra pipeline instrumentation."""
+def heart_hook(task: dict, result: dict) -> None:
+    """NOOP hook for DENIS Agent Heart instrumentation."""
     return

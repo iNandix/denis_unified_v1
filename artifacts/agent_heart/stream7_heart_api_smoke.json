@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "timestamp_utc": "2026-02-13T19:35:47Z",
+  "stream": "stream7_heart_api",
+  "results": {
+    "degraded": {
+      "status": "degraded",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    }
+  }
+}
