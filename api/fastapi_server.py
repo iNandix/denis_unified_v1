@@ -9,8 +9,8 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, APIRouter
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 # All other imports moved inside create_app() for complete fail-open behavior
@@ -26,6 +26,11 @@ def _safe_json(obj: Any) -> Any:
         return jsonable_encoder(obj)
     except Exception as e:
         return {"_type": type(obj).__name__, "_error": str(e)}
+
+
+# Global flags for idempotent setup
+tracing_setup_done = False
+metrics_setup_done = False
 
 
 class InMemoryRateLimiter:
@@ -50,6 +55,8 @@ class InMemoryRateLimiter:
 
 
 def create_app() -> FastAPI:
+    global tracing_setup_done, metrics_setup_done
+
     app = FastAPI(title="Denis Cognitive Engine", version="1.0.0")
 
     # Load feature flags with fail-open
@@ -222,12 +229,14 @@ def create_app() -> FastAPI:
             return False
 
     # OpenAI-compatible + Query + Provider + WS (opcionales si fallan imports)
+    build_openai_router = None
     try:
         from .openai_compatible import DenisRuntime, build_openai_router
 
         runtime = DenisRuntime()
         runtime_mode = "full"
     except Exception as e:
+
         class DegradedRuntime:
             def __init__(self, flags):
                 self.flags = flags
@@ -250,14 +259,21 @@ def create_app() -> FastAPI:
                             "finish_reason": "stop",
                         }
                     ],
-                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
                     "meta": {"path": "degraded", "reason": "missing_dependencies"},
                 }
 
         runtime = DegradedRuntime(flags)
         runtime_mode = "degraded"
         try:
-            from denisunifiedv1.control_plane.registry import get_control_plane_registry, DegradationRecord
+            from denisunifiedv1.control_plane.registry import (
+                get_control_plane_registry,
+                DegradationRecord,
+            )
 
             registry = get_control_plane_registry()
             registry.record_degraded(
@@ -276,41 +292,52 @@ def create_app() -> FastAPI:
         except Exception:
             pass
 
-    included_openai = _safe_include(build_openai_router, runtime)
+    included_openai = False
+    try:
+        if build_openai_router is not None:
+            included_openai = _safe_include(build_openai_router, runtime)
+    except Exception:
+        included_openai = False
 
-    # If OpenAI router failed to include or runtime degraded, add fallback endpoints
-    if (not included_openai) or runtime_mode != "full":
-        fallback_router = APIRouter()
+    # Always include a degraded fallback router to guarantee OpenAI endpoints are present
+    fallback_router = APIRouter()
 
-        @fallback_router.get("/v1/models")
-        async def list_models():
-            return {"object": "list", "data": [{"id": "denis-cognitive", "object": "model"}]}
+    @fallback_router.get("/v1/models")
+    async def list_models_fallback():
+        return {
+            "object": "list",
+            "data": [{"id": "denis-cognitive", "object": "model"}],
+        }
 
-        @fallback_router.post("/v1/chat/completions")
-        async def chat_completions(_: Request):
-            return {
-                "id": f"chatcmpl-{uuid.uuid4().hex[:16]}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "denis-cognitive",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "Degraded runtime response."},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-            }
+    @fallback_router.post("/v1/chat/completions")
+    async def chat_completions_fallback(_: Request):
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:16]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "denis-cognitive",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Degraded runtime response.",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
 
-        @fallback_router.post("/v1/chat/completions/stream")
-        async def chat_stream(_: Request):
-            async def streamer():
-                yield "data: {\"choices\":[{\"delta\":{\"content\":\"Degraded runtime response.\"}}]}\n\n"
-                yield "data: [DONE]\n\n"
-            return StreamingResponse(streamer(), media_type="text/event-stream")
+    @fallback_router.post("/v1/chat/completions/stream")
+    async def chat_stream_fallback(_: Request):
+        async def streamer():
+            yield 'data: {"choices":[{"delta":{"content":"Degraded runtime response."}}]}\n\n'
+            yield "data: [DONE]\n\n"
 
-        app.include_router(fallback_router)
+        return StreamingResponse(streamer(), media_type="text/event-stream")
+
+    app.include_router(fallback_router)
     try:
         from .query_interface import build_query_router
 
@@ -407,22 +434,30 @@ def create_app() -> FastAPI:
     # Setup tracing and metrics with complete fail-open
     tracing_enabled = False
     metrics_enabled = False
-    try:
-        if os.getenv("ENABLE_TRACING", "true").lower() == "true":
-            from observability.tracing import setup_tracing
-
-            setup_tracing()
-            tracing_enabled = True
-    except (ImportError, Exception):
+    if os.getenv("DISABLE_OBSERVABILITY") == "1":
         tracing_enabled = False
-
-    try:
-        from observability.metrics import setup_metrics
-
-        setup_metrics(app)
-        metrics_enabled = True
-    except (ImportError, Exception):
         metrics_enabled = False
+    else:
+        if not tracing_setup_done:
+            try:
+                from observability.tracing import setup_tracing
+
+                setup_tracing()
+                tracing_setup_done = True
+            except Exception:
+                pass
+
+        if not metrics_setup_done:
+            try:
+                from observability.metrics import setup_metrics
+
+                setup_metrics(app)
+                metrics_setup_done = True
+            except Exception:
+                pass
+
+        tracing_enabled = tracing_setup_done
+        metrics_enabled = metrics_setup_done
 
     @app.get("/observability")
     async def observability_status():

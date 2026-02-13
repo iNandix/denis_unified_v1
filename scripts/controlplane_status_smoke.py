@@ -10,6 +10,7 @@ import threading
 import socket
 import requests
 
+
 def main():
     artifact = {
         "ok": False,
@@ -26,15 +27,26 @@ def main():
 
     try:
         # Find free port
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        s.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
 
         # Start server
         def run_server():
             subprocess.run(
-                [sys.executable, "-m", "uvicorn", "api.fastapi_server:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "api.fastapi_server:create_app",
+                    "--factory",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--log-level",
+                    "warning",
+                ],
                 capture_output=True,
             )
 
@@ -42,7 +54,7 @@ def main():
         server_thread.start()
 
         base_url = f"http://127.0.0.1:{port}"
-        
+
         # Wait for server
         for _ in range(30):
             try:
@@ -56,7 +68,13 @@ def main():
             artifact["reason"] = "Server failed to start"
             artifact["overall_success"] = False
             artifact["ok"] = artifact["overall_success"]
-            with Path(sys.argv[1]).open("w") as f:
+            out_path = (
+                Path(sys.argv[1])
+                if len(sys.argv) > 1
+                else Path("artifacts/control_plane/controlplane_status_smoke.json")
+            )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w") as f:
                 json.dump(artifact, f, indent=2)
             sys.exit(1)
 
@@ -65,14 +83,20 @@ def main():
             resp = requests.get(f"{base_url}/controlplane/status", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, dict) and "releaseable" in data and "degraded_reasons" in data:
+                if (
+                    isinstance(data, dict)
+                    and "releaseable" in data
+                    and "degraded_reasons" in data
+                ):
                     artifact["controlplane_endpoint"] = True
                     artifact["schema_valid"] = True
                     artifact["releaseable"] = data.get("releaseable")
                     artifact["degraded_count"] = len(data.get("degraded_reasons", []))
                     # Top reasons (first 3)
                     degraded = data.get("degraded_reasons", [])
-                    artifact["top_reasons"] = [r.get("reason", "unknown") for r in degraded[:3]]
+                    artifact["top_reasons"] = [
+                        r.get("reason", "unknown") for r in degraded[:3]
+                    ]
                 else:
                     artifact["reason"] = "Invalid response schema"
             else:
@@ -84,18 +108,23 @@ def main():
         artifact["reason"] = f"Exception: {str(e)}"
 
     artifact["overall_success"] = (
-        artifact["server_boot"] and 
-        artifact["controlplane_endpoint"] and 
-        artifact["schema_valid"]
+        artifact["server_boot"]
+        and artifact["controlplane_endpoint"]
+        and artifact["schema_valid"]
     )
     artifact["ok"] = artifact["overall_success"]
 
-    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("artifacts/control_plane/controlplane_status_smoke.json")
+    out_path = (
+        Path(sys.argv[1])
+        if len(sys.argv) > 1
+        else Path("artifacts/control_plane/controlplane_status_smoke.json")
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w") as f:
         json.dump(artifact, f, indent=2)
 
     sys.exit(0 if artifact["ok"] else 1)
+
 
 if __name__ == "__main__":
     main()
