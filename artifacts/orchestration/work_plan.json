@@ -1,0 +1,67 @@
+{
+  "ok": true,
+  "items": [
+    {
+      "signal_id": "smoke_capabilities_test_ok_false",
+      "severity": 4,
+      "confidence": 0.9,
+      "source_artifact": "artifacts/smoke_capabilities_test.json",
+      "detected_signal": {
+        "ok": false,
+        "endpoint_status": "server_not_ready"
+      },
+      "expected_effect": "capabilities endpoint returns 200 with valid response",
+      "commands": [
+        [
+          "python3",
+          "scripts/phase6_capabilities_registry_smoke.py",
+          "--out-json",
+          "artifacts/api/phase6_capabilities_registry_smoke.json"
+        ]
+      ],
+      "expected_artifacts": [
+        "artifacts/api/phase6_capabilities_registry_smoke.json"
+      ],
+      "definition_of_done": [
+        "All commands return exit code 0",
+        "Expected artifacts created and contain success indicators",
+        "Root cause addressed as per capabilities endpoint returns 200 with valid response"
+      ]
+    },
+    {
+      "signal_id": "smoke_capabilities_test_endpoint_server_not_ready",
+      "severity": 4,
+      "confidence": 0.8,
+      "source_artifact": "artifacts/smoke_capabilities_test.json",
+      "detected_signal": {
+        "endpoint_status": "server_not_ready"
+      },
+      "expected_effect": "capabilities endpoint returns 200 with valid response",
+      "commands": [
+        [
+          "python3",
+          "scripts/phase6_capabilities_registry_smoke.py",
+          "--out-json",
+          "artifacts/api/phase6_capabilities_registry_smoke.json"
+        ]
+      ],
+      "expected_artifacts": [
+        "artifacts/api/phase6_capabilities_registry_smoke.json"
+      ],
+      "definition_of_done": [
+        "All commands return exit code 0",
+        "Expected artifacts created and contain success indicators",
+        "Root cause addressed as per capabilities endpoint returns 200 with valid response"
+      ]
+    }
+  ],
+  "rejected_signals": [],
+  "validation": {
+    "commands_exist": true,
+    "expected_artifacts_coherent": true
+  },
+  "timestamp_utc": 1771017019.5756838,
+  "total_signals": 2,
+  "accepted_items": 2,
+  "rejected_signals_count": 0
+}
