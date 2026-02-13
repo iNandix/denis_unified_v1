@@ -24,7 +24,7 @@ import uvicorn
 import logging
 
 # Importar provider_loader normalmente
-from denis_unified_v1.inference import provider_loader
+from inference import provider_loader
 
 DiscoveredModel = provider_loader.DiscoveredModel
 ProviderLoadRegistry = provider_loader.ProviderLoadRegistry

@@ -9,6 +9,9 @@ CREATE CONSTRAINT unique_service_name IF NOT EXISTS FOR (s:Service) REQUIRE s.na
 CREATE CONSTRAINT unique_test_name IF NOT EXISTS FOR (t:Test) REQUIRE t.name IS UNIQUE;
 CREATE CONSTRAINT unique_proposal_id IF NOT EXISTS FOR (pr:Proposal) REQUIRE pr.id IS UNIQUE;
 CREATE CONSTRAINT unique_external_name IF NOT EXISTS FOR (e:ExternalResource) REQUIRE e.name IS UNIQUE;
+CREATE CONSTRAINT unique_agent_run_trace_id IF NOT EXISTS FOR (r:AgentRun) REQUIRE r.trace_id IS UNIQUE;
+CREATE CONSTRAINT unique_agent_task_task_id IF NOT EXISTS FOR (t:AgentTask) REQUIRE t.task_id IS UNIQUE;
+CREATE CONSTRAINT unique_agent_result_task_id IF NOT EXISTS FOR (res:AgentResult) REQUIRE res.task_id IS UNIQUE;
 
 // Indexes for performance
 CREATE INDEX workspace_path IF NOT EXISTS FOR (w:Workspace) ON (w.path);

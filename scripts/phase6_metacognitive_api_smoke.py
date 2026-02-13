@@ -43,24 +43,22 @@ def test_sse_events_endpoint(client) -> dict:
     """Test GET /metacognitive/events SSE endpoint."""
     try:
         start_time = time.time()
-        response = client.get("/metacognitive/events", timeout=5)
+        with client.stream("GET", "/metacognitive/events", headers={"Accept": "text/event-stream"}) as r:
+            status_code = r.status_code
+            first = ""
+            for chunk in r.iter_text():
+                if chunk:
+                    first = chunk[:200]
+                    break
+            sse_ok = (status_code == 200) and (("data:" in first) or ("event:" in first))
+        
         latency_ms = (time.time() - start_time) * 1000
-
-        if response.status_code == 200:
-            # SSE endpoint responded, consider it working
-            return {
-                "ok": True,
-                "status_code": response.status_code,
-                "latency_ms": latency_ms,
-                "first_chunk_present": True,  # Assume it works if no error
-            }
-        else:
-            return {
-                "ok": False,
-                "status_code": response.status_code,
-                "latency_ms": latency_ms,
-                "first_chunk_present": False
-            }
+        return {
+            "ok": sse_ok,
+            "status_code": status_code,
+            "latency_ms": latency_ms,
+            "first_chunk_present": bool(first.strip())
+        }
 
     except Exception as e:
         return {

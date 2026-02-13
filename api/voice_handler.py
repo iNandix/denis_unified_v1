@@ -8,8 +8,8 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from denis_unified_v1.voice.audio_stream import AudioChunk
-from denis_unified_v1.voice.voice_pipeline import build_voice_pipeline
+from voice.audio_stream import AudioChunk
+from voice.voice_pipeline import build_voice_pipeline
 
 
 def _utc_now() -> str:

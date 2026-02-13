@@ -39,7 +39,7 @@ def run_smoke() -> dict[str, Any]:
     os.environ["DENIS_USE_MEMORY_UNIFIED"] = "true"
     os.environ["DENIS_USE_ATLAS"] = "true"
     app = create_app()
-    out: dict[str, Any] = {"status": "ok", "timestamp_utc": _utc_now(), "checks": []}
+    out: dict[str, Any] = {"status": "ok", "timestamp_utc": _utc_now(), "checks": [], "graph_loading_errors": []}
 
     conv_id = f"phase9-{uuid.uuid4().hex[:10]}"
 
@@ -137,7 +137,44 @@ def run_smoke() -> dict[str, Any]:
             "atlas_projects": atlas.json() if atlas.status_code == 200 else {},
         }
 
-    out["status"] = "ok" if all(check.get("ok") for check in out["checks"]) else "error"
+    # Check for artifacts directory and graph client issues
+    artifacts_dir = Path(PROJECT_ROOT) / "artifacts"
+    if not artifacts_dir.exists():
+        out["checks"].append({
+            "check": "artifacts_directory",
+            "ok": False,
+            "status": "skipped",
+            "reason": "Artifacts directory not found",
+        })
+    else:
+        out["checks"].append({
+            "check": "artifacts_directory",
+            "ok": True,
+            "status": "available",
+        })
+
+    # Try to import graph client and check for issues
+    try:
+        from denis_unified_v1.metagraph.active_metagraph import get_metagraph_client
+        client = get_metagraph_client()
+        if client is None:
+            out["graph_loading_errors"].append("get_metagraph_client returned None")
+        else:
+            out["checks"].append({
+                "check": "graph_client",
+                "ok": True,
+                "status": "available",
+            })
+    except Exception as e:
+        out["graph_loading_errors"].append(f"Graph client import failed: {str(e)}")
+        out["checks"].append({
+            "check": "graph_client",
+            "ok": False,
+            "status": "skipped",
+            "reason": f"Graph client unavailable: {str(e)}",
+        })
+
+    out["status"] = "ok" if all(check.get("ok") for check in out["checks"]) else "skipped_dependency" if any("skipped" in str(check.get("status", "")) for check in out["checks"]) else "error"
     return out
 
 

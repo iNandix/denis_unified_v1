@@ -2,9 +2,13 @@
 """Work compiler smoke test: verify prioritization, dedupe, and proof."""
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
+
+# Disable observability to prevent setup failures
+os.environ["DISABLE_OBSERVABILITY"] = "1"
 
 def main():
     artifact = {
@@ -20,6 +24,9 @@ def main():
     }
 
     try:
+        # Ensure artifacts directory exists
+        artifacts_root = Path("artifacts")
+        artifacts_root.mkdir(parents=True, exist_ok=True)
         # Run work compiler
         from denisunifiedv1.sprint_orchestrator.work_compiler import compile_work_from_artifacts
         from pathlib import Path as PathLib

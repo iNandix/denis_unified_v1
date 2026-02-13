@@ -1,10 +1,6 @@
-"""
-SMX (Specialized Model eXecution) - Fase 12
-Enrichment layer para DENIS Unified V1
-"""
+"""Optional SMX shim for fail-open imports."""
 
-from .models import SMXEnrichment, SMXLayerResult
-from .enrichment import smx_enrich
-from .orchestrator import SMXOrchestrator
-
-__all__ = ["SMXEnrichment", "SMXLayerResult", "smx_enrich", "SMXOrchestrator"]
+try:
+    import smx  # pragma: no cover
+except Exception:
+    pass

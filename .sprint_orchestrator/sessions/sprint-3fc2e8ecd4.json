@@ -1,0 +1,39 @@
+{
+  "assignments": [
+    {
+      "priority": "high",
+      "project_path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+      "provider": "denis_canonical",
+      "role": "integrator",
+      "status": "planned",
+      "task": "fase11: arrancar sprint a/b, visualizar workers y ejecutar validacion preflight",
+      "worker_id": "worker-1"
+    },
+    {
+      "priority": "high",
+      "project_path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+      "provider": "legacy_core",
+      "role": "hardening",
+      "status": "planned",
+      "task": "Ejecutar gates de calidad/seguridad y reportar riesgos con rollback.",
+      "worker_id": "worker-2"
+    }
+  ],
+  "created_utc": "2026-02-12T15:04:48.106199+00:00",
+  "projects": [
+    {
+      "ahead": 0,
+      "behind": 0,
+      "branch": "main",
+      "dirty": false,
+      "head_sha": "15f0280",
+      "last_commit": "feat(sprint): support denis /v1/chat backend for canonical provider",
+      "name": "denis_unified_v1",
+      "path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1"
+    }
+  ],
+  "prompt": "fase11: arrancar sprint a/b, visualizar workers y ejecutar validacion preflight",
+  "session_id": "sprint-3fc2e8ecd4",
+  "status": "active",
+  "workers_requested": 2
+}

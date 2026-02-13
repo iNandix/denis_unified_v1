@@ -1,12 +1,16 @@
 {
-  "ok": false,
-  "reason": "HTTP 404",
+  "ok": true,
+  "reason": null,
   "server_boot": true,
-  "controlplane_endpoint": false,
-  "schema_valid": false,
-  "releaseable": null,
-  "degraded_count": 0,
-  "top_reasons": [],
-  "timestamp_utc": 1771018161.8243177,
-  "overall_success": false
+  "controlplane_endpoint": true,
+  "schema_valid": true,
+  "releaseable": false,
+  "degraded_count": 3,
+  "top_reasons": [
+    "noop_shim_active",
+    "noop_shim_active",
+    "noop_shim_active"
+  ],
+  "timestamp_utc": 1771022622.5992746,
+  "overall_success": true
 }

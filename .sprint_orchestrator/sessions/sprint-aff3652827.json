@@ -1,0 +1,41 @@
+{
+  "assignments": [
+    {
+      "phase": "design",
+      "priority": "high",
+      "project_path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+      "provider": "denis_canonical",
+      "role": "arch",
+      "status": "planned",
+      "task": "fase11: arrancar sprint a/b, visualizar workers y ejecutar validacion preflight",
+      "worker_id": "worker-1"
+    },
+    {
+      "phase": "implementation",
+      "priority": "high",
+      "project_path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+      "provider": "denis_agent",
+      "role": "coding",
+      "status": "planned",
+      "task": "Implementar c\u00f3digo seg\u00fan especificaciones, con pruebas unitarias.",
+      "worker_id": "worker-2"
+    }
+  ],
+  "created_utc": "2026-02-13T13:54:14.042224+00:00",
+  "projects": [
+    {
+      "ahead": 0,
+      "behind": 0,
+      "branch": "main",
+      "dirty": true,
+      "head_sha": "a3a2d03",
+      "last_commit": "Add control-plane hooks and scripts for DENIS security and automation",
+      "name": "denis_unified_v1",
+      "path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1"
+    }
+  ],
+  "prompt": "fase11: arrancar sprint a/b, visualizar workers y ejecutar validacion preflight",
+  "session_id": "sprint-aff3652827",
+  "status": "active",
+  "workers_requested": 2
+}

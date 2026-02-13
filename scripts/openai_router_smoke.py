@@ -2,6 +2,7 @@
 """OpenAI-compatible router smoke test."""
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -9,6 +10,13 @@ import subprocess
 import threading
 import socket
 import requests
+
+
+def safe_json(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return {"error": "invalid_json", "text": resp.text[:1000]}
 
 def main():
     artifact = {
@@ -31,7 +39,8 @@ def main():
         # Start server
         def run_server():
             subprocess.run(
-                [sys.executable, "-m", "uvicorn", "api.fastapi_server:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                ["python3", "-m", "uvicorn", "api.fastapi_server:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                env={"PYTHONPATH": ".", "DISABLE_OBSERVABILITY": "1"},
                 capture_output=True,
             )
 
@@ -57,13 +66,23 @@ def main():
                 json.dump(artifact, f, indent=2)
             sys.exit(1)
 
+        # Headers (auth optional)
+        headers = {}
+        token = os.getenv("DENIS_API_BEARER_TOKEN", "").strip()
+        if token:
+            headers["authorization"] = f"Bearer {token}"
+
         # Test /v1/models
         try:
-            resp = requests.get(f"{base_url}/v1/models", timeout=5)
+            resp = requests.get(f"{base_url}/v1/models", timeout=5, headers=headers)
+            artifact["models_status_code"] = resp.status_code
+            artifact["models_body"] = safe_json(resp)
             if resp.status_code == 200:
-                data = resp.json()
+                data = artifact["models_body"]
                 if isinstance(data, dict) and "data" in data:
                     artifact["models_endpoint"] = True
+            else:
+                artifact["reason"] = f"/v1/models status {resp.status_code}"
         except Exception as e:
             artifact["reason"] = f"Models endpoint failed: {str(e)}"
 
@@ -74,11 +93,15 @@ def main():
                 "messages": [{"role": "user", "content": "Say hello"}],
                 "stream": False,
             }
-            resp = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=10)
+            resp = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=10, headers=headers)
+            artifact["chat_status_code"] = resp.status_code
+            artifact["chat_body"] = safe_json(resp)
             if resp.status_code == 200:
-                data = resp.json()
+                data = artifact["chat_body"]
                 if isinstance(data, dict) and "choices" in data:
                     artifact["chat_endpoint"] = True
+            else:
+                artifact["reason"] = f"/v1/chat/completions status {resp.status_code}"
         except Exception as e:
             artifact["reason"] = f"Chat endpoint failed: {str(e)}"
 
@@ -97,3 +120,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Helpers
+def safe_json(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return {"error": "invalid_json", "text": resp.text[:1000]}

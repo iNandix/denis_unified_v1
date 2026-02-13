@@ -263,15 +263,7 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
         print(f"Starting server on port {port}...")
 
         # Use subprocess like other smokes - more reliable
-        env = dict(os.environ)
-        env.update(
-            {
-                "DISABLE_OBSERVABILITY": "1",
-                "DENIS_API_BEARER_TOKEN": "",
-                "PYTHONPATH": ".",
-            }
-        )
-
+        # Start uvicorn server as subprocess
         cmd = [
             sys.executable,
             "-m",
@@ -285,24 +277,39 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
             "--log-level",
             "warning",
         ]
-
+        env = dict(os.environ)
+        env.update({
+            "PYTHONPATH": ".",
+            "DISABLE_OBSERVABILITY": "1",
+            "DENIS_API_BEARER_TOKEN": "",
+        })
         proc = subprocess.Popen(
             cmd,
+            cwd=str(REPO),
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env,
+            text=True,
         )
 
         try:
             # Wait for server to be ready
             base_url = f"http://127.0.0.1:{port}"
             if not wait_for_server_ready(base_url, timeout_sec=45):
+                out = ""; err = ""
+                try:
+                    out = (proc.stdout.read() if proc.stdout else "")[-2000:]
+                    err = (proc.stderr.read() if proc.stderr else "")[-4000:]
+                except Exception:
+                    pass
                 proc.kill()
                 return {
                     "ok": False,
                     "endpoint_status": "server_not_ready",
                     "error": "Server failed to start within 45 seconds",
                     "port": port,
+                    "stdout_tail": out,
+                    "stderr_tail": err,
                 }
 
             print("Server ready, testing endpoints...")
@@ -310,6 +317,7 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
             # Test health endpoint first
             health_result = test_simple_endpoint(base_url)
             if not health_result["ok"]:
+                proc.kill()
                 return {
                     "ok": False,
                     "endpoint_status": "health_failed",
@@ -340,6 +348,7 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
                         "errors": ["No data returned"],
                     }
 
+                proc.kill()
                 return {
                     "ok": True,
                     "endpoint_status": "success",
@@ -371,6 +380,7 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
                     ),
                 }
 
+                proc.kill()
                 return {
                     "ok": False,
                     "endpoint_status": "capabilities_failed",
@@ -394,7 +404,6 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
         finally:
             # Clean up server
             try:
-                proc.terminate()
                 proc.wait(timeout=5)
             except Exception:
                 try:

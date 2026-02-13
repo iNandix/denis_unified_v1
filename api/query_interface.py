@@ -7,8 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from denis_unified_v1.metagraph.dashboard import load_patterns_redis
-from denis_unified_v1.metagraph.observer import load_metrics_redis
+from metagraph.dashboard import load_patterns_redis
+from metagraph.observer import load_metrics_redis
 
 
 def _utc_now() -> str:

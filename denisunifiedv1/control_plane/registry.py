@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from threading import Lock
+from threading import RLock
 
 
 @dataclass
@@ -39,7 +39,7 @@ class ControlPlaneRegistry:
     def __init__(self, persistence_path: Optional[Path] = None):
         self.persistence_path = persistence_path or Path("artifacts/control_plane/registry_snapshot.json")
         self._records: Dict[str, DegradationRecord] = {}
-        self._lock = Lock()
+        self._lock = RLock()
         self._load_snapshot()
 
     def record_degraded(self, record: DegradationRecord) -> None:
@@ -122,8 +122,23 @@ class ControlPlaneRegistry:
     def _save_snapshot(self) -> None:
         """Save current snapshot."""
         try:
+            with self._lock:
+                records = [rec.to_dict() for rec in self._records.values()]
+                # Build snapshot without holding the lock for IO
+                snapshot = {
+                    "status": "degraded" if records else "ok",
+                    "total_degraded": len(records),
+                    "severity_counts": {},
+                    "category_counts": {},
+                    "degraded_reasons": records,
+                    "missing_optional_modules": [
+                        rec.get("evidence", {}).get("module", rec.get("id"))
+                        for rec in records
+                        if rec.get("category") == "import" and rec.get("reason") == "missing_module"
+                    ],
+                    "timestamp_utc": time.time(),
+                }
             self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
-            snapshot = self.snapshot()
             with self.persistence_path.open("w") as f:
                 json.dump(snapshot, f, indent=2)
         except Exception:

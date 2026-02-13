@@ -9,92 +9,172 @@ from pydantic import BaseModel
 from .providers import ProviderRegistry
 
 
-class Goal(BaseModel):
-    text: str
+class GoalInput(BaseModel):
+    goal_text: str
     repo_root: str
-    file_focus: Optional[str] = None
-    constraints: Optional[Dict] = None
+    profile: str = "auto"
+    network_policy: str = "restricted"
     approval_token: Optional[str] = None
 
 
-class Task(BaseModel):
-    agent: str
-    goal: str
+class TaskSpec(BaseModel):
+    task_id: str
+    role: str
+    summary: str
+    inputs: List[str] = []
+    outputs: List[str] = []
+    commands: List[str] = []
+    verify_targets: List[str] = []
+    depends_on: List[str] = []
+    risk_level: str
+
+
+class AgentResult(BaseModel):
+    task_id: str
+    ok: bool
+    summary: str
+    files_touched: List[str] = []
+    commands: List[str] = []
+    verify_targets: List[str] = []
+    external_refs: List[str] = []
+    decision_trace: List[str] = []
 
 
 class ExecutionReport(BaseModel):
     trace_id: str
-    selected_agents: List[str]
-    tasks: List[Task]
-    actions_taken: List[str]
+    selected_profile: str
+    tasks: List[TaskSpec]
+    results: List[AgentResult]
     artifacts: List[str]
-    verify_results: List[str]
-    pending_approvals: List[str]
+    pending_confirmations: List[str]
 
 
-class AgentManager:
-    def __init__(self, providers: ProviderRegistry):
-        self.providers = providers
+class AgentFabricManager:
+    def __init__(self, repo_root: str):
+        self.repo_root = repo_root
+        # Mock providers
+        self.providers = ProviderRegistry()
 
-    def classify_command(self, cmd: str) -> str:
-        if 'rm -rf' in cmd or 'git reset --hard' in cmd or 'kill -9' in cmd:
-            return 'DESTRUCTIVE'
-        elif 'git pull' in cmd or 'pip install' in cmd:
-            return 'CAUTION'
-        else:
-            return 'SAFE'
+    def try_record_agent_run(self, trace_id, goal_text, profile, started_ts, finished_ts=None, ok=None):
+        try:
+            from ...tools.ide_graph.ide_graph_client import IdeGraphClient
+            import os
+            client = IdeGraphClient(
+                os.getenv('IDE_GRAPH_URI', 'bolt://127.0.0.1:7689'),
+                os.getenv('IDE_GRAPH_USER', 'neo4j'),
+                os.getenv('IDE_GRAPH_PASSWORD', 'denis-ide-graph'),
+                os.getenv('IDE_GRAPH_DB', 'denis_ide_graph')
+            )
+            client.record_agent_run(trace_id, goal_text, profile, started_ts, finished_ts, ok)
+            client.close()
+        except Exception:
+            pass  # fail-open
 
-    def execute_goal(self, goal: Goal) -> ExecutionReport:
+    def try_record_agent_task(self, trace_id, task_id, role, summary, status):
+        try:
+            from ...tools.ide_graph.ide_graph_client import IdeGraphClient
+            import os
+            client = IdeGraphClient(
+                os.getenv('IDE_GRAPH_URI', 'bolt://127.0.0.1:7689'),
+                os.getenv('IDE_GRAPH_USER', 'neo4j'),
+                os.getenv('IDE_GRAPH_PASSWORD', 'denis-ide-graph'),
+                os.getenv('IDE_GRAPH_DB', 'denis_ide_graph')
+            )
+            client.record_agent_task(trace_id, task_id, role, summary, status)
+            client.close()
+        except Exception:
+            pass  # fail-open
+
+    def try_record_agent_result(self, trace_id, task_id, ok, files_touched, artifacts, external_refs):
+        try:
+            from ...tools.ide_graph.ide_graph_client import IdeGraphClient
+            import os
+            client = IdeGraphClient(
+                os.getenv('IDE_GRAPH_URI', 'bolt://127.0.0.1:7689'),
+                os.getenv('IDE_GRAPH_USER', 'neo4j'),
+                os.getenv('IDE_GRAPH_PASSWORD', 'denis-ide-graph'),
+                os.getenv('IDE_GRAPH_DB', 'denis_ide_graph')
+            )
+            client.record_agent_result(trace_id, task_id, ok, files_touched, artifacts, external_refs)
+            client.close()
+        except Exception:
+            pass  # fail-open
+
+    def run(self, goal: GoalInput) -> ExecutionReport:
+        from datetime import datetime
         trace_id = str(uuid.uuid4())
-        selected_agents = ['research', 'arch', 'coding', 'qa', 'ops', 'neo4j']
-        tasks = [Task(agent=a, goal=goal.text) for a in selected_agents]
-        actions_taken = []
-        artifacts = []
-        verify_results = []
-        pending_approvals = []
+        selected_profile = goal.profile
 
+        started_ts = datetime.now().isoformat()
+        self.try_record_agent_run(trace_id, goal.goal_text, selected_profile, started_ts)
+
+        # Mock context pack
+        context_pack = {}
+
+        # Mock planner: generate basic tasks
+        tasks = [
+            TaskSpec(
+                task_id='research',
+                role='research',
+                summary='Research options for goal',
+                inputs=[],
+                outputs=[],
+                commands=[],
+                verify_targets=[],
+                depends_on=[],
+                risk_level='low'
+            ),
+            TaskSpec(
+                task_id='coding',
+                role='coding',
+                summary='Implement changes for goal',
+                inputs=[],
+                outputs=[],
+                commands=[],
+                verify_targets=[],
+                depends_on=['research'],
+                risk_level='medium'
+            )
+        ]
+
+        results = []
         for task in tasks:
-            try:
-                agent_module = __import__(f'denis_unified_v1.agent_fabric.agents.{task.agent}', fromlist=[''])
-                agent_class = getattr(agent_module, f'{task.agent.capitalize()}Agent')
-                provider = self.providers.get_provider(task.agent)
-                agent = agent_class(provider)
-                result = agent.execute(task.goal)
-                actions_taken.extend(result.get('actions', []))
-                for action in result.get('actions', []):
-                    if 'command' in action:
-                        cmd_class = self.classify_command(action['command'])
-                        if cmd_class == 'DESTRUCTIVE':
-                            pending_approvals.append(f"DESTRUCTIVE: {action['command']}")
-                        else:
-                            try:
-                                subprocess.run(action['command'], shell=True, check=True)
-                            except subprocess.CalledProcessError:
-                                verify_results.append(f"Failed: {action['command']}")
-            except Exception as e:
-                verify_results.append(f"Agent {task.agent} failed: {str(e)}")
+            self.try_record_agent_task(trace_id, task.task_id, task.role, task.summary, "running")
+            # Mock agent execution
+            result = AgentResult(
+                task_id=task.task_id,
+                ok=True,
+                summary=f'Executed {task.role} for {goal.goal_text}',
+                files_touched=[],
+                commands=[],
+                verify_targets=[],
+                external_refs=[],
+                decision_trace=[f'Decided to {task.role} based on goal']
+            )
+            self.try_record_agent_result(trace_id, task.task_id, result.ok, result.files_touched, [], result.external_refs)
+            self.try_record_agent_task(trace_id, task.task_id, task.role, task.summary, "done" if result.ok else "failed")
+            results.append(result)
 
-        # Log to artifact
-        log_file = Path(goal.repo_root) / 'artifacts' / 'agent_fabric' / f'{trace_id}.json'
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_file, 'w') as f:
-            json.dump(ExecutionReport(
-                trace_id=trace_id,
-                selected_agents=selected_agents,
-                tasks=tasks,
-                actions_taken=actions_taken,
-                artifacts=artifacts,
-                verify_results=verify_results,
-                pending_approvals=pending_approvals
-            ).dict(), f, indent=2)
-        artifacts.append(str(log_file))
+        artifacts = [f'artifacts/agent_fabric/{trace_id}.json']
+        pending_confirmations = []
 
-        return ExecutionReport(
+        finished_ts = datetime.now().isoformat()
+        ok_global = all(r.ok for r in results)
+        self.try_record_agent_run(trace_id, goal.goal_text, selected_profile, started_ts, finished_ts, ok_global)
+
+        report = ExecutionReport(
             trace_id=trace_id,
-            selected_agents=selected_agents,
+            selected_profile=selected_profile,
             tasks=tasks,
-            actions_taken=actions_taken,
+            results=results,
             artifacts=artifacts,
-            verify_results=verify_results,
-            pending_approvals=pending_approvals
+            pending_confirmations=pending_confirmations
         )
+
+        # Save report
+        report_path = Path(self.repo_root) / artifacts[0]
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(report_path, 'w') as f:
+            json.dump(report.model_dump(mode="json"), f, indent=2)
+
+        return report

@@ -156,8 +156,8 @@ async def main():
     with open("phase1_unified_8085_smoke.json", "w") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
-    print("
-Results saved to: phase1_unified_8085_smoke.json"    # Exit with appropriate code
+    print(f"\nResults saved to: phase1_unified_8085_smoke.json")
+    # Exit with appropriate code
     exit(0 if results["summary"]["passed"] == results["summary"]["total_tests"] else 1)
 
 

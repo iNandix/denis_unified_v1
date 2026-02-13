@@ -145,18 +145,31 @@ class IdeGraphClient:
                     name=url.split('/')[-1], url=url, id=id
                 )
 
-    def record_dependency(self, component: str, dependency: str, kind: str):
+    def record_agent_run(self, trace_id, goal_text, profile, started_ts, finished_ts=None, ok=None):
         with self.driver.session() as session:
-            if dependency.startswith('http'):
-                session.run(
-                    "MERGE (c:Component {name: $component}) MERGE (e:ExternalResource {name: $name, url: $url, kind: $kind}) MERGE (c)-[:DEPENDS_ON]->(e)",
-                    component=component, name=dependency.split('/')[-1], url=dependency, kind=kind
-                )
-            else:
-                session.run(
-                    "MERGE (c1:Component {name: $component}) MERGE (c2:Component {name: $dependency}) MERGE (c1)-[:DEPENDS_ON]->(c2)",
-                    component=component, dependency=dependency
-                )
+            session.run(
+                "MERGE (r:AgentRun {trace_id: $trace_id}) SET r.goal_text = $goal_text, r.profile = $profile, r.started_ts = $started_ts, r.finished_ts = $finished_ts, r.ok = $ok",
+                trace_id=trace_id, goal_text=goal_text, profile=profile, started_ts=started_ts, finished_ts=finished_ts, ok=ok
+            )
+
+    def record_agent_task(self, trace_id, task_id, role, summary, status):
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (r:AgentRun {trace_id: $trace_id}) MERGE (t:AgentTask {task_id: $task_id}) SET t.role = $role, t.summary = $summary, t.status = $status MERGE (r)-[:HAS_TASK]->(t)",
+                trace_id=trace_id, task_id=task_id, role=role, summary=summary, status=status
+            )
+
+    def record_agent_result(self, trace_id, task_id, ok, files_touched, artifacts, external_refs):
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (t:AgentTask {task_id: $task_id}) MERGE (res:AgentResult {task_id: $task_id}) SET res.ok = $ok, res.files_touched = $files_touched, res.artifacts = $artifacts, res.external_refs = $external_refs MERGE (t)-[:PRODUCED]->(res)",
+                task_id=task_id, ok=ok, files_touched=files_touched, artifacts=artifacts, external_refs=external_refs
+            )
+            # Link to Workspace
+            session.run(
+                "MERGE (w:Workspace {id: 'denis_unified_v1'}) MERGE (r:AgentRun {trace_id: $trace_id}) MERGE (w)-[:RAN]->(r)",
+                trace_id=trace_id
+            )
 
 
 if __name__ == "__main__":
@@ -169,7 +182,7 @@ if __name__ == "__main__":
             os.getenv('IDE_GRAPH_URI', 'bolt://127.0.0.1:7689'),
             os.getenv('IDE_GRAPH_USER', 'neo4j'),
             os.getenv('IDE_GRAPH_PASSWORD', 'denis-ide-graph'),
-            os.getenv('IDE_GRAPH_DB', 'denis_ide_graph')
+            os.getenv('IDE_GRAPH_DB', 'neo4j')
         )
         client.scan_workspace()
         client.close()

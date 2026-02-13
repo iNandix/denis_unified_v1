@@ -1,41 +1,67 @@
-from __future__ import annotations
+"""Real feature flags implementation."""
 
-try:
-    # legacy existente en tu repo
-    from featureflags import loadfeatureflags as load_feature_flags  # type: ignore
-except Exception:
-    # fallback mínimo
-    import json, os
-    from typing import Any, Dict, Optional
+import os
+from typing import Dict, Any
 
-    class FeatureFlags(dict):
-        def enabled(self, name: str, default: bool = False) -> bool:
-            v = self.get(name, default)
-            if isinstance(v, bool): return v
-            if isinstance(v, (int, float)): return bool(v)
-            if isinstance(v, str): return v.strip().lower() in ("1","true","yes","y","on","enabled")
-            return bool(v)
 
-        def as_dict(self) -> dict:
-            return dict(self)
+class FeatureFlags:
+    """Real feature flags implementation."""
 
-    def load_feature_flags(
-        env_key: str = "DENIS_FEATURE_FLAGS",
-        prefix: str = "DENIS_FF_",
-        defaults: Optional[Dict[str, Any]] = None,
-    ) -> FeatureFlags:
-        flags: Dict[str, Any] = dict(defaults or {})
-        raw = os.getenv(env_key, "").strip()
-        if raw:
-            try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    flags.update(parsed)
-            except Exception:
-                pass
-        for k, v in os.environ.items():
-            if k.startswith(prefix):
-                name = k[len(prefix):].lower()
-                if name:
-                    flags[name] = v
-        return FeatureFlags(flags)
+    def __init__(self):
+        self._flags = self._load_flags()
+
+    def _load_flags(self) -> Dict[str, Any]:
+        """Load flags from environment."""
+        flags = {}
+        
+        # Default flags
+        defaults = {
+            "denis_use_voice_pipeline": False,
+            "denis_use_memory_unified": False,
+            "denis_use_atlas": False,
+            "denis_use_inference_router": False,
+            "phase10_enable_prompt_injection_guard": False,
+            "phase10_max_output_tokens": 512,
+        }
+        
+        # Override from environment
+        for key, default in defaults.items():
+            env_key = key.upper()
+            env_value = os.getenv(env_key)
+            if env_value is not None:
+                # Parse boolean
+                if isinstance(default, bool):
+                    flags[key] = env_value.lower() in ('true', '1', 'yes', 'on')
+                else:
+                    flags[key] = type(default)(env_value)
+            else:
+                flags[key] = default
+        
+        return flags
+
+    def get(self, key: str, default=None):
+        return self._flags.get(key, default)
+
+    def __getitem__(self, key: str):
+        return self._flags[key]
+
+    def __contains__(self, key: str):
+        return key in self._flags
+
+    def as_dict(self):
+        return self._flags.copy()
+
+
+# Global instance
+_flags_instance = None
+
+def load_feature_flags():
+    """Load feature flags."""
+    global _flags_instance
+    if _flags_instance is None:
+        _flags_instance = FeatureFlags()
+    return _flags_instance
+
+def load_featureflags():
+    """Alias."""
+    return load_feature_flags()

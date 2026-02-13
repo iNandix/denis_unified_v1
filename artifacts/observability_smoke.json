@@ -1,10 +1,10 @@
 {
-  "ok": false,
+  "ok": true,
   "reason": null,
   "server_boot": true,
-  "observability_endpoint": false,
-  "tracing_enabled": null,
-  "metrics_enabled": null,
-  "timestamp_utc": 1771017769.206561,
-  "overall_success": false
+  "observability_endpoint": true,
+  "tracing_enabled": false,
+  "metrics_enabled": false,
+  "timestamp_utc": 1771022627.8350499,
+  "overall_success": true
 }

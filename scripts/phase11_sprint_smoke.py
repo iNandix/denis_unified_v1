@@ -102,6 +102,7 @@ def main():
             print(f"Contract change blocked: {blocked}")
         finally:
             # No need to reset, temp dir cleaned up
+            pass
 
     # Write artifact
     artifacts_dir = Path("artifacts/sprint")

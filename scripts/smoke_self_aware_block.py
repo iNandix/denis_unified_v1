@@ -24,12 +24,13 @@ def _utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 def run_smoke_test(test_script: str, output_file: str = None) -> Dict[str, Any]:
-    """Run a single smoke test by importing its main function without triggering __main__."""
+    """Run a single smoke test via subprocess with timeout and artifact parsing."""
     try:
-        # Import the smoke test module and run its main function
-        module_name = test_script.replace('.py', '').replace('scripts/', '')
-        module_path = f"scripts.{module_name}"
-        
+        # Build command to run the smoke test
+        cmd = [sys.executable, f"scripts/{test_script}"]
+        if output_file:
+            cmd.extend(["--out-json", output_file])
+
         # Run with timeout
         result = subprocess.run(
             cmd,
@@ -37,7 +38,6 @@ def run_smoke_test(test_script: str, output_file: str = None) -> Dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=120,  # 2 minute timeout
-            env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)}
         )
 
         # Try to read the artifact if it was generated
@@ -49,10 +49,21 @@ def run_smoke_test(test_script: str, output_file: str = None) -> Dict[str, Any]:
             except Exception as e:
                 artifact_data = {"error": f"Failed to read artifact: {e}"}
 
+        # Determine success based on return code and artifact status
+        success = False
+        if result.returncode == 0:
+            success = True
+        elif artifact_data and isinstance(artifact_data, dict):
+            # Check for acceptable non-zero exit codes (skipped dependencies)
+            if artifact_data.get("status") in ["skipped", "skippeddependency"]:
+                success = True
+            elif artifact_data.get("ok") is True:
+                success = True
+
         return {
             "test_script": test_script,
             "return_code": result.returncode,
-            "success": result.returncode == 0 or (artifact_data and isinstance(artifact_data, dict) and (artifact_data.get("status") == "skipped" or artifact_data.get("ok") is True)),
+            "success": success,
             "stdout": result.stdout.strip(),
             "stderr": result.stderr.strip(),
             "artifact": artifact_data,

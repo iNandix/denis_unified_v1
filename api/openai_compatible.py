@@ -388,6 +388,7 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
         try:
             return {"object": "list", "data": runtime.models}
         except Exception:
+            # Fail-open degraded response
             return {"object": "list", "data": [{"id": "denis-cognitive", "object": "model"}]}
 
     @router.post("/chat/completions")
@@ -397,7 +398,9 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
 
         try:
             result = await runtime.generate(req)
+            return JSONResponse(status_code=200, content=result)
         except Exception as e:
+            # Fail-open degraded response
             return JSONResponse(
                 status_code=200,
                 content={
@@ -410,13 +413,21 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
                             "index": 0,
                             "message": {
                                 "role": "assistant",
-                                "content": f"Service temporarily unavailable: {str(e)}",
+                                "content": "Degraded response: runtime unavailable.",
                             },
                             "finish_reason": "stop",
                         }
                     ],
-                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-                    "meta": {"path": "degraded", "error": str(e)},
+                    "usage": {
+                        "prompt_tokens": max(1, len(" ".join([m.content or "" for m in req.messages]).split())),
+                        "completion_tokens": 2,
+                        "total_tokens": 3,
+                    },
+                    "meta": {
+                        "path": "degraded",
+                        "reason": str(e),
+                        "user": user,
+                    },
                 },
             )
 

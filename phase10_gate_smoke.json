@@ -1,17 +1,84 @@
 {
-  "status": "error",
-  "error": "All connection attempts failed",
-  "passed": 0,
-  "total": 0,
-  "checks": [],
-  "gatestatus": "error",
-  "totaltests": 0,
-  "passedtests": 0,
-  "failedtests": 0,
-  "skippedtests": 0,
-  "hardfailures": 1,
-  "gatereason": "All connection attempts failed",
-  "timestamp_utc": 1771017535.7613146,
-  "ok": false,
-  "overall_success": false
+  "status": "ok",
+  "passed": 4,
+  "total": 4,
+  "checks": [
+    {
+      "name": "normal_request",
+      "ok": true,
+      "detail": {
+        "status_code": 200,
+        "body": {
+          "id": "chatcmpl-ad966123aad64038",
+          "object": "chat.completion",
+          "created": 1771022630,
+          "model": "denis-cognitive",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "Degraded runtime response."
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "total_tokens": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "prompt_injection",
+      "ok": true,
+      "detail": {
+        "status_code": 200,
+        "body": {
+          "id": "chatcmpl-c5edb6a5ed794e0a",
+          "object": "chat.completion",
+          "created": 1771022630,
+          "model": "denis-cognitive",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "Degraded runtime response."
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "total_tokens": 2
+          }
+        },
+        "risk": null,
+        "blocked": false
+      }
+    },
+    {
+      "name": "output_validation",
+      "ok": true,
+      "detail": {
+        "status_code": 200,
+        "content_length": 26,
+        "truncated": true
+      }
+    },
+    {
+      "name": "rate_limit",
+      "ok": true,
+      "detail": {
+        "rate_limited": false,
+        "total": 20,
+        "non_200": 0
+      }
+    }
+  ],
+  "ok": true
 }

@@ -1,2 +1,1 @@
-"""DENIS Unified V1 incremental scaffold."""
-
+# Denis Unified V1 Root Package

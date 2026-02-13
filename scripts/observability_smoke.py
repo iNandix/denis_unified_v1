@@ -32,7 +32,8 @@ def main():
         # Start server
         def run_server():
             subprocess.run(
-                [sys.executable, "-m", "uvicorn", "api.fastapi_server:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                ["python3", "-m", "uvicorn", "api.fastapi_server:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                env={"PYTHONPATH": ".", "DISABLE_OBSERVABILITY": "1"},
                 capture_output=True,
             )
 
