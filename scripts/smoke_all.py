@@ -16,11 +16,15 @@ for name, script in tests:
     print(f"Running: {name}")
     print(f"{'='*60}")
     
-    result = subprocess.run(["python3", f"scripts/{script}"], capture_output=True, text=True)
+    result = subprocess.run(["python3", f"scripts/{script}"], capture_output=True, text=True, cwd="/media/jotah/SSD_denis/home_jotah/denis_unified_v1")
     
     try:
-        output = json.loads(result.stdout.split('\n')[-2])  # Penultimate line
-        results[name] = {"status": output.get("status", "unknown")}
+        lines = [l for l in result.stdout.split('\n') if l.strip()]
+        for line in reversed(lines):
+            if line.startswith('{'):
+                output = json.loads(line)
+                results[name] = {"status": output.get("status", "unknown")}
+                break
     except:
         results[name] = {"status": "error"}
 
