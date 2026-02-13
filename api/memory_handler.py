@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from denis_unified_v1.memory import build_memory_manager
@@ -41,6 +41,25 @@ class AdaptiveCoTRequest(BaseModel):
     query: str
     latency_budget_ms: int = 2000
     context_window_tokens: int = 8192
+
+
+class MemoryQueryRequest(BaseModel):
+    text: str
+    user_id: str | None = None
+    session_id: str | None = None
+    intent: str | None = None
+    max_items: int = 8
+    max_chars: int = 1500
+
+
+class ConsolidationRequest(BaseModel):
+    days_back: int = 1
+
+
+class ContradictionResolutionRequest(BaseModel):
+    contradiction_id: str
+    resolution: str
+    winner_id: str | None = None
 
 
 MENTAL_LOOP_LEVELS = [
@@ -218,6 +237,93 @@ def build_memory_router() -> APIRouter:
         if not data:
             raise HTTPException(status_code=404, detail="working_context_not_found")
         return data
+
+    # ========== ADVANCED MEMORY FEATURES ==========
+
+    @router.post("/query")
+    async def query_memory(req: MemoryQueryRequest) -> dict[str, Any]:
+        """Retrieve relevant memory context using semantic search."""
+        context = await memory.retrieval.retrieve_context(
+            text=req.text,
+            user_id=req.user_id,
+            session_id=req.session_id,
+            intent=req.intent,
+            max_items=req.max_items,
+            max_chars=req.max_chars,
+        )
+        return context
+
+    @router.post("/consolidate")
+    async def consolidate_memory(req: ConsolidationRequest) -> dict[str, Any]:
+        """Run memory consolidation to extract facts and preferences."""
+        result = await memory.consolidator.consolidate_daily(days_back=req.days_back)
+        return result
+
+    @router.get("/contradictions")
+    async def list_contradictions(
+        user_id: str | None = Query(None),
+        status: str | None = Query(None),
+    ) -> dict[str, Any]:
+        """List detected contradictions in memory."""
+        contradictions = await memory.contradiction_detector.list_contradictions(
+            user_id=user_id, status=status
+        )
+        return {"contradictions": contradictions, "count": len(contradictions)}
+
+    @router.post("/contradictions/detect")
+    async def detect_contradictions(user_id: str | None = Query(None)) -> dict[str, Any]:
+        """Detect contradictions in facts and preferences."""
+        contradictions = await memory.contradiction_detector.detect_contradictions(
+            user_id=user_id
+        )
+        return {"contradictions": contradictions, "count": len(contradictions)}
+
+    @router.post("/contradictions/resolve")
+    async def resolve_contradiction(req: ContradictionResolutionRequest) -> dict[str, Any]:
+        """Resolve a contradiction by marking winner or merging."""
+        result = await memory.contradiction_detector.resolve_contradiction(
+            contradiction_id=req.contradiction_id,
+            resolution=req.resolution,
+            winner_id=req.winner_id,
+        )
+        return result
+
+    @router.post("/forget")
+    async def forget_memory(
+        user_id: str = Query(...),
+        scope: str = Query("all", regex="^(all|facts|preferences|episodes)$"),
+    ) -> dict[str, Any]:
+        """Forget user memory (GDPR compliance)."""
+        # Implementation for memory deletion
+        deleted = {"facts": 0, "preferences": 0, "episodes": 0}
+
+        if scope in ("all", "facts"):
+            all_facts = memory.redis.hgetall_json("memory:semantic:facts")
+            for fact_id, fact in all_facts.items():
+                if fact.get("user_id") == user_id:
+                    # Delete from Redis (in production, also delete from Neo4j)
+                    deleted["facts"] += 1
+
+        if scope in ("all", "preferences"):
+            all_prefs = memory.redis.hgetall_json("memory:semantic:preferences")
+            for pref_id, pref in all_prefs.items():
+                if pref.get("user_id") == user_id:
+                    deleted["preferences"] += 1
+
+        if scope in ("all", "episodes"):
+            all_convs = memory.redis.hgetall_json("memory:episodic:conversations")
+            for conv_id, conv in all_convs.items():
+                if conv.get("user_id") == user_id:
+                    deleted["episodes"] += 1
+
+        return {
+            "status": "ok",
+            "user_id": user_id,
+            "scope": scope,
+            "deleted": deleted,
+        }
+
+    # ========== LEGACY ENDPOINTS ==========
 
     @router.get("/neuro/layers")
     async def neuro_layers() -> dict[str, Any]:

@@ -1,0 +1,22 @@
+version: 3.0
+domain: unified_memory
+description: Contratos de gobernanza para Fase 9 (unified memory)
+contracts:
+  - id: L3.MEM.NEVER_BLOCK_CORE
+    severity: critical
+    rule: "Si Neo4j/Redis falla, responder sin memoria."
+  - id: L3.MEM.PRIVACY
+    severity: critical
+    rule: "Redactar PII si flag activo; no exfiltrar secretos."
+  - id: L3.MEM.PROVENANCE
+    severity: critical
+    rule: "Todo item debe tener provenance (source, trace_id, ts)."
+  - id: L3.MEM.CONSOLIDATION
+    severity: warning
+    rule: "Consolidación periódica + dedupe."
+  - id: L3.MEM.CONTRADICTIONS
+    severity: warning
+    rule: "Detectar y marcar contradicciones, no borrar silenciosamente."
+  - id: L3.MEM.RETENTION
+    severity: warning
+    rule: "Episodios > retention_days se archivan, facts/preferences se mantienen."
