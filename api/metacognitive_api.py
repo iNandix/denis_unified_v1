@@ -1,15 +1,22 @@
 """API Metacognitiva - Endpoints de introspección."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from typing import Dict, List
 import json
-import redis
-import os
 import time
+import os
+
+try:
+    import redis
+except ImportError:
+    redis = None
+
 from neo4j import GraphDatabase
 
 router = APIRouter(prefix="/metacognitive", tags=["metacognitive"])
 
 def get_redis():
+    if redis is None:
+        return None
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     return redis.Redis.from_url(redis_url, decode_responses=True)
 
@@ -25,16 +32,13 @@ async def metacognitive_status():
     driver = get_neo4j()
     
     with driver.session() as session:
-        # Contar nodos por layer
         l0_count = session.run("MATCH (n:Tool) RETURN count(n) as c").single()["c"]
         l1_count = session.run("MATCH (n:Pattern) RETURN count(n) as c").single()["c"]
         l2_count = session.run("MATCH (n:Principle) RETURN count(n) as c").single()["c"]
         
-        # Verificar coherencia
         governs_count = session.run("MATCH ()-[r:GOVERNS]->() RETURN count(r) as c").single()["c"]
         applies_count = session.run("MATCH ()-[r:APPLIES_TO]->() RETURN count(r) as c").single()["c"]
         
-        # Tools con problemas
         problematic = session.run("""
             MATCH (t:Tool)
             WHERE t.success_rate < 0.85 OR t.avg_latency_ms > 1000
@@ -68,6 +72,8 @@ async def metacognitive_status():
 async def metacognitive_metrics():
     """Métricas de operaciones recientes."""
     r = get_redis()
+    if r is None:
+        return {"operations": {}, "timestamp": time.time(), "error": "Redis not available"}
     
     operations = ["smx_motor_call", "cognitive_router_route", "nlu_parse", "smx_orchestrator_process"]
     metrics = {}
@@ -98,7 +104,6 @@ async def metacognitive_attention():
     driver = get_neo4j()
     
     with driver.session() as session:
-        # Patterns más usados recientemente
         top_patterns = session.run("""
             MATCH (p:Pattern)
             RETURN p.id, p.type, p.usage_count, p.confidence
@@ -108,7 +113,6 @@ async def metacognitive_attention():
         
         patterns = [dict(record) for record in top_patterns]
         
-        # Tools más activos
         top_tools = session.run("""
             MATCH (t:Tool)
             RETURN t.name, t.success_rate, t.avg_latency_ms
@@ -123,7 +127,7 @@ async def metacognitive_attention():
     return {
         "focused_patterns": patterns,
         "active_tools": tools,
-        "attention_mode": "balanced",  # fast/balanced/deep
+        "attention_mode": "balanced",
     }
 
 @router.get("/coherence")
@@ -132,20 +136,17 @@ async def metacognitive_coherence():
     driver = get_neo4j()
     
     with driver.session() as session:
-        # Verificar paths L2→L1→L0 completos
         complete_paths = session.run("""
             MATCH (pr:Principle)-[:GOVERNS]->(pa:Pattern)-[:APPLIES_TO]->(t:Tool)
             RETURN count(*) as paths
         """).single()["paths"]
         
-        # Patterns sin herramientas
         orphan_patterns = session.run("""
             MATCH (pa:Pattern)
             WHERE NOT (pa)-[:APPLIES_TO]->()
             RETURN count(pa) as orphans
         """).single()["orphans"]
         
-        # Principles sin patterns
         orphan_principles = session.run("""
             MATCH (pr:Principle)
             WHERE NOT (pr)-[:GOVERNS]->()
@@ -172,11 +173,9 @@ async def force_reflection(query: Dict):
     
     text = query.get("text", "")
     
-    # Percepción
     reflection_engine = PerceptionReflection()
     perception_reflection = reflection_engine.reflect({"entities": []})
     
-    # Detección de patrones
     pattern_detector = L1PatternDetector()
     patterns = pattern_detector.detect_patterns()
     
@@ -184,7 +183,7 @@ async def force_reflection(query: Dict):
         "query": text,
         "perception_reflection": perception_reflection,
         "patterns_detected": len(patterns),
-        "patterns": patterns[:3],  # Top 3
+        "patterns": patterns[:3],
         "timestamp": time.time(),
     }
 
