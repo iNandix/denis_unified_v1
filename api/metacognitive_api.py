@@ -21,6 +21,10 @@ from typing import Any, Dict, List, Optional, Set
 from enum import Enum
 import threading
 from pathlib import Path
+import inspect
+
+async def maybe_await(x):
+    return await x if inspect.isawaitable(x) else x
 
 # Use centralized connections module
 try:
@@ -38,7 +42,7 @@ except ImportError:
     def _get_neo4j():
         return None
 
-    def _get_neo4j_async():
+    async def _get_neo4j_async():
         return None
 
     def _get_redis_pool():
@@ -68,7 +72,7 @@ def get_neo4j():
 
 async def get_neo4j_async():
     """Get async Neo4j driver - uses centralized connections module."""
-    return await _get_neo4j_async()
+    return await maybe_await(_get_neo4j_async())
 
 
 async def get_redis_pool():
@@ -83,7 +87,7 @@ async def _call_blocking(func, timeout_ms: int):
             result = await asyncio.to_thread(func)
             latency_ms = int((time.perf_counter() - start) * 1000)
             return result, latency_ms, None
-    except TimeoutError:
+    except (asyncio.TimeoutError, TimeoutError):
         return None, timeout_ms, "timeout"
     except Exception as exc:  # pragma: no cover - defensive
         return None, int((time.perf_counter() - start) * 1000), str(exc)
@@ -110,6 +114,10 @@ def _metrics_fallback() -> Dict:
 async def metacognitive_status():
     """Estado general del sistema metacognitivo con consultas concurrentes."""
     driver = await get_neo4j_async()
+    if driver is None:
+        out = _status_fallback()
+        out["reason"] = "neo4j_unavailable"
+        return out
     degraded = False
 
     async def query_l0_count():
@@ -688,8 +696,11 @@ async def _calculate_consciousness_metrics(
 @router.post("/reflect")
 async def force_reflection(query: Dict):
     """Forzar reflexión metacognitiva profunda con análisis temporal, predicción de cambios y métricas de conciencia."""
-
-    # Core reflection
+    text = query.get("text", "")
+    include_temporal = bool(query.get("include_temporal", False))
+    include_prediction = bool(query.get("include_prediction", False))
+    include_consciousness = bool(query.get("include_consciousness", False))
+    degraded = False
     async def _reflect():
         engine = PerceptionReflection()
         return engine.reflect({"entities": []})
@@ -781,7 +792,7 @@ async def metacognitive_self():
     def _query():
         with driver.session() as session:
             # Capabilities from tools
-            tools = session.run(
+            tool_count = session.run(
                 "MATCH (t:Tool) RETURN count(t) as tool_count"
             ).single()["tool_count"]
             # Identity: hardcoded for now
@@ -862,6 +873,7 @@ async def metacognitive_purpose():
         "secondary": "Learn and evolve through interactions",
         "constraints": ["Ethical AI", "Fail-safe", "User-centric"],
     }
+    return {"purpose": purpose, "status": "healthy"}
 
 
 async def _generate_automatic_feedback(feedback: Dict) -> str:

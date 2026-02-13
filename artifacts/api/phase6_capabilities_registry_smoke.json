@@ -1,0 +1,43 @@
+{
+  "capabilities_endpoint_code": 200,
+  "capabilities_events_endpoint_code": 200,
+  "capabilities_events_result": {
+    "first_lines": [
+      "event: heartbeat",
+      "data: {\"status\":\"ok\"}",
+      ""
+    ],
+    "latency_ms": 2.2935867309570312,
+    "ok": true,
+    "sse_valid": true,
+    "status_code": 200,
+    "stream_type": "sse"
+  },
+  "capabilities_result": {
+    "data": {
+      "reason": "capabilities_service_available",
+      "snapshot": {},
+      "status": "ok"
+    },
+    "latency_ms": 3.236055374145508,
+    "ok": true,
+    "status_code": 200
+  },
+  "endpoint_status": "success",
+  "ok": true,
+  "overall_success": false,
+  "port": 42539,
+  "router_mounted": true,
+  "schema_validation": {
+    "capabilities_present": false,
+    "core_evidence": {},
+    "errors": [
+      "Expected snapshot_version 'v1', got 'None'",
+      "Capabilities array/dict is empty or missing"
+    ],
+    "schema_valid": false,
+    "snapshot_version_ok": false
+  },
+  "server_started": true,
+  "status_endpoint_code": 200
+}
