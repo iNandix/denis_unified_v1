@@ -1,0 +1,9 @@
+{
+  "ok": false,
+  "reason": null,
+  "router_boot": true,
+  "models_endpoint": false,
+  "chat_endpoint": false,
+  "timestamp_utc": 1771017745.4817567,
+  "overall_success": false
+}
