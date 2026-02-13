@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from sprint_orchestrator.event_bus import EventBus, publish_event
-from sprint_orchestrator.models import SprintEvent, SprintTask, new_id
+from sprint_orchestrator.models import SprintEvent, SprintTask
 from sprint_orchestrator.session_store import SessionStore
 from sprint_orchestrator.qcli_integration import get_qcli
 

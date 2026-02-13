@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import subprocess
-import json
 from pathlib import Path
 from typing import Any, Dict
 
-from .event_bus import EventBus, publish_event
-from .models import SprintEvent, SprintTask, new_id
-from .session_store import SessionStore
-from .qcli_integration import get_qcli
-
-
-def _env_bool(raw: str | None, default: bool) -> bool:
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+from sprint_orchestrator.event_bus import EventBus, publish_event
+from sprint_orchestrator.models import SprintEvent
+from sprint_orchestrator.session_store import SessionStore
+from sprint_orchestrator.qcli_integration import get_qcli
+import asyncio
 
 
 class ToolExecutor:
@@ -84,7 +77,6 @@ class ToolExecutor:
             query = arguments.get("query", "")
             limit = int(arguments.get("limit", 20))
             results = self.qcli.search(query=query, limit=limit)
-            # Return formatted summary for LLM consumption
             return {
                 "status": "ok",
                 "query": query,
