@@ -1,14 +1,48 @@
 #!/usr/bin/env python3
-"""Meta-smoke: run all smokes and generate unified artifact."""
+"""
+Meta-smoke: run all smokes and generate unified artifact.
+
+HARDENED VERSION - Anti-agent cheat:
+- py_compile check before running any smoke
+- Emergency artifact if smoke crashes
+- Proper env override
+"""
 
 import argparse
+import glob
 import json
 import os
+import py_compile
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Dict, List, Any
+
+
+# Compile check - fail fast if any script has syntax errors
+def check_all_scripts_compile():
+    """Compile all smoke scripts before running - fail fast on syntax errors."""
+    scripts = glob.glob("scripts/*smoke*.py")
+    scripts.extend(glob.glob("scripts/meta_smoke*.py"))
+    scripts.extend(glob.glob("scripts/supervisor*.py"))
+    scripts.extend(glob.glob("scripts/denis*.py"))
+
+    errors = []
+    for script in scripts:
+        try:
+            py_compile.compile(script, doraise=True)
+        except py_compile.PyCompileError as e:
+            errors.append(f"{script}: {e}")
+
+    if errors:
+        print("=== COMPILE ERRORS ===")
+        for err in errors:
+            print(f"  - {err}")
+        return False
+    return True
+
 
 # Define known smokes with their scripts and timeout
 SMOKES = {
@@ -16,7 +50,7 @@ SMOKES = {
         "script": "scripts/boot_import_smoke.py",
         "artifact": "artifacts/boot_import_smoke.json",
         "timeout": 30,
-        "severity": "critical",  # Must pass
+        "severity": "critical",
     },
     "legacy_imports": {
         "script": "scripts/legacy_imports_smoke.py",
@@ -58,6 +92,22 @@ SMOKES = {
 }
 
 
+def write_emergency_artifact(path: Path, reason: str, details: str = ""):
+    """Write emergency artifact if smoke crashes."""
+    artifact = {
+        "ok": False,
+        "status": "crashed",
+        "reason": reason,
+        "details": details[:1000] if details else "",
+        "timestamp_utc": time.time(),
+        "overall_success": False,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as f:
+        json.dump(artifact, f, indent=2)
+    return artifact
+
+
 def run_smoke(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
     """Run a single smoke test."""
     result = {
@@ -72,19 +122,23 @@ def run_smoke(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
     start_time = time.time()
 
     try:
-        # Run smoke script
+        # Build command
         cmd = [sys.executable, config["script"]]
         if config.get("use_out_json_flag"):
             cmd.extend(["--out-json", config["artifact"]])
         else:
             cmd.append(config["artifact"])
-        # CRITICAL: os.environ must come FIRST, then our overrides
-        env = {
-            **os.environ,
-            "PYTHONPATH": ".",
-            "DISABLE_OBSERVABILITY": "1",
-            "DENIS_API_BEARER_TOKEN": "",
-        }
+
+        # CRITICAL: Proper env override - os.environ comes first, then our values
+        env = dict(os.environ)
+        env.update(
+            {
+                "PYTHONPATH": ".",
+                "DISABLE_OBSERVABILITY": "1",
+                "DENIS_API_BEARER_TOKEN": "",
+            }
+        )
+
         proc = subprocess.run(
             cmd,
             timeout=config["timeout"],
@@ -95,6 +149,8 @@ def run_smoke(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
 
         result["duration_ms"] = int((time.time() - start_time) * 1000)
         result["exit_code"] = proc.returncode
+        result["stdout_tail"] = proc.stdout[-500:] if proc.stdout else ""
+        result["stderr_tail"] = proc.stderr[-500:] if proc.stderr else ""
 
         # Check if artifact was created
         artifact_path = Path(config["artifact"])
@@ -107,32 +163,49 @@ def run_smoke(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
                 result["artifact_overall_success"] = artifact_data.get(
                     "overall_success", False
                 )
-            except Exception:
+            except Exception as e:
                 result["artifact_ok"] = False
-                result["artifact_overall_success"] = False
+                result["artifact_read_error"] = str(e)
         else:
             result["artifact_ok"] = False
-            result["artifact_overall_success"] = False
+            result["artifact_missing"] = True
 
-        # Determine status
+        # Determine status based on exit code AND artifact
         if proc.returncode == 0 and result.get("artifact_ok", False):
             result["ok"] = True
             result["status"] = "passed"
         elif proc.returncode != 0:
             result["status"] = "failed"
-            result["reason"] = f"Exit code {proc.returncode}: {proc.stderr[:200]}"
+            result["reason"] = (
+                f"Exit code {proc.returncode}: {proc.stderr[:200] if proc.stderr else 'no stderr'}"
+            )
+        elif not result.get("artifact_ok", True):
+            result["status"] = "failed"
+            result["reason"] = "Artifact exists but ok=false"
         else:
             result["status"] = "failed"
-            result["reason"] = "Artifact not ok"
+            result["reason"] = "Unknown failure"
 
     except subprocess.TimeoutExpired:
         result["status"] = "timeout"
         result["reason"] = f"Timeout after {config['timeout']}s"
         result["duration_ms"] = int((time.time() - start_time) * 1000)
+        # Write emergency artifact
+        write_emergency_artifact(
+            Path(config["artifact"]),
+            "timeout",
+            f"Smoke timed out after {config['timeout']}s",
+        )
     except Exception as e:
-        result["status"] = "error"
-        result["reason"] = str(e)
-        result["duration_ms"] = int((time.time() - start_time) * 1000)
+        result["status"] = "crashed"
+        result["reason"] = f"Exception: {str(e)[:200]}"
+        result["traceback"] = traceback.format_exc()[:500]
+        # Write emergency artifact
+        write_emergency_artifact(
+            Path(config["artifact"]),
+            f"crash: {type(e).__name__}",
+            traceback.format_exc()[:1000],
+        )
 
     return result
 
@@ -147,10 +220,7 @@ def main():
     )
     parser.add_argument("--out-json", type=str, default=None, help="Output JSON path")
     parser.add_argument(
-        "extra_arg",
-        nargs="?",
-        default=None,
-        help="Legacy positional arg (artifact path)",
+        "extra_arg", nargs="?", default=None, help="Legacy positional arg"
     )
     args = parser.parse_args()
 
@@ -163,6 +233,35 @@ def main():
         out_path = Path("artifacts/smoke_all.json")
 
     strict_100 = args.strict_100
+
+    # STEP 1: Compile check - fail fast on syntax errors
+    print("=== STEP 1: Compiling all scripts ===")
+    if not check_all_scripts_compile():
+        print("COMPILE FAILURE - Cannot proceed")
+        # Write emergency artifact
+        artifact = {
+            "ok": False,
+            "status": "compile_failed",
+            "releaseable": False,
+            "strict_100": strict_100,
+            "summary": {
+                "total": 0,
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0,
+                "pass_rate": 0.0,
+                "hard_failures": 0,
+            },
+            "tests": [],
+            "timestamp_utc": time.time(),
+            "overall_success": False,
+        }
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w") as f:
+            json.dump(artifact, f, indent=2)
+        print(f"Artifact: {out_path}")
+        sys.exit(1)
+    print("Compile check PASSED")
 
     artifact = {
         "ok": False,
@@ -191,7 +290,7 @@ def main():
         artifact["summary"]["total"] += 1
         if result["status"] == "passed":
             artifact["summary"]["passed"] += 1
-        elif result["status"] in ["failed", "timeout", "error"]:
+        elif result["status"] in ["failed", "timeout", "crashed"]:
             artifact["summary"]["failed"] += 1
             if config.get("severity") == "critical":
                 artifact["summary"]["hard_failures"] += 1
@@ -212,7 +311,7 @@ def main():
         artifact["overall_success"] = passed == total
         artifact["releaseable"] = passed == total
     else:
-        # LENIENT MODE: allow some failures (legacy)
+        # LENIENT MODE: allow some failures
         artifact["overall_success"] = passed == total
         artifact["releaseable"] = hard_failures == 0 and pass_rate >= 0.7
 
