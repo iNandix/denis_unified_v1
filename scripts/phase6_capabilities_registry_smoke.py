@@ -253,6 +253,7 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
         import time
         import signal
         import os
+        from pathlib import Path
 
         # Find free port
         if port == 0:
@@ -264,6 +265,7 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
 
         # Use subprocess like other smokes - more reliable
         # Start uvicorn server as subprocess
+        REPO = Path(__file__).resolve().parents[1]
         cmd = [
             sys.executable,
             "-m",
@@ -278,11 +280,13 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
             "warning",
         ]
         env = dict(os.environ)
-        env.update({
-            "PYTHONPATH": ".",
-            "DISABLE_OBSERVABILITY": "1",
-            "DENIS_API_BEARER_TOKEN": "",
-        })
+        env.update(
+            {
+                "PYTHONPATH": ".",
+                "DISABLE_OBSERVABILITY": "1",
+                "DENIS_API_BEARER_TOKEN": "",
+            }
+        )
         proc = subprocess.Popen(
             cmd,
             cwd=str(REPO),
@@ -296,7 +300,8 @@ def run_self_hosted_smoke(port: int = 0) -> dict[str, Any]:
             # Wait for server to be ready
             base_url = f"http://127.0.0.1:{port}"
             if not wait_for_server_ready(base_url, timeout_sec=45):
-                out = ""; err = ""
+                out = ""
+                err = ""
                 try:
                     out = (proc.stdout.read() if proc.stdout else "")[-2000:]
                     err = (proc.stderr.read() if proc.stderr else "")[-4000:]
