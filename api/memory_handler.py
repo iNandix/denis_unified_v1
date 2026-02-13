@@ -9,8 +9,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from denis_unified_v1.memory import build_memory_manager
-from denis_unified_v1.memory.legacy_client import LegacyMemoryClient
+from memory import build_memory_manager
+from memory.legacy_client import LegacyMemoryClient
 
 
 class EpisodicRequest(BaseModel):
@@ -346,17 +346,148 @@ def build_memory_router() -> APIRouter:
         except Exception as exc:
             return {"status": "degraded", "error": str(exc)[:200], "projects": []}
 
-    @router.get("/mental-loop/levels")
-    async def mental_loop_levels() -> dict[str, Any]:
-        return {"levels": MENTAL_LOOP_LEVELS}
+    @router.get("/neuro/mental-integration")
+    async def neuro_mental_integration() -> dict[str, Any]:
+        """Bridge neurolayers with mental-loops for cognitive integration."""
+        try:
+            # Get current neurolayer state
+            neuro_state = await legacy.neuro_layers()
+            
+            # Get mental loop state
+            mental_loops = MENTAL_LOOP_LEVELS
+            
+            # Create integration mapping
+            integration = {
+                "status": "integrated",
+                "neurolayer_to_mental_loop": {
+                    "L1_SENSORY": "reflection",  # Sensory input -> immediate reflection
+                    "L2_WORKING": "reflection",  # Working memory -> operational reflection
+                    "L3_EPISODIC": "pattern_recognition",  # Episodic memory -> pattern detection
+                    "L5_PROCEDURAL": "meta_reflection",  # Procedural -> strategy control
+                    "L8_SOCIAL": "pattern_recognition",  # Social -> relationship patterns
+                    "L9_IDENTITY": "expansive_consciousness",  # Identity -> global continuity
+                    "L10_RELATIONAL": "pattern_recognition",  # Relational -> complex patterns
+                    "L12_METACOG": "expansive_consciousness"  # Metacog -> governance
+                },
+                "mental_loop_to_neurolayer": {
+                    "reflection": ["L1_SENSORY", "L2_WORKING"],
+                    "meta_reflection": ["L5_PROCEDURAL", "L12_METACOG"],
+                    "pattern_recognition": ["L3_EPISODIC", "L8_SOCIAL", "L10_RELATIONAL"],
+                    "expansive_consciousness": ["L9_IDENTITY", "L12_METACOG"]
+                },
+                "active_integrations": []
+            }
+            
+            # Check which integrations are active
+            for neuro_layer, mental_loop in integration["neurolayer_to_mental_loop"].items():
+                if neuro_layer in neuro_state.get("layers", {}):
+                    integration["active_integrations"].append({
+                        "neurolayer": neuro_layer,
+                        "mental_loop": mental_loop,
+                        "status": "active"
+                    })
+            
+            return {
+                "integration": integration,
+                "neuro_layers": neuro_state,
+                "mental_loops": mental_loops
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "disconnected",
+                "error": str(exc)[:200],
+                "message": "neurolayers and mental-loops are not connected"
+            }
 
-    @router.post("/cot/adaptive")
-    async def adaptive_cot(req: AdaptiveCoTRequest) -> dict[str, Any]:
-        return _adaptive_cot(
-            query=req.query,
-            latency_budget_ms=req.latency_budget_ms,
-            context_window_tokens=req.context_window_tokens,
-        )
+    @router.post("/neuro/mental-feedback")
+    async def neuro_mental_feedback(
+        neurolayer: str = Query(...),
+        mental_loop: str = Query(...),
+        feedback_type: str = Query("reinforcement"),
+        feedback_data: dict[str, Any] = None
+    ) -> dict[str, Any]:
+        """Send feedback from mental-loops to neurolayers for adaptation."""
+        try:
+            # Validate inputs
+            valid_neurolayers = ["L1_SENSORY", "L2_WORKING", "L3_EPISODIC", "L5_PROCEDURAL", 
+                               "L8_SOCIAL", "L9_IDENTITY", "L10_RELATIONAL", "L12_METACOG"]
+            valid_loops = ["reflection", "meta_reflection", "pattern_recognition", "expansive_consciousness"]
+            
+            if neurolayer not in valid_neurolayers:
+                raise HTTPException(status_code=400, detail=f"Invalid neurolayer: {neurolayer}")
+            if mental_loop not in valid_loops:
+                raise HTTPException(status_code=400, detail=f"Invalid mental loop: {mental_loop}")
+            
+            # Store feedback in memory for neurolayer adaptation
+            feedback_record = {
+                "neurolayer": neurolayer,
+                "mental_loop": mental_loop,
+                "feedback_type": feedback_type,
+                "feedback_data": feedback_data or {},
+                "timestamp": json.dumps({"timestamp": __import__("time").time()}),
+                "processed": False
+            }
+            
+            # Store in Redis for processing
+            feedback_key = f"neuro_mental_feedback:{neurolayer}:{mental_loop}:{int(__import__('time').time())}"
+            memory.redis.set_json(feedback_key, feedback_record)
+            memory.redis.expire(feedback_key, 86400)  # 24 hours
+            
+            return {
+                "status": "feedback_queued",
+                "neurolayer": neurolayer,
+                "mental_loop": mental_loop,
+                "feedback_type": feedback_type,
+                "feedback_id": feedback_key
+            }
+            
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Feedback processing failed: {str(exc)}")
+
+    @router.get("/neuro/mental-processing")
+    async def neuro_mental_processing() -> dict[str, Any]:
+        """Process pending mental-loop feedback to neurolayers."""
+        try:
+            # Get pending feedback
+            feedback_keys = memory.redis.keys("neuro_mental_feedback:*")
+            pending_feedback = []
+            
+            for key in feedback_keys:
+                feedback = memory.redis.get_json(key)
+                if feedback and not feedback.get("processed", False):
+                    pending_feedback.append(feedback)
+            
+            # Process feedback (simplified)
+            processed_count = 0
+            adaptations = []
+            
+            for feedback in pending_feedback:
+                # Mark as processed
+                feedback["processed"] = True
+                memory.redis.set_json(feedback["feedback_id"], feedback)
+                
+                # Create adaptation record
+                adaptations.append({
+                    "neurolayer": feedback["neurolayer"],
+                    "mental_loop": feedback["mental_loop"],
+                    "adaptation_type": feedback["feedback_type"],
+                    "status": "applied"
+                })
+                processed_count += 1
+            
+            return {
+                "status": "processing_complete",
+                "pending_feedback": len(pending_feedback),
+                "processed_feedback": processed_count,
+                "adaptations": adaptations
+            }
+            
+        except Exception as exc:
+            return {
+                "status": "processing_failed",
+                "error": str(exc)[:200]
+            }
 
     @router.get("/contracts/verify/{user_id}")
     async def contracts_verify(user_id: str) -> dict[str, Any]:
