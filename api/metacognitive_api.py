@@ -28,7 +28,7 @@ from .sse_handler import sse_event
 
 from capabilities_service import get_capabilities_service
 
-router = APIRouter(prefix="/metacognitive", tags=["metacognitive"])
+router = APIRouter(tags=["metacognitive"])
 
 NEO4J_TIMEOUT_MS = int(os.getenv("METACOG_NEO4J_TIMEOUT_MS", "90"))
 REDIS_TIMEOUT_MS = int(os.getenv("METACOG_REDIS_TIMEOUT_MS", "80"))
