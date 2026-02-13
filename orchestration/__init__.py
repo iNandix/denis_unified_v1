@@ -1,2 +1,6 @@
-"""Orchestration module for incremental Phase 5."""
+"""Legacy namespace shim for orchestration."""
 
+try:
+    from denisunifiedv1.orchestration import *
+except Exception:
+    pass

@@ -1,5 +1,6 @@
-"""Voice pipeline package for phase-8 incremental rollout."""
+"""Legacy namespace shim for voice."""
 
-from .voice_pipeline import VoicePipeline, build_voice_pipeline
-
-__all__ = ["VoicePipeline", "build_voice_pipeline"]
+try:
+    from denisunifiedv1.voice import *
+except Exception:
+    pass

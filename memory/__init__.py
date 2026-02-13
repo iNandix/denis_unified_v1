@@ -1,5 +1,6 @@
-"""Unified memory systems for phase-9 incremental rollout."""
+"""Legacy namespace shim for memory."""
 
-from .manager import MemoryManager, build_memory_manager
-
-__all__ = ["MemoryManager", "build_memory_manager"]
+try:
+    from denisunifiedv1.memory import *
+except Exception:
+    pass
