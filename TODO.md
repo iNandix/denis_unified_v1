@@ -34,10 +34,11 @@
 
 ## 🎯 FASE 2: Graph Relationships
 
-### 2.1 [PENDIENTE] Reconstruir cognition flow
-- **Problema**: Turn → CognitiveTrace → ReasoningTrace sin relaciones
-- **Solución**: Añadir relaciones en runtime + backfill
-- **Estado**: Pendiente
+### 2.1 [EN CURSO] Reconstruir cognition flow
+- **Problema**: Turn → CognitiveTrace → ReasoningTrace → GraphRoute sin relaciones
+- **Solución**: Script de backfill + llamadas en runtime
+- **Archivos**: `graph_backfill_cognition.py` creado
+- **Estado**: En progreso
 
 ### 2.2 [PENDIENTE] Conectar NeuroLayers
 - **Problema**: 24 capas aisladas, no hay promoción L1→L2→L3
@@ -69,10 +70,10 @@
 
 | Fase | Tareas | Completadas | Progreso |
 |------|--------|-------------|----------|
-| 1 | 3 | 2 | 67% |
+| 1 | 3 | 3 | 100% ✅ |
 | 2 | 3 | 0 | 0% |
 | 3 | 2 | 0 | 0% |
-| **TOTAL** | **8** | **2** | **25%** |
+| **TOTAL** | **8** | **3** | **37.5%** |
 
 ---
 
