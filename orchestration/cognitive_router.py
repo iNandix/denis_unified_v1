@@ -86,8 +86,14 @@ class RedisClient:
     @classmethod
     def get(cls) -> redis.Redis:
         if cls._instance is None:
-            url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-            cls._instance = redis.Redis.from_url(url, decode_responses=True)
+            url = "redis://localhost:6379/0"
+            try:
+                import os
+
+                url = os.getenv("REDIS_URL", url)
+                cls._instance = redis.Redis.from_url(url, decode_responses=True)
+            except Exception:
+                cls._instance = redis.Redis.from_url(url, decode_responses=True)
         return cls._instance
 
 
@@ -99,9 +105,9 @@ class Neo4jClient:
         if cls._driver is None:
             from neo4j import GraphDatabase
 
-            uri = os.getenv("NEO4J_URI", "bolt://10.10.10.1:7687")
+            uri = os.getenv("NEO4J_URI", "bolt://localhost:19040")
             user = os.getenv("NEO4J_USER", "neo4j")
-            password = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS")
+            password = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS", "Leon1234$")
             if password:
                 cls._driver = GraphDatabase.driver(uri, auth=(user, password))
         return cls._driver
@@ -160,51 +166,87 @@ def _record_metric(key: str, value: Any, ttl: int = 3600) -> None:
 
 
 def _get_tools_from_neo4j() -> dict[str, ToolInfo]:
-    tools: dict[str, ToolInfo] = {}
-    driver = Neo4jClient.get_driver()
-    if not driver:
-        return _get_default_tools()
-
+    """Carga herramientas del grafo Neo4j REAL de Denis."""
     try:
+        driver = Neo4jClient.get_driver()
+        
         with driver.session() as session:
+            # Query: obtener nodos Tool del grafo
             result = session.run("""
                 MATCH (t:Tool)
-                OPTIONAL MATCH (t)-[:HAS_DIMENSION]->(d:Dimension)
-                RETURN t.name AS name,
-                       t.available AS available,
-                       t.amplitude AS amplitude,
-                       t.success_rate AS success_rate,
-                       t.avg_latency_ms AS avg_latency_ms,
-                       t.last_used AS last_used,
-                       t.error_count AS error_count,
-                       t.circuit_breaker_open AS circuit_breaker_open,
-                       collect(d.name) AS dimensions
+                RETURN t.name as name, 
+                       t.description as description,
+                       t.success_rate as success_rate,
+                       t.avg_latency_ms as latency,
+                       t.cost_per_call as cost
+                ORDER BY t.success_rate DESC
             """)
+            
+            tools = {}
             for record in result:
-                name = record["name"]
-                dimensions = {}
-                for dim_name in record["dimensions"] or []:
-                    dimensions[dim_name] = 0.5
-                tools[name] = ToolInfo(
-                    name=name,
-                    available=record.get("available", True),
-                    amplitude=record.get("amplitude", 1.0),
-                    cognitive_dimensions=dimensions,
-                    success_rate=record.get("success_rate", 1.0),
-                    avg_latency_ms=record.get("avg_latency_ms", 100.0),
-                    last_used=record.get("last_used"),
-                    error_count=record.get("error_count", 0),
-                    circuit_breaker_open=record.get("circuit_breaker_open", False),
+                tool_name = record["name"]
+                tools[tool_name] = ToolInfo(
+                    name=tool_name,
+                    available=True,
+                    amplitude=1.0,
+                    cognitive_dimensions={},
+                    success_rate=record.get("success_rate", 0.0),
+                    avg_latency_ms=record.get("latency", 0),
                 )
-    except Exception:
-        return _get_default_tools()
-
-    return tools
+            
+            # Si el grafo está vacío, NO devuelvas {}
+            # Devuelve herramientas mínimas pero REALES del sistema
+            if not tools:
+                return {
+                    "smx_response": ToolInfo(
+                        name="smx_response",
+                        available=True,
+                        amplitude=0.9,
+                        cognitive_dimensions={"quality": 0.85},
+                        success_rate=0.95,
+                        avg_latency_ms=800,
+                    ),
+                    "smx_fast_path": ToolInfo(
+                        name="smx_fast_path",
+                        available=True,
+                        amplitude=0.95,
+                        cognitive_dimensions={"speed": 0.9},
+                        success_rate=0.90,
+                        avg_latency_ms=200,
+                    ),
+                }
+            
+            return tools
+    
+    except Exception as e:
+        # Si Neo4j falla, log el error pero NO rompas el sistema
+        print(f"WARNING: Neo4j tools load failed: {e}")
+        # Fallback mínimo
+        return {
+            "smx_response": ToolInfo(name="smx_response", available=True, success_rate=0.95),
+            "smx_fast_path": ToolInfo(name="smx_fast_path", available=True, success_rate=0.90),
+        }
 
 
 def _get_default_tools() -> dict[str, ToolInfo]:
     return {
         "default": ToolInfo(name="default", available=True, amplitude=1.0),
+        "smx_fast_path": ToolInfo(
+            name="smx_fast_path",
+            available=True,
+            amplitude=0.95,
+            cognitive_dimensions={"speed": 0.9, "simplicity": 0.8},
+            success_rate=0.98,
+            avg_latency_ms=50.0,
+        ),
+        "smx_response": ToolInfo(
+            name="smx_response",
+            available=True,
+            amplitude=0.9,
+            cognitive_dimensions={"quality": 0.85, "comprehensiveness": 0.8},
+            success_rate=0.95,
+            avg_latency_ms=200.0,
+        ),
         "code_interpreter": ToolInfo(
             name="code_interpreter",
             available=True,
@@ -212,30 +254,6 @@ def _get_default_tools() -> dict[str, ToolInfo]:
             cognitive_dimensions={"technical": 0.8, "reasoning": 0.7},
             success_rate=0.95,
             avg_latency_ms=150.0,
-        ),
-        "search": ToolInfo(
-            name="search",
-            available=True,
-            amplitude=0.95,
-            cognitive_dimensions={"knowledge": 0.9, "retrieval": 0.8},
-            success_rate=0.98,
-            avg_latency_ms=50.0,
-        ),
-        "file_editor": ToolInfo(
-            name="file_editor",
-            available=True,
-            amplitude=0.85,
-            cognitive_dimensions={"modification": 0.7, "creation": 0.6},
-            success_rate=0.92,
-            avg_latency_ms=80.0,
-        ),
-        "memory": ToolInfo(
-            name="memory",
-            available=True,
-            amplitude=0.88,
-            cognitive_dimensions={"retrieval": 0.85, "storage": 0.8},
-            success_rate=0.96,
-            avg_latency_ms=30.0,
         ),
     }
 
@@ -383,7 +401,136 @@ def _analyze_failure(tool_name: str, error: str) -> dict[str, Any]:
         analysis["error_type"] = "generic"
         analysis["suggestion"] = "Review error and adjust approach"
 
+def _analyze_failure(tool_name: str, error: str) -> dict[str, Any]:
+    analysis = {
+        "tool": tool_name,
+        "error_type": "unknown",
+        "suggestion": "Review tool implementation",
+        "retry_recommended": True,
+    }
+
+    error_lower = error.lower()
+
+    if "timeout" in error_lower:
+        analysis["error_type"] = "timeout"
+        analysis["suggestion"] = "Consider increasing timeout or using alternative tool"
+    elif "not found" in error_lower or "does not exist" in error_lower:
+        analysis["error_type"] = "not_found"
+        analysis["suggestion"] = "Verify resource exists before retry"
+    elif "permission" in error_lower or "access" in error_lower:
+        analysis["error_type"] = "permission"
+        analysis["suggestion"] = "Check permissions or use different approach"
+    elif "syntax" in error_lower or "invalid" in error_lower:
+        analysis["error_type"] = "syntax"
+        analysis["suggestion"] = "Fix syntax error before retry"
+    elif "memory" in error_lower:
+        analysis["error_type"] = "memory"
+        analysis["suggestion"] = "Consider splitting task into smaller parts"
+    else:
+        analysis["error_type"] = "generic"
+        analysis["suggestion"] = "Review error and adjust approach"
+
     return analysis
+
+
+class ToolSelectionPredictor:
+    """Predice mejor tool para request basado en historial."""
+
+    def __init__(self):
+        self.redis_client = _get_redis()
+
+    async def predict(self, request: dict) -> dict:
+        """
+        Predice tool basado en:
+        - Tipo de request (code, chat, ops, etc.)
+        - Historial de aciertos
+        - Contexto actual
+        """
+        text = request.get("text", "")
+        intent = request.get("intent", "unknown")
+
+        # Heurística simple (mejorar con ML después)
+        if len(text.split()) <= 3 and intent in ["greet", "chat"]:
+            return {"tool": "smx_fast_path", "confidence": 0.95}
+        elif intent in ["code", "debug"]:
+            return {"tool": "code_interpreter", "confidence": 0.9}
+        elif intent in ["chat"]:
+            return {"tool": "smx_response", "confidence": 0.9}
+        elif intent == "ops":
+            return {"tool": "infrastructure_adapter", "confidence": 0.85}
+        else:
+            return {"tool": "smx_response", "confidence": 0.5}
+
+
+class RoutingQualityMonitor:
+    """Auto-evalúa calidad de decisiones de routing."""
+
+    async def evaluate(self, request: dict, result: dict) -> dict:
+        """
+        Evalúa calidad por:
+        - Latencia (< threshold)
+        - Success (no error)
+        - Coherencia (output sensato)
+        """
+        latency_ms = result.get("latency_ms", 0)
+        success = result.get("success", False)
+        content = result.get("content", "")
+
+        # Score simple
+        score = 0.0
+        if success:
+            score += 0.5
+        if latency_ms < 2000:
+            score += 0.3
+        if len(content.strip()) > 10:
+            score += 0.2
+
+        return {
+            "score": score,
+            "latency_ok": latency_ms < 2000,
+            "success": success,
+            "content_ok": len(content.strip()) > 10,
+        }
+
+
+class RoutingLearner:
+    """Aprende de aciertos/errores para mejorar predicciones."""
+
+    def __init__(self):
+        self.redis_client = _get_redis()
+
+    async def learn(self, request: dict, tool_used: str, result: dict, quality: dict):
+        """Registra decisión + resultado para aprendizaje futuro."""
+        entry = {
+            "request": request,
+            "tool": tool_used,
+            "quality_score": quality["score"],
+            "timestamp": time.time(),
+        }
+
+        # Guardar en Redis (luego usar para entrenar modelo)
+        key = f"routing:history:{int(time.time())}"
+        self.redis_client.setex(key, 86400, json.dumps(entry))  # TTL 24h
+
+
+class BehaviorHandbook:
+    """Registra patrones de routing exitosos."""
+
+    def __init__(self):
+        self.redis_client = _get_redis()
+
+    async def record_pattern(self, request: dict, tool: str, result: dict):
+        """Guarda patrón exitoso como template para futuro."""
+        pattern = {
+            "intent": request.get("intent"),
+            "tool": tool,
+            "success": True,
+            "timestamp": time.time(),
+        }
+
+        key = f"routing:patterns:{request.get('intent')}:{tool}"
+        self.redis_client.lpush(key, json.dumps(pattern))
+        self.redis_client.ltrim(key, 0, 99)  # Mantener últimos 100
 
 
 class CognitiveRouter:
@@ -398,6 +545,10 @@ class CognitiveRouter:
             RoutingStrategy.SMART,
             RoutingStrategy.LEGACY_FALLBACK,
         }
+        self.metacognitive_monitor = RoutingQualityMonitor()
+        self.tool_selection_model = ToolSelectionPredictor()
+        self.learning_loop = RoutingLearner()
+        self.behavior_handbook = BehaviorHandbook()
 
     def _get_tools(self) -> dict[str, ToolInfo]:
         import time
@@ -645,6 +796,59 @@ class CognitiveRouter:
                 "error": str(e),
                 "timestamp_utc": _utc_now(),
             }
+
+    async def route(self, request: Dict) -> Dict:
+        """
+        Ruta request a tool apropiado con metacognición.
+
+        Flujo:
+        1. Predice mejor tool (ToolSelectionPredictor)
+        2. Ejecuta tool
+        3. Monitorea calidad (RoutingQualityMonitor)
+        4. Aprende de resultado (RoutingLearner)
+        5. Registra patrón exitoso (BehaviorHandbook)
+        """
+        # 1) Predicción
+        prediction = await self.tool_selection_model.predict(request)
+        tool_name = prediction["tool"]
+        confidence = prediction["confidence"]
+
+        # 2) Ejecución
+        result = await self._execute_tool(tool_name, request)
+
+        # 3) Monitoreo
+        quality = await self.metacognitive_monitor.evaluate(request, result)
+
+        # 4) Aprendizaje
+        await self.learning_loop.learn(request, tool_name, result, quality)
+
+        # 5) Registro
+        if quality["score"] > 0.8:
+            await self.behavior_handbook.record_pattern(request, tool_name, result)
+
+        return {
+            "result": result,
+            "meta": {
+                "tool_used": tool_name,
+                "confidence": confidence,
+                "quality_score": quality["score"],
+            },
+        }
+
+    async def _execute_tool(self, tool_name: str, request: Dict) -> Dict:
+        """
+        Ejecuta el tool seleccionado.
+        Placeholder: implementa según herramientas disponibles.
+        """
+        # Placeholder para ejecución real
+        # Aquí se llamaría al tool correspondiente (SMX, code_interpreter, etc.)
+        import asyncio
+        await asyncio.sleep(0.1)  # Simular latencia
+        return {
+            "content": f"Executed {tool_name} for request {request.get('text', '')[:50]}",
+            "success": True,
+            "latency_ms": 100,
+        }
 
     def suggest_optimization(self) -> list[dict[str, Any]]:
         suggestions: list[dict[str, Any]] = []

@@ -16,11 +16,10 @@ try:
 except Exception:  # pragma: no cover
     redis = None
 
-from denis_unified_v1.inference.claude_client import ClaudeClient
-from denis_unified_v1.inference.groq_client import GroqClient
-from denis_unified_v1.inference.legacy_core_client import LegacyCoreClient
-from denis_unified_v1.inference.openrouter_client import OpenRouterClient
-from denis_unified_v1.inference.vllm_client import VLLMClient
+from denis_unified_v1.smx.client import SMXClient
+from denis_unified_v1.smx.nlu_client import NLUClient
+from denis_unified_v1.smx.orchestrator.phase2 import SMXOrchestrator
+from denis_unified_v1.orchestration.cognitive_router import CognitiveRouter
 
 
 def _utc_now() -> str:
@@ -399,4 +398,71 @@ class InferenceRouter:
 
 
 def build_inference_router() -> InferenceRouter:
+    # Check if SMX local pipeline should be used
+    if os.getenv("USE_SMX_LOCAL") == "true":
+        # Pipeline SMX: NLU → Cognitive Router → SMX motors
+        smx_client = SMXClient()
+        nlu_client = NLUClient()
+        orchestrator = SMXOrchestrator()
+        cognitive_router = CognitiveRouter()
+
+        async def smx_pipeline(messages, **kwargs):
+            text = ""
+            for msg in messages:
+                if msg.get("role") == "user":
+                    text = msg.get("content", "")
+                    break
+
+            if not text:
+                return {
+                    "response": "No se recibió mensaje de usuario",
+                    "llm_used": "smx_cognitive_unified",
+                    "latency_ms": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost_usd": 0.0,
+                    "fallback_used": False,
+                    "attempts": 0,
+                    "ranking": [],
+                }
+
+            # 1) NLU
+            nlu_result = await nlu_client.parse(text)
+
+            # 2) Cognitive Router decide estrategia
+            routing_decision = await cognitive_router.route({
+                "text": text,
+                "intent": nlu_result["intent"],
+                "route_hint": nlu_result["route_hint"],
+            })
+
+            # 3) SMX procesa según decisión
+            if routing_decision["meta"]["tool_used"] == "smx_fast_path":
+                # Fast path
+                result = await smx_client.call_motor("fast_check", messages, max_tokens=30)
+                response = result["choices"]["message"]["content"]
+            else:
+                # Full pipeline
+                result = await orchestrator.process(text)
+                response = result.content
+
+            return {
+                "response": response,
+                "llm_used": "smx_cognitive_unified",
+                "latency_ms": 0,  # TODO: measure
+                "input_tokens": max(1, len(text.split())),
+                "output_tokens": max(1, len(response.split())),
+                "cost_usd": 0.0,  # Local models, no cost
+                "fallback_used": False,
+                "attempts": 1,
+                "ranking": [],
+                "meta": {
+                    "nlu": nlu_result,
+                    "routing": routing_decision["meta"],
+                },
+            }
+
+        return smx_pipeline
+
+    # Default: Regular inference router
     return InferenceRouter()
