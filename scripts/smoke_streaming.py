@@ -17,9 +17,9 @@ async def test_streaming():
                 async for line in resp.aiter_lines():
                     if line.startswith("data: "):
                         data = json.loads(line[6:])
-                        if data["type"] == "ttft" and ttft is None:
-                            ttft = data["latency_ms"]
-                        if data["type"] == "chunk":
+                        if data.get("type") == "status" and data.get("phase") == "safety" and ttft is None:
+                            ttft = data.get("latency_ms")
+                        if data.get("type") == "chunk":
                             chunks += 1
     except Exception as e:
         return {

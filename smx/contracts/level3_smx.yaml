@@ -1,0 +1,46 @@
+version: "3.0"
+domain: "smx_enrichment"
+description: "Contratos para SMX NLU Enrichment Layer - Fase 12"
+
+contracts:
+  - id: "L3.SMX.ENRICHMENT_REQUIRED"
+    description: "SMX enrichment debe ejecutarse antes de routing"
+    severity: "warning"
+    validation:
+      - "session_context contiene smx_enrichment"
+      - "smx_enrichment.latency_ms < 1000"
+  
+  - id: "L3.SMX.SAFETY_GATE"
+    description: "Safety check es obligatorio y bloquea si unsafe"
+    severity: "critical"
+    validation:
+      - "smx_enrichment.safety_passed es bool"
+      - "si safety_passed=false, bloquear respuesta"
+  
+  - id: "L3.SMX.NO_GENERATION"
+    description: "SMX NO genera respuestas finales, solo enriquece"
+    severity: "critical"
+    validation:
+      - "SMX layers retornan enrichment, NO respuesta final"
+      - "Denis YO es único generador de respuestas"
+  
+  - id: "L3.SMX.FAST_PATH"
+    description: "Fast path debe skipear procesamiento completo"
+    severity: "info"
+    validation:
+      - "si fast_response existe, usar sin Phase 2"
+      - "fast_path latency < 500ms"
+  
+  - id: "L3.SMX.WORLD_CONTEXT"
+    description: "SMX debe usar world_state del cortex cuando disponible"
+    severity: "warning"
+    validation:
+      - "smx_enrichment.world_context es dict"
+      - "world_context viene de cortex.perceive_multiple() si PHASE2 activo"
+  
+  - id: "L3.SMX.METRICS"
+    description: "Métricas por capa requeridas"
+    severity: "warning"
+    validation:
+      - "cada layer tiene latency_ms"
+      - "métricas se persisten en Redis"

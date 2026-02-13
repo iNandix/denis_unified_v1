@@ -75,8 +75,9 @@ def _http_json(
     return payload
 
 
-@dataclass(frozen=True)
+@dataclass
 class DiscoveredModel:
+    """Modelo descubierto de un provider."""
     provider: str
     model_id: str
     model_name: str

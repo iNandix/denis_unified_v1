@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DENIS Unified v1 - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            background: rgba(255,255,255,0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: rgba(255,255,255,0.95);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .status.pass {
+            background: #4caf50;
+            color: white;
+        }
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .metric:last-child {
+            border-bottom: none;
+        }
+        .metric-label {
+            color: #666;
+            font-weight: 500;
+        }
+        .metric-value {
+            color: #333;
+            font-weight: bold;
+        }
+        .endpoint-list {
+            list-style: none;
+            padding: 0;
+        }
+        .endpoint-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .endpoint-list li:last-child {
+            border-bottom: none;
+        }
+        .endpoint-status {
+            float: right;
+        }
+        .motors-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .motor {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #4caf50;
+        }
+        .motor-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .motor-model {
+            font-size: 0.85em;
+            color: #666;
+        }
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+            transition: all 0.3s ease;
+        }
+        .refresh-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102,126,234,0.6);
+        }
+        .timestamp {
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧠 DENIS Unified v1</h1>
+            <p class="subtitle">Sistema Metacognitivo Autopoiético - Dashboard de Monitoreo</p>
+        </header>
+
+        <div class="grid">
+            <!-- Streaming SSE -->
+            <div class="card">
+                <h2>⚡ Streaming SSE</h2>
+                <div class="metric">
+                    <span class="metric-label">Estado</span>
+                    <span class="status pass" id="streaming-status">PASS</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">TTFT (Time to First Token)</span>
+                    <span class="metric-value" id="ttft">521ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Tiempo Total</span>
+                    <span class="metric-value" id="total-time">674ms</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Chunks Recibidos</span>
+                    <span class="metric-value" id="chunks">0</span>
+                </div>
+            </div>
+
+            <!-- API Metacognitiva -->
+            <div class="card">
+                <h2>🔍 API Metacognitiva</h2>
+                <div class="metric">
+                    <span class="metric-label">Estado General</span>
+                    <span class="status pass" id="api-status">PASS</span>
+                </div>
+                <ul class="endpoint-list" id="endpoints">
+                    <li>/status <span class="endpoint-status status pass">✓</span></li>
+                    <li>/metrics <span class="endpoint-status status pass">✓</span></li>
+                    <li>/attention <span class="endpoint-status status pass">✓</span></li>
+                    <li>/coherence <span class="endpoint-status status pass">✓</span></li>
+                </ul>
+            </div>
+
+            <!-- Autopoiesis -->
+            <div class="card">
+                <h2>🔄 Autopoiesis</h2>
+                <div class="metric">
+                    <span class="metric-label">Estado</span>
+                    <span class="status pass" id="autopoiesis-status">PASS</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Gaps Detectados</span>
+                    <span class="metric-value" id="gaps">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Propuestas Generadas</span>
+                    <span class="metric-value" id="proposals">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Estado del Ciclo</span>
+                    <span class="metric-value" id="cycle-status">awaiting_approval</span>
+                </div>
+            </div>
+
+            <!-- Motores SMX -->
+            <div class="card">
+                <h2>⚙️ Motores SMX</h2>
+                <div class="metric">
+                    <span class="metric-label">Motores Activos</span>
+                    <span class="metric-value" id="motors-count">6/6</span>
+                </div>
+                <div class="motors-grid" id="motors">
+                    <div class="motor">
+                        <div class="motor-name">fast_check</div>
+                        <div class="motor-model">qwen05b</div>
+                    </div>
+                    <div class="motor">
+                        <div class="motor-name">tokenize</div>
+                        <div class="motor-model">smollm2</div>
+                    </div>
+                    <div class="motor">
+                        <div class="motor-name">safety</div>
+                        <div class="motor-model">gemma1b</div>
+                    </div>
+                    <div class="motor">
+                        <div class="motor-name">intent</div>
+                        <div class="motor-model">qwen15b</div>
+                    </div>
+                    <div class="motor">
+                        <div class="motor-name">response</div>
+                        <div class="motor-model">qwen3b</div>
+                    </div>
+                    <div class="motor">
+                        <div class="motor-name">macro</div>
+                        <div class="motor-model">qwencoder7b</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="refresh-btn" onclick="refreshData()">🔄 Actualizar Datos</button>
+        </div>
+
+        <div class="timestamp" id="timestamp">
+            Última actualización: <span id="last-update">2026-02-13 11:53:00</span>
+        </div>
+    </div>
+
+    <script>
+        async function refreshData() {
+            const btn = document.querySelector('.refresh-btn');
+            btn.textContent = '⏳ Actualizando...';
+            btn.disabled = true;
+
+            try {
+                // Streaming
+                const streamResp = await fetch('/api/test/streaming');
+                const streamData = await streamResp.json();
+                document.getElementById('streaming-status').textContent = streamData.status.toUpperCase();
+                document.getElementById('ttft').textContent = streamData.ttft_ms + 'ms';
+                document.getElementById('total-time').textContent = streamData.total_ms + 'ms';
+                document.getElementById('chunks').textContent = streamData.chunks;
+
+                // API Metacognitiva
+                const apiResp = await fetch('/api/metacognitive/status');
+                const apiData = await apiResp.json();
+                document.getElementById('api-status').textContent = apiData.status.toUpperCase();
+
+                // Autopoiesis
+                const autoResp = await fetch('/api/autopoiesis/status');
+                const autoData = await autoResp.json();
+                document.getElementById('autopoiesis-status').textContent = autoData.status.toUpperCase();
+                document.getElementById('gaps').textContent = autoData.cycle.gaps_detected;
+                document.getElementById('proposals').textContent = autoData.cycle.proposals_generated;
+                document.getElementById('cycle-status').textContent = autoData.cycle.status;
+
+                // Timestamp
+                document.getElementById('last-update').textContent = new Date().toLocaleString('es-ES');
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+            } finally {
+                btn.textContent = '🔄 Actualizar Datos';
+                btn.disabled = false;
+            }
+        }
+
+        // Auto-refresh cada 30 segundos
+        setInterval(refreshData, 30000);
+    </script>
+</body>
+</html>

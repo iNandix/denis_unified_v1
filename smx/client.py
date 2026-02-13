@@ -4,7 +4,7 @@ import httpx
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
-from denis_unified_v1.metacognitive.hooks import metacognitive_trace
+from metacognitive.hooks import metacognitive_trace
 
 @dataclass
 class SMXMotor:
@@ -13,7 +13,7 @@ class SMXMotor:
     url: str
     port: int
     node: str
-    healthy: bool = False
+    healthy: bool = True
 
 class SMXClient:
     """Cliente para orquestar llamadas a los 6 motores SMX."""
