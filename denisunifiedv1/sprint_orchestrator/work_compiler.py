@@ -290,11 +290,13 @@ class PlanBuilder:
                 })
                 continue
 
-            # Create sprint item
+            # Create sprint item with score
+            score = signal["severity"] * signal["confidence"]
             items.append({
                 "signal_id": signal["signal_id"],
                 "severity": signal["severity"],
                 "confidence": signal["confidence"],
+                "score": score,
                 "source_artifact": signal["source_artifact"],
                 "detected_signal": signal["detected_signal"],
                 "remediation_key": remediation_key,
@@ -305,12 +307,25 @@ class PlanBuilder:
                     "All commands return exit code 0",
                     f"Expected artifacts created and contain success indicators",
                     f"Root cause addressed as per {remediation['expected_effect']}"
-                ]
+                ],
+                "generated_at_utc": time.time(),
             })
+
+        # Sort items by score (descending), then by signal_id
+        items.sort(key=lambda x: (-x["score"], x["signal_id"]))
+
+        # Dedupe items by (signal_id, source_artifact, remediation_key)
+        seen = set()
+        deduped_items = []
+        for item in items:
+            key = (item["signal_id"], item["source_artifact"], item["remediation_key"])
+            if key not in seen:
+                seen.add(key)
+                deduped_items.append(item)
 
         plan = {
             "ok": True,  # Compilation successful
-            "items": items,
+            "items": deduped_items,
             "rejected_signals": rejected_signals,
             "validation": {
                 "commands_exist": True,  # We already validated
@@ -318,12 +333,12 @@ class PlanBuilder:
             },
             "timestamp_utc": time.time(),
             "total_signals": len(signals),
-            "accepted_items": len(items),
+            "accepted_items": len(deduped_items),
             "rejected_signals_count": len(rejected_signals),
         }
 
         # Add reason if no executable work
-        if not items:
+        if not deduped_items:
             if signals:
                 plan["reason"] = "no_executable_work_found"
             else:
