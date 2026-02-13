@@ -1,0 +1,38 @@
+{
+  "/status": {
+    "status": "pass",
+    "data_keys": [
+      "layers",
+      "coherence",
+      "health",
+      "status"
+    ]
+  },
+  "/metrics": {
+    "status": "pass",
+    "data_keys": [
+      "operations",
+      "timestamp"
+    ]
+  },
+  "/attention": {
+    "status": "pass",
+    "data_keys": [
+      "focused_patterns",
+      "active_tools",
+      "attention_mode"
+    ]
+  },
+  "/coherence": {
+    "status": "pass",
+    "data_keys": [
+      "coherence_score",
+      "complete_paths",
+      "orphan_patterns",
+      "orphan_principles",
+      "status"
+    ]
+  }
+}
+
+✅ API Metacognitiva
