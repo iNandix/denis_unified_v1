@@ -18,6 +18,30 @@
         "show_output": true
       }
     ],
+    "pre_write_code": [
+      {
+        "command": "python3 .windsurf/scripts/protect_paths.py",
+        "show_output": true
+      }
+    ],
+    "pre_user_prompt": [
+      {
+        "command": "python3 .windsurf/scripts/classify_intent.py",
+        "show_output": false
+      }
+    ],
+    "post_read_code": [
+      {
+        "command": "python3 .windsurf/scripts/log_access.py",
+        "show_output": false
+      }
+    ],
+    "post_run_command": [
+      {
+        "command": "python3 .windsurf/scripts/log_command_result.py",
+        "show_output": false
+      }
+    ],
     "post_write_code": [
       {
         "command": "python3 .windsurf/scripts/post_gates.py",
@@ -27,6 +51,12 @@
     "post_cascade_response": [
       {
         "command": "python3 .windsurf/scripts/post_log.py",
+        "show_output": false
+      }
+    ],
+    "post_mcp_tool_use": [
+      {
+        "command": "python3 .windsurf/scripts/log_mcp.py",
         "show_output": false
       }
     ]
