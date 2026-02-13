@@ -23,13 +23,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 import logging
 
-# Importar directamente para evitar __init__.py problemático
-import importlib.util
-
-loader_path = base_dir / "inference" / "provider_loader.py"
-spec = importlib.util.spec_from_file_location("provider_loader", str(loader_path))
-provider_loader = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(provider_loader)
+# Importar provider_loader normalmente
+from denis_unified_v1.inference import provider_loader
 
 DiscoveredModel = provider_loader.DiscoveredModel
 ProviderLoadRegistry = provider_loader.ProviderLoadRegistry
@@ -545,24 +540,25 @@ def start_registry_server(host: str = "0.0.0.0", port: int = 8081):
 def build_registry_router():
     """Construye el router de registry para incluir en fastapi_server."""
     from fastapi import APIRouter
+
     router = APIRouter(prefix="/v1/providers", tags=["providers"])
-    
+
     @router.get("/config")
     async def get_providers_config():
         return await list_providers()
-    
+
     @router.post("/config")
     async def update_providers_config(data: Dict[str, Any]):
         return await register_provider(data)
-    
+
     @router.get("/models")
     async def get_providers_models():
         return await list_models()
-    
+
     @router.get("/classified")
     async def get_providers_classified():
         return await get_classified_models()
-    
+
     return router
 
 
