@@ -16,6 +16,8 @@ from neo4j import GraphDatabase
 from neo4j.exceptions import Neo4jError
 
 from denis_unified_v1.cortex.neo4j_config_resolver import ensure_neo4j_env_auto
+from denis_unified_v1.metagraph.active_metagraph import L1PatternDetector, L1Reorganizer
+import time
 
 @dataclass(frozen=True)
 class Neo4jConfig:
@@ -52,6 +54,30 @@ def _run_scalar(session, query: str, **params: Any) -> int:
         return 0
     value = row[0]
     return int(value) if value is not None else 0
+
+
+class MetagraphObserver:
+    def __init__(self):
+        self.l1_detector = L1PatternDetector()
+        self.l1_reorganizer = L1Reorganizer()
+    
+    async def observe_and_propose(self) -> dict[str, Any]:
+        """
+        Observa L0 y detecta patrones L1.
+        Propone reorganizaciones si es necesario.
+        """
+        # Detección de patrones
+        patterns = self.l1_detector.detect_patterns()
+        
+        # Propuestas de reorganización
+        proposals = self.l1_reorganizer.propose_reorganizations(patterns)
+        
+        return {
+            "patterns_detected": len(patterns),
+            "patterns": patterns,
+            "proposals": proposals,
+            "timestamp": time.time(),
+        }
 
 
 def collect_graph_metrics(

@@ -6,7 +6,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
-from typing import Any
+from typing import Any, List
+
+from denis_unified_v1.cortex.metacognitive_perception import PerceptionReflection, AttentionMechanism
 
 
 def _utc_now() -> str:
@@ -54,6 +56,8 @@ class CortexWorldInterface:
     def __init__(self) -> None:
         self._adapters: dict[str, BaseAdapter] = {}
         self._entities: dict[str, WorldEntity] = {}
+        self.perception_reflection = PerceptionReflection()
+        self.attention_mechanism = AttentionMechanism()
 
     def register_adapter(self, source: str, adapter: BaseAdapter) -> None:
         self._adapters[source] = adapter
@@ -70,6 +74,39 @@ class CortexWorldInterface:
 
     def get_entity(self, entity_id: str) -> WorldEntity | None:
         return self._entities.get(entity_id)
+
+    async def perceive_multiple(self, entity_ids: List[str]) -> dict[str, Any]:
+        """Percibe múltiples entidades con metacognición."""
+        # Percepción base
+        entities = []
+        for entity_id in entity_ids:
+            result = await self.perceive(entity_id)
+            if result.get("status") == "ok":
+                entity = self.get_entity(entity_id)
+                if entity:
+                    entities.append({
+                        "name": entity_id,
+                        "type": entity.category,
+                        "status": result.get("state", {}).get("status", "unknown"),
+                        "last_updated": entity.updated_at,
+                    })
+        
+        perception = {"entities": entities}
+        
+        # Reflexión metacognitiva (NUEVO)
+        reflection = self.perception_reflection.reflect(perception)
+        
+        # Priorización de atención (NUEVO)
+        prioritized = self.attention_mechanism.prioritize(
+            perception.get("entities", []),
+            reflection
+        )
+        
+        return {
+            **perception,
+            "metacognition": reflection,
+            "prioritized_entities": prioritized,
+        }
 
     async def perceive(self, entity_id: str, **kwargs: Any) -> dict[str, Any]:
         entity = self.get_entity(entity_id)

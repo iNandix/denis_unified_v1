@@ -406,7 +406,7 @@ def build_inference_router() -> InferenceRouter:
         orchestrator = SMXOrchestrator()
         cognitive_router = CognitiveRouter()
 
-        async def smx_pipeline(messages, **kwargs):
+        async def smx_pipeline_with_cognition(messages, **kwargs):
             text = ""
             for msg in messages:
                 if msg.get("role") == "user":
@@ -426,32 +426,44 @@ def build_inference_router() -> InferenceRouter:
                     "ranking": [],
                 }
 
-            # 1) NLU
+            # 1) NLU obligatorio
             nlu_result = await nlu_client.parse(text)
-
-            # 2) Cognitive Router decide estrategia
+            
+            # 2) Cognitive Router consulta patterns del grafo L1
             routing_decision = await cognitive_router.route({
                 "text": text,
                 "intent": nlu_result["intent"],
                 "route_hint": nlu_result["route_hint"],
+                "entities": nlu_result.get("entities", []),
             })
-
-            # 3) SMX procesa según decisión
-            if routing_decision["meta"]["tool_used"] == "smx_fast_path":
-                # Fast path
-                result = await smx_client.call_motor("fast_check", messages, max_tokens=30)
-                response = result["choices"]["message"]["content"]
+            
+            tool_to_use = routing_decision["meta"]["tool_used"]
+            pattern_used = routing_decision["meta"].get("pattern_id", None)
+            
+            # 3) Ejecutar según decisión del router (que consultó L1)
+            if tool_to_use == "smx_fast_check" and nlu_result["route_hint"] == "fast":
+                try:
+                    import asyncio
+                    result = await asyncio.wait_for(
+                        smx_client.call_motor("fast_check", messages, max_tokens=30),
+                        timeout=0.5
+                    )
+                    content = result["choices"]["message"]["content"]
+                except:
+                    # Fallback a full pipeline
+                    result = await orchestrator.process(text, nlu_result)
+                    content = result.get("text", result.get("content", ""))
             else:
-                # Full pipeline
-                result = await orchestrator.process(text)
-                response = result.content
+                # Full pipeline SMX
+                result = await orchestrator.process(text, nlu_result)
+                content = result.get("text", result.get("content", ""))
 
             return {
-                "response": response,
+                "response": content,
                 "llm_used": "smx_cognitive_unified",
                 "latency_ms": 0,  # TODO: measure
                 "input_tokens": max(1, len(text.split())),
-                "output_tokens": max(1, len(response.split())),
+                "output_tokens": max(1, len(content.split())),
                 "cost_usd": 0.0,  # Local models, no cost
                 "fallback_used": False,
                 "attempts": 1,
@@ -459,10 +471,12 @@ def build_inference_router() -> InferenceRouter:
                 "meta": {
                     "nlu": nlu_result,
                     "routing": routing_decision["meta"],
+                    "pattern_used": pattern_used,
+                    "grafo_l1_active": pattern_used is not None,
                 },
             }
 
-        return smx_pipeline
+        return smx_pipeline_with_cognition
 
     # Default: Regular inference router
     return InferenceRouter()

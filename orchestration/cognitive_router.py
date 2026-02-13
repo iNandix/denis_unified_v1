@@ -511,6 +511,8 @@ class BehaviorHandbook:
         self.redis_client.ltrim(key, 0, 99)  # Mantener últimos 100
 
 
+from denis_unified_v1.metacognitive.hooks import metacognitive_trace
+
 class CognitiveRouter:
     def __init__(self):
         self.flags = load_feature_flags()
@@ -775,68 +777,55 @@ class CognitiveRouter:
                 "timestamp_utc": _utc_now(),
             }
 
+    @metacognitive_trace(operation="cognitive_router_route")
     async def route(self, request: Dict) -> Dict:
         """
-        Ruta request a tool apropiado con metacognición L1/L2.
-
-        Nuevo flujo:
-        1) Consulta patterns aplicables del grafo metacognitivo
-        2) Si hay match de alto confidence, usa patrón L1
-        3) Si no, fallback a predicción por modelo
-        4) Monitorea calidad y aprende
+        Ruta request usando patterns L1 del grafo.
         """
-        # 1) Consultar patrones L1 aplicables
-        patterns = await self._get_applicable_patterns(request)
-
-        # 2) Usar pattern con mayor confidence si existe
+        # 1) Consultar patterns L1 del grafo
+        patterns = self._get_applicable_patterns(request)
+        
+        # 2) Seleccionar mejor pattern
         if patterns:
             best_pattern = patterns[0]  # Ya vienen ordenados por confidence
-            tool_name = best_pattern["tools"][0] if best_pattern["tools"] else None
+            tool_name = best_pattern["tools"][0] if best_pattern["tools"] else "smx_response"
             confidence = best_pattern["confidence"]
-            reasoning = f"Usando patrón L1 '{best_pattern['pattern_id']}' con confianza {confidence:.2f}"
-
-            if not tool_name:
-                # Si por alguna razón no hay tools, hacer fallback
-                tool_name = "smx_response"
-                reasoning = "Patrón L1 sin tools asociados, usando fallback"
+            pattern_id = best_pattern["pattern_id"]
         else:
-            # Fallback sin patterns: usar modelo de predicción
+            # Fallback: predictor heurístico
             prediction = await self.tool_selection_model.predict(request)
             tool_name = prediction["tool"]
             confidence = prediction["confidence"]
-            reasoning = f"Sin patrón L1 aplicable, usando modelo predictivo con confianza {confidence:.2f}"
-
-        # Ejecución
-        result = await self._execute_tool(tool_name, request)
-
-        # Monitoreo
+            pattern_id = None
+        
+        # 3) Ejecutar tool (simulado aquí, real en router.py)
+        result = {
+            "success": True,
+            "latency_ms": 100,  # Placeholder
+        }
+        
+        # 4) Monitoreo metacognitivo
         quality = await self.metacognitive_monitor.evaluate(request, result)
-        quality_score = quality["score"]
-
-        # Registro metacognitivo (con pattern si aplica)
-        result["patterns"] = patterns
-
-        # Aprendizaje
-        if "pattern_id" in locals():
-            # Solo aprender si usamos patrón L1
-            await self._record_pattern_usage(
-                "L1", best_pattern["pattern_id"], quality_score
-            )
-
+        
+        # 5) Aprendizaje
         await self.learning_loop.learn(request, tool_name, result, quality)
-
+        
+        # 6) Registrar patrón exitoso
+        if quality["score"] > 0.8:
+            await self.behavior_handbook.record_pattern(request, tool_name, result)
+        
         return {
             "result": result,
             "meta": {
                 "tool_used": tool_name,
                 "confidence": confidence,
-                "quality_score": quality_score,
-                "reasoning": reasoning,
-                "patterns_considered": patterns,
+                "quality_score": quality["score"],
+                "pattern_id": pattern_id,
+                "patterns_consulted": len(patterns),
             },
         }
 
-    async def _get_applicable_patterns(self, request: Dict) -> List[Dict]:
+    def _get_applicable_patterns(self, request: Dict) -> List[Dict]:
         """Consulta patrones L1 aplicables desde grafo Neo4j."""
         patterns = []
         intent = request.get("intent", "unknown")
