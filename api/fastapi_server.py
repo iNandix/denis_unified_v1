@@ -13,8 +13,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
-from .metacognitive_api import router as metacognitive_router
-from .agent_heart_api import router as agent_heart_router
 # All other imports moved inside create_app() for complete fail-open behavior
 
 
@@ -157,6 +155,17 @@ def create_app() -> FastAPI:
             },
         }
 
+    @app.get("/status")
+    async def status() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "timestamp_utc": _utc_now(),
+            "components": {
+                "metacognitive": True,
+                "health": True,
+            },
+        }
+
     # --- Safe router includes (fail-open) ---
     def _safe_include(builder, *args, **kwargs):
         try:
@@ -193,9 +202,18 @@ def create_app() -> FastAPI:
     except Exception:
         pass
 
-    # Metacognitive + Heart (siempre)
-    app.include_router(metacognitive_router, prefix="/metacognitive")
-    app.include_router(agent_heart_router)
+    # Metacognitive + Heart (siempre, pero lazy import)
+    try:
+        from .metacognitive_api import router as metacognitive_router
+        app.include_router(metacognitive_router, prefix="/metacognitive")
+    except Exception:
+        pass
+
+    try:
+        from .agent_heart_api import router as agent_heart_router
+        app.include_router(agent_heart_router)
+    except Exception:
+        pass
 
     # Voice/Memory/Metagraph/Autopoiesis/Registry (gated + fail-open)
     try:
