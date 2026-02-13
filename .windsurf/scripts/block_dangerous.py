@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Block dangerous commands per DENIS policy."""
 
+import json
 import os
 import re
 import sys
+from datetime import datetime
 
 # Dangerous patterns that require confirmation (DESTRUCTIVE)
 DANGEROUS_PATTERNS = [
@@ -26,7 +28,8 @@ DANGEROUS_PATTERNS = [
 ]
 
 def main():
-    command = os.getenv('WINDSURF_COMMAND', '')
+    tool_info = json.load(sys.stdin)
+    command = tool_info.get('command_line', '')
     if not command:
         return  # Allow if no command
 
@@ -34,6 +37,8 @@ def main():
         if re.search(pattern, command, re.IGNORECASE):
             print(f"DESTRUCTIVE command blocked: {command}")
             print("Requires explicit confirmation from user. Retry after confirmation.")
+            with open('.windsurf/logs/blocked_commands.log', 'a') as f:
+                f.write(f"{datetime.now().isoformat()} BLOCKED: {command}\n")
             sys.exit(2)  # Block the action
 
     print(f"SAFE command allowed: {command}")

@@ -2263,9 +2263,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
 def cmd_manager(args: argparse.Namespace) -> int:
     orch = _load_orchestrator()
     _manager_loop(
-        orch,
-        args.session_id,
-        project_filter=args.project,
+        plan=build_plan(args.prompt, route.intent, route.confidence, args.project, orch.config),
         worker_filter=args.worker,
         kind_filter=args.kind,
         max_commits=max(1, int(args.max_commits)),

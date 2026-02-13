@@ -1,0 +1,37 @@
+# .codeiumignore - Cascade ignore patterns for DENIS workspace
+
+# Secrets and sensitive files
+**/.env
+**/.env.*
+**/*secret*
+**/*key*
+**/*token*
+**/id_rsa*
+**/.ssh/**
+
+# Dependencies and caches
+**/node_modules/**
+**/.venv/**
+**/__pycache__/**
+**/.mypycache/**
+**/.ruffcache__/**
+
+# Artifacts (ignore blobs, allow .json if requested)
+**/artifacts/**
+**/*.gguf
+**/*.bin
+**/*.pt
+
+# Allow .windsurf for rules, hooks, scripts
+!.windsurf/**
+
+# Allow IDE graph .env
+!tools/ide_graph/.env
+
+# Do NOT ignore core DENIS modules
+# contracts/**
+# scripts/**
+# sprint_orchestrator/**
+# api/**
+# orchestration/**
+# inference/**

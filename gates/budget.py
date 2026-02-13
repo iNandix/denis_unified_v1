@@ -18,9 +18,10 @@ from enum import Enum
 import uuid
 
 from denis_unified_v1.observability.metrics import (
-    denis_gate_budget_exceeded_total,
-    denis_gate_budget_ttft_exceeded_total,
-    denis_gate_task_cancelled_total,
+    gate_budget_exceeded,
+    gate_rate_limited,
+    gate_prompt_injection,
+    gate_output_blocked,
 )
 from denis_unified_v1.observability.tracing import get_tracer
 
@@ -127,9 +128,7 @@ class BudgetEnforcer:
                 if not active.ttft_passed and self.config.enable_cancellation:
                     await self._cancel_request(request_id)
 
-                denis_gate_budget_ttft_exceeded_total.labels(
-                    class_key=active.class_key
-                ).inc()
+                gate_budget_exceeded.labels(class_key=active.class_key).inc()
 
                 return BudgetResult(
                     exceeded=True,
@@ -172,9 +171,7 @@ class BudgetEnforcer:
                 if self.config.enable_cancellation:
                     await self._cancel_request(request_id)
 
-                denis_gate_budget_exceeded_total.labels(
-                    class_key=active.class_key
-                ).inc()
+                gate_budget_exceeded.labels(class_key=active.class_key).inc()
 
                 return BudgetResult(
                     exceeded=True,
@@ -207,7 +204,7 @@ class BudgetEnforcer:
         for task in active.tasks:
             if not task.done():
                 task.cancel()
-                denis_gate_task_cancelled_total.labels(class_key=active.class_key).inc()
+                gate_budget_exceeded.labels(class_key=active.class_key).inc()
 
         # Also try to cancel any pending coroutines
         # This is a best-effort cancellation

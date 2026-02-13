@@ -7,30 +7,47 @@ Exposes safe tools for Denis operations via MCP protocol.
 import argparse
 import asyncio
 import json
+import os
 import subprocess
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 import httpx
 
+from ide_graph.ide_graph_client import IdeGraphClient
+
 
 class DenisControlPlane:
-    def __init__(self, repo_path: Path, base_url: str):
+    def __init__(self, repo_path: Path, base_url: str, ide_graph_uri: str = None, ide_graph_user: str = None, ide_graph_password: str = None, ide_graph_db: str = None):
         self.repo_path = repo_path
         self.base_url = base_url
+        self.ide_graph = IdeGraphClient(ide_graph_uri, ide_graph_user, ide_graph_password, ide_graph_db) if ide_graph_uri else None
 
     async def health_check(self, base_url: str = None) -> Dict[str, Any]:
         """Perform health check on the given base URL."""
         url = base_url or self.base_url
         try:
+            start = time.time()
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(f"{url}/health")
-                return {
-                    "status": response.status_code,
-                    "ok": response.status_code == 200,
-                    "content": response.text[:500]  # Truncate for safety
-                }
+            end = time.time()
+            latency = (end - start) * 1000
+            ok = response.status_code == 200
+            result = {
+                "status": response.status_code,
+                "ok": ok,
+                "content": response.text[:500]  # Truncate for safety
+            }
+            if self.ide_graph:
+                try:
+                    name = 'unified' if '8085' in url else 'legacy'
+                    self.ide_graph.upsert_service(name, url, 'ok' if ok else 'error')
+                except Exception:
+                    pass  # Silent
+            return result
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
@@ -41,6 +58,7 @@ class DenisControlPlane:
             return {"error": f"Smoke script for phase {phase} not found"}
 
         try:
+            start = time.time()
             result = subprocess.run(
                 [sys.executable, str(script_path), "--out-json", f"phase{phase}_smoke.json"],
                 cwd=self.repo_path,
@@ -48,11 +66,19 @@ class DenisControlPlane:
                 text=True,
                 timeout=300
             )
+            end = time.time()
+            duration = (end - start) * 1000
+            ok = result.returncode == 0
+            if self.ide_graph:
+                try:
+                    self.ide_graph.record_test_result(f"{phase}_smoke", "smoke", ok, int(duration), f"phase{phase}_smoke.json", datetime.now().isoformat())
+                except Exception:
+                    pass  # Silent
             return {
                 "returncode": result.returncode,
                 "stdout": result.stdout[-1000:],  # Last 1000 chars
                 "stderr": result.stderr[-1000:],
-                "ok": result.returncode == 0
+                "ok": ok
             }
         except subprocess.TimeoutExpired:
             return {"error": "Smoke test timed out"}
@@ -150,14 +176,16 @@ class MCPHandler:
                             }
                         },
                         {
-                            "name": "denis.kill_port",
-                            "description": "Kill process on port (DESTRUCTIVE)",
+                            "name": "get_context_for_request",
+                            "description": "Get relevant context from IDE Graph for a request",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
-                                    "port": {"type": "integer", "description": "Port number"}
+                                    "prompt": {"type": "string"},
+                                    "file_path": {"type": "string"},
+                                    "profile": {"type": "string"}
                                 },
-                                "required": ["port"]
+                                "required": ["prompt"]
                             }
                         }
                     ]
@@ -177,6 +205,10 @@ class MCPHandler:
                 result = await self.denis_cp.read_artifact(arguments["path"])
             elif tool_name == "denis.kill_port":
                 result = await self.denis_cp.kill_port(arguments["port"])
+            elif tool_name == "get_context_for_request":
+                from tools.ide_graph.context_provider import ContextProvider
+                provider = ContextProvider(self.denis_cp.ide_graph)
+                result = provider.get_relevant_context(arguments['prompt'], arguments.get('file_path', ''), arguments.get('profile', ''))
             else:
                 result = {"error": "Unknown tool"}
 
@@ -208,10 +240,21 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True, help="Path to Denis repo")
     parser.add_argument("--base-url", default="http://127.0.0.1:8085", help="Base URL for health checks")
+    parser.add_argument("--ide-graph-uri", default=os.getenv("IDE_GRAPH_URI"))
+    parser.add_argument("--ide-graph-user", default=os.getenv("IDE_GRAPH_USER"))
+    parser.add_argument("--ide-graph-password", default=os.getenv("IDE_GRAPH_PASSWORD"))
+    parser.add_argument("--ide-graph-db", default=os.getenv("IDE_GRAPH_DB"))
     args = parser.parse_args()
 
     repo_path = Path(args.repo)
-    denis_cp = DenisControlPlane(repo_path, args.base_url)
+    denis_cp = DenisControlPlane(
+        repo_path,
+        args.base_url,
+        args.ide_graph_uri,
+        args.ide_graph_user,
+        args.ide_graph_password,
+        args.ide_graph_db
+    )
     handler = MCPHandler(denis_cp)
 
     # MCP uses stdio

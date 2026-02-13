@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Post-write code gates: run basic checks."""
+"""Post-write code gates: run basic checks and suggest commands."""
 
+import json
 import os
 import sys
 import subprocess
 
 def main():
-    file_path = os.getenv('WINDSURF_FILE_PATH', '')
+    tool_info = json.load(sys.stdin)
+    file_path = tool_info.get('file_path', '')
     if not file_path:
         return
 
@@ -20,6 +22,14 @@ def main():
             # Don't block, just log
     else:
         print(f"No gates for {file_path}")
+
+    # Suggestions based on path
+    if 'sprintorchestrator' in file_path or 'scripts/phase' in file_path:
+        print("Suggested commands: python3 scripts/phase11_sprint_orchestrator_smoke.py --out-json phase11_sprint_orchestrator_smoke.json")
+    elif 'contracts' in file_path:
+        print("Suggested commands: make preflight && python3 scripts/phase11_sprint_orchestrator_smoke.py --out-json phase11_sprint_orchestrator_smoke.json")
+    else:
+        print(f"No suggestions for {file_path}")
 
 if __name__ == "__main__":
     main()

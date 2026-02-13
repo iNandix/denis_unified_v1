@@ -398,21 +398,10 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
     async def chat_completions(req: ChatCompletionRequest, request: Request):
         ip = request.client.host if request.client else "unknown"
         user = ip
-        if runtime.budget_manager is None and getattr(
-            runtime.flags, "denis_use_gate_hardening", False
-        ):
-            from denis_unified_v1.budgets import BudgetManager
 
-            runtime.budget_manager = BudgetManager()
-            await runtime.budget_manager.initialize()
-        if runtime.budget_manager:
-            allowed = await runtime.budget_manager.check_total_budget(
-                user, req.max_tokens or 100
-            )
-            if not allowed:
-                return JSONResponse(
-                    status_code=429, content={"error": "budget exceeded"}
-                )
+        # Budget enforcement is handled internally by the inference router
+        # Skip manual budget check here
+
         result = await runtime.generate(req)
         if not req.stream:
             return JSONResponse(result)
@@ -441,10 +430,9 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
         if runtime.budget_manager is None and getattr(
             runtime.flags, "denis_use_gate_hardening", False
         ):
-            from denis_unified_v1.budgets import BudgetManager
+            from denis_unified_v1.gates.budget import BudgetEnforcer, BudgetConfig
 
-            runtime.budget_manager = BudgetManager()
-            await runtime.budget_manager.initialize()
+            runtime.budget_manager = BudgetEnforcer(BudgetConfig())
         if runtime.budget_manager:
             allowed = await runtime.budget_manager.check_total_budget(
                 user, req.max_tokens or 100
