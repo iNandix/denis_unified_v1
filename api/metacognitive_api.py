@@ -139,10 +139,11 @@ async def metacognitive_status():
     """Estado general del sistema metacognitivo con consultas concurrentes."""
     driver = await get_neo4j_async()
     if driver is None:
-        out = _status_fallback()
-        out["reason"] = "neo4j_unavailable"
-        return out
+        return _degraded_response(
+            "metacognitive", "neo4j_driver_unavailable", _status_fallback()
+        )
     degraded = False
+    errors = []
 
     async def query_l0_count():
         try:
