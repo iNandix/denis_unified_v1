@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DENIS Control Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --warning: #ca8a04;
+            --danger: #dc2626;
+            --dark: #1e293b;
+            --light: #f8fafc;
+        }
+        body { background: var(--light); font-family: 'Segoe UI', system-ui, sans-serif; }
+        .navbar { background: linear-gradient(135deg, var(--primary), #1d4ed8); }
+        .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card-header { background: white; border-bottom: 1px solid #e2e8f0; font-weight: 600; }
+        .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 500; }
+        .status-green { background: #dcfce7; color: #166534; }
+        .status-yellow { background: #fef9c3; color: #854d0e; }
+        .status-red { background: #fee2e2; color: #991b1b; }
+        .status-gray { background: #f1f5f9; color: #64748b; }
+        .progress { height: 24px; border-radius: 12px; }
+        .progress-bar { font-weight: 600; }
+        .action-btn { transition: all 0.2s; }
+        .action-btn:hover { transform: translateY(-2px); }
+        .gate-ok { border-left: 4px solid var(--success); }
+        .gate-fail { border-left: 4px solid var(--danger); }
+        .phase-card { border-left: 4px solid var(--primary); }
+        .phase-card.completed { border-left-color: var(--success); }
+        .phase-card.in-progress { border-left-color: var(--warning); }
+        .metric-value { font-size: 2.5em; font-weight: 700; }
+        .metric-label { font-size: 0.85em; color: #64748b; }
+        .timeline-item { position: relative; padding-left: 30px; }
+        .timeline-item::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: #e2e8f0; }
+        .timeline-item::after { content: ''; position: absolute; left: 4px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); }
+        .spinner-border-sm { width: 1rem; height: 1rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="bi bi-robot me-2"></i>DENIS Control Panel
+            </a>
+            <span class="navbar-text text-white-50">
+                {{ project.name }} v{{ project.version }}
+            </span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Project Info -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h4 class="mb-1"><i class="bi bi-rocket-takeoff me-2"></i>Proyecto: {{ project.name }}</h4>
+                                <p class="text-muted mb-0">{{ project.description }}</p>
+                            </div>
+                            <div class="col-md-4 text-md-end">
+                                <a href="{{ project.github_url }}" target="_blank" class="btn btn-outline-light btn-sm">
+                                    <i class="bi bi-github me-1"></i>GitHub
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Completion Progress -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <div class="metric-value text-primary">{{ completion.percentage }}%</div>
+                        <div class="metric-label">Completado Total</div>
+                        <div class="mt-3">
+                            <small class="text-muted">{{ completion.completed }} de {{ completion.total }} hitos</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <i class="bi bi-check-circle me-2"></i>Criterios de Completado
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            {% for criterion in completion.criteria %}
+                            <div class="col-md-6 mb-2">
+                                <div class="d-flex align-items-center">
+                                    {% if criterion.completed %}
+                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                    {% else %}
+                                    <i class="bi bi-circle me-2"></i>
+                                    {% endif %}
+                                    <span class="{% if criterion.completed %}text-success{% endif %}">{{ criterion.name }}</span>
+                                    <span class="ms-auto badge bg-secondary">{{ criterion.weight }}%</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gate Status -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card {% if gate.ok %}gate-ok{% else %}gate-fail{% endif %}">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-shield-check me-2"></i>Estado del Gate</span>
+                        <span class="status-badge {% if gate.ok %}status-green{% else %}status-red{% endif %}">
+                            {% if gate.ok %}<i class="bi bi-check-lg me-1"></i>PASS{% else %}<i class="bi bi-x-lg me-1"></i>FAIL{% endif %}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <div class="h4 {% if gate.ok %}text-success{% else %}text-danger{% endif %}">
+                                        {{ gate.overall_status|upper }}
+                                    </div>
+                                    <small class="text-muted">Release Status</small>
+                                </div>
+                            </div>
+                            <div class="col-md-9">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h5">{{ smoke.passed|default(0) }}/{{ smoke.total|default(0) }}</div>
+                                            <small class="text-muted">Smokes Passed</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h5">{{ smoke.failed|default(0) }}</div>
+                                            <small class="text-muted">Smokes Failed</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h5">{{ (smoke.pass_rate * 100)|round(1) if smoke.pass_rate else 0 }}%</div>
+                                            <small class="text-muted">Pass Rate</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-center">
+                                            <div class="h5">{{ sprint.overall_status|default('none') }}</div>
+                                            <small class="text-muted">Sprint Status</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions Panel -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-lightning me-2"></i>Acciones Disponibles
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <button class="btn btn-primary w-100 action-btn" onclick="runAction('/api/gate/run', 'Verificando Gate...')">
+                                    <i class="bi bi-shield-check me-2"></i>Verificar Gate
+                                </button>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <button class="btn btn-warning w-100 action-btn" onclick="runAction('/api/fix/run', 'Ejecutando Auto-Fix...')">
+                                    <i class="bi bi-wrench me-2"></i>Auto-Fix
+                                </button>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <button class="btn btn-success w-100 action-btn" onclick="runAction('/api/enforce-push/run', 'Enviando a GitHub...')">
+                                    <i class="bi bi-upload me-2"></i>Enforce & Push
+                                </button>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <button class="btn btn-info w-100 action-btn" onclick="location.reload()">
+                                    <i class="bi bi-arrow-clockwise me-2"></i>Actualizar
+                                </button>
+                            </div>
+                        </div>
+                        <div id="action-result" class="mt-3" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategic Horizon -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-compass me-2"></i>Horizonte Estratégico
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-3"><strong>Visión:</strong> {{ strategic.vision }}</p>
+                        <div class="row">
+                            {% for phase in strategic.phases %}
+                            <div class="col-md-4 mb-3">
+                                <div class="card phase-card {% if phase.status == 'completed' %}completed{% elif phase.status == 'in_progress' %}in-progress{% endif %}">
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <span class="badge bg-primary">Fase {{ phase.id }}</span>
+                                            <span class="status-badge {% if phase.status == 'completed' %}status-green{% elif phase.status == 'in_progress' %}status-yellow{% else %}status-gray{% endif %}">
+                                                {% if phase.status == 'completed' %}✓{% elif phase.status == 'in_progress' %}⟳{% else %}○{% endif %}
+                                                {{ phase.status|replace('_', ' ')|title }}
+                                            </span>
+                                        </div>
+                                        <h6 class="mb-1">{{ phase.name }}</h6>
+                                        <small class="text-muted">{{ phase.description }}</small>
+                                        <div class="mt-2">
+                                            <div class="progress" style="height: 8px;">
+                                                <div class="progress-bar bg-{% if phase.status == 'completed' %}success{% elif phase.status == 'in_progress' %}warning{% else %}secondary{% endif %}" 
+                                                     style="width: {{ phase.progress }}%"></div>
+                                            </div>
+                                            <small class="text-muted">{{ phase.progress }}%</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-clock-history me-2"></i>Actividad Reciente
+                    </div>
+                    <div class="card-body">
+                        {% if recent_activity %}
+                        <div class="timeline">
+                            {% for activity in recent_activity %}
+                            <div class="timeline-item mb-3">
+                                <div class="d-flex justify-content-between">
+                                    <span><code>{{ activity.file }}</code></span>
+                                    <small class="text-muted">{{ activity.timestamp[:19] if activity.timestamp else '' }}</small>
+                                </div>
+                                <span class="status-badge status-{% if activity.status == 'green' or activity.status == true %}green{% elif activity.status == 'failed' or activity.status == false %}red{% else %}gray{% endif %}">
+                                    {{ activity.status }}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="text-muted">No hay actividad reciente</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-5 mb-4 text-center text-muted">
+            <small>Actualizado: {{ now[:19] }}</small>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function runAction(endpoint, message) {
+            const resultDiv = document.getElementById('action-result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `<div class="alert alert-info"><i class="bi bi-hourglass-split me-2"></i>${message}</div>`;
+            
+            try {
+                const response = await fetch(endpoint);
+                const data = await response.json();
+                
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <strong>Éxito!</strong> Gate: ${data.gate?.ok ? 'PASS' : 'FAIL'}
+                        </div>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-x-circle me-2"></i>
+                            <strong>Error:</strong> ${data.error || 'Algo salió mal'}
+                        </div>`;
+                }
+                
+                setTimeout(() => location.reload(), 2000);
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Error de conexión: ${error.message}
+                    </div>`;
+            }
+        }
+        
+        setInterval(() => location.reload(), 60000);
+    </script>
+</body>
+</html>
