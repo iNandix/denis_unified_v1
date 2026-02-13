@@ -2,68 +2,139 @@
   "ok": true,
   "items": [
     {
-      "signal_id": "smoke_capabilities_test_ok_false",
-      "severity": 4,
-      "confidence": 0.9,
-      "source_artifact": "artifacts/smoke_capabilities_test.json",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/self_aware/block.json",
       "detected_signal": {
-        "ok": false,
-        "endpoint_status": "server_not_ready"
+        "hard_failures": 1
       },
-      "remediation_key": "capabilities_endpoint_failed",
-      "expected_effect": "capabilities endpoint returns 200 with valid response",
+      "expected_effect": "Fix hard failures in self-aware gate",
       "commands": [
-        [
-          "python3",
-          "scripts/phase6_capabilities_registry_smoke.py",
-          "--out-json",
-          "artifacts/api/phase6_capabilities_registry_smoke.json"
-        ]
+        "python3 scripts/smoke_self_aware_block.py"
       ],
       "expected_artifacts": [
-        "artifacts/api/phase6_capabilities_registry_smoke.json"
+        "artifacts/self_aware/block.json"
       ],
       "definition_of_done": [
-        "All commands return exit code 0",
-        "Expected artifacts created and contain success indicators",
-        "Root cause addressed as per capabilities endpoint returns 200 with valid response"
-      ]
+        "returncode==0",
+        "hard_failures==0"
+      ],
+      "severity": 5,
+      "confidence": 0.9
     },
     {
-      "signal_id": "smoke_capabilities_test_endpoint_server_not_ready",
-      "severity": 4,
-      "confidence": 0.8,
-      "source_artifact": "artifacts/smoke_capabilities_test.json",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/api/route_sanity_smoke.json",
       "detected_signal": {
-        "endpoint_status": "server_not_ready"
-      },
-      "remediation_key": "capabilities_endpoint_failed",
-      "expected_effect": "capabilities endpoint returns 200 with valid response",
-      "commands": [
-        [
-          "python3",
-          "scripts/phase6_capabilities_registry_smoke.py",
-          "--out-json",
-          "artifacts/api/phase6_capabilities_registry_smoke.json"
+        "duplicate_paths": [
+          "/metacognitive/inference/ab-tests"
         ]
+      },
+      "expected_effect": "Fix duplicate routes in metacognitive_api.py",
+      "commands": [
+        "python3 scripts/route_sanity_smoke.py"
       ],
       "expected_artifacts": [
-        "artifacts/api/phase6_capabilities_registry_smoke.json"
+        "artifacts/api/route_sanity_smoke.json"
       ],
       "definition_of_done": [
-        "All commands return exit code 0",
-        "Expected artifacts created and contain success indicators",
-        "Root cause addressed as per capabilities endpoint returns 200 with valid response"
-      ]
+        "returncode==0",
+        "duplicate_paths==[]"
+      ],
+      "severity": 3,
+      "confidence": 0.9
+    },
+    {
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/self_aware/voice.json",
+      "detected_signal": {
+        "ok": false,
+        "reason": "Import error: No module named 'denis_unified_v1.api'"
+      },
+      "expected_effect": "Rerun phase8_metacognitive_voice_smoke",
+      "commands": [
+        "python3 scripts/phase8_metacognitive_voice_smoke.py"
+      ],
+      "expected_artifacts": [
+        "artifacts/phase8_metacognitive_voice_smoke.json"
+      ],
+      "definition_of_done": [
+        "returncode==0",
+        "artifact.ok==true"
+      ],
+      "severity": 3,
+      "confidence": 0.8
+    },
+    {
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/api/capabilities_registry_smoke.json",
+      "detected_signal": {
+        "ok": false,
+        "reason": "unknown"
+      },
+      "expected_effect": "Rerun phase6_capabilities_registry_smoke",
+      "commands": [
+        "python3 scripts/phase6_capabilities_registry_smoke.py"
+      ],
+      "expected_artifacts": [
+        "artifacts/phase6_capabilities_registry_smoke.json"
+      ],
+      "definition_of_done": [
+        "returncode==0",
+        "artifact.ok==true"
+      ],
+      "severity": 3,
+      "confidence": 0.8
+    },
+    {
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/graph/relationships_smoke.json",
+      "detected_signal": {
+        "ok": false,
+        "reason": "NEO4J_PASSWORD not set"
+      },
+      "expected_effect": "Rerun graph_relationships_smoke",
+      "commands": [
+        "python3 scripts/graph_relationships_smoke.py"
+      ],
+      "expected_artifacts": [
+        "artifacts/graph_relationships_smoke.json"
+      ],
+      "definition_of_done": [
+        "returncode==0",
+        "artifact.ok==true"
+      ],
+      "severity": 3,
+      "confidence": 0.8
     }
   ],
-  "rejected_signals": [],
+  "rejected_signals": [
+    {
+      "signal_id": "ok_false_smoke_capabilities_test",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/smoke_capabilities_test.json",
+      "reason": "no_remediation"
+    },
+    {
+      "signal_id": "status_error_phase11_preflight",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/sprint/phase11_preflight.json",
+      "reason": "no_remediation"
+    },
+    {
+      "signal_id": "status_error_phase11_sprint_orchestrator_smoke",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/sprint/phase11_sprint_orchestrator_smoke.json",
+      "reason": "no_remediation"
+    },
+    {
+      "signal_id": "status_failed_block",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/self_aware/block.json",
+      "reason": "no_remediation"
+    },
+    {
+      "signal_id": "status_failed_voice",
+      "source_artifact": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/artifacts/self_aware/voice.json",
+      "reason": "no_remediation"
+    }
+  ],
   "validation": {
     "commands_exist": true,
     "expected_artifacts_coherent": true
   },
-  "timestamp_utc": 1771017208.4012897,
-  "total_signals": 2,
-  "accepted_items": 2,
-  "rejected_signals_count": 0
+  "total_signals": 10,
+  "total_items": 5,
+  "total_rejected": 5,
+  "timestamp_utc": "2026-02-13T21:15:11.619737+00:00"
 }

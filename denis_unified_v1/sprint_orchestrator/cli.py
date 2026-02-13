@@ -15,6 +15,7 @@ import shlex
 import subprocess
 import sys
 import time
+
 try:
     import termios
     import tty
@@ -75,7 +76,11 @@ def _print_projects(projects: list[dict]) -> None:
                 p["last_commit"],
             ]
         )
-    print(render_table(["project", "branch", "state", "ahead/behind", "sha", "last commit"], rows))
+    print(
+        render_table(
+            ["project", "branch", "state", "ahead/behind", "sha", "last commit"], rows
+        )
+    )
 
 
 def _print_assignments(assignments: list[dict]) -> None:
@@ -91,7 +96,13 @@ def _print_assignments(assignments: list[dict]) -> None:
                 a["task"],
             ]
         )
-    print(render_table(["worker", "role", "provider", "priority", "status", "task"], rows, widths=[10, 12, 14, 8, 10, 56]))
+    print(
+        render_table(
+            ["worker", "role", "provider", "priority", "status", "task"],
+            rows,
+            widths=[10, 12, 14, 8, 10, 56],
+        )
+    )
 
 
 def _filter_events(
@@ -104,7 +115,9 @@ def _filter_events(
     if worker_filter not in (None, "", "all"):
         filtered = [e for e in filtered if e.get("worker_id") == worker_filter]
     if kind_filter not in (None, "", "all"):
-        filtered = [e for e in filtered if str(e.get("kind", "")).startswith(str(kind_filter))]
+        filtered = [
+            e for e in filtered if str(e.get("kind", "")).startswith(str(kind_filter))
+        ]
     return filtered
 
 
@@ -114,30 +127,39 @@ def _print_events(
     kind_filter: str | None = None,
     limit: int = 60,
 ) -> None:
-    filtered = _filter_events(events, worker_filter=worker_filter, kind_filter=kind_filter)
+    filtered = _filter_events(
+        events, worker_filter=worker_filter, kind_filter=kind_filter
+    )
     if not filtered:
         print(muted("(sin eventos para ese filtro)"))
         return
     selected = filtered[-limit:]
-    for idx, evt in enumerate(selected, start=max(1, len(filtered) - len(selected) + 1)):
+    for idx, evt in enumerate(
+        selected, start=max(1, len(filtered) - len(selected) + 1)
+    ):
         worker = evt.get("worker_id", "?")
         kind = evt.get("kind", "event")
         ts = evt.get("timestamp_utc", "")
         msg = evt.get("message", "")
         short_ts = ts[11:19] if len(ts) >= 19 else ts
-        print(f"{muted(str(idx).rjust(4))} [{short_ts}] {accent(worker)} {muted(kind)} {msg}", flush=True)
+        print(
+            f"{muted(str(idx).rjust(4))} [{short_ts}] {accent(worker)} {muted(kind)} {msg}",
+            flush=True,
+        )
 
 
 def _render_session_dashboard(session: dict) -> None:
-    print(panel(
-        f"DENIS Sprint Orchestrator :: {session['session_id']}",
-        [
-            muted(
-                f"created={session['created_utc']} status={session.get('status', 'active')} workers={session['workers_requested']}"
-            ),
-            muted(f"prompt: {session['prompt']}"),
-        ],
-    ))
+    print(
+        panel(
+            f"DENIS Sprint Orchestrator :: {session['session_id']}",
+            [
+                muted(
+                    f"created={session['created_utc']} status={session.get('status', 'active')} workers={session['workers_requested']}"
+                ),
+                muted(f"prompt: {session['prompt']}"),
+            ],
+        )
+    )
     _print_projects(session.get("projects") or [])
     print()
     _print_assignments(session.get("assignments") or [])
@@ -167,15 +189,17 @@ def _print_dashboard(orch: SprintOrchestrator, session_id: str) -> None:
     last = stats.get("last", {})
     last_kind = last.get("kind", "-") if isinstance(last, dict) else "-"
 
-    print(panel(
-        f"Sprint Dashboard :: {session_id}",
-        [
-            f"events={stats['total']} workers={len(workers)} high_priority={high_priority}",
-            f"providers_configured={configured}/{total_providers}",
-            f"last_event={last_kind}",
-        ],
-        border_char="-",
-    ))
+    print(
+        panel(
+            f"Sprint Dashboard :: {session_id}",
+            [
+                f"events={stats['total']} workers={len(workers)} high_priority={high_priority}",
+                f"providers_configured={configured}/{total_providers}",
+                f"last_event={last_kind}",
+            ],
+            border_char="-",
+        )
+    )
 
     worker_rows = []
     workers_stats = stats.get("workers", {})
@@ -192,15 +216,17 @@ def _print_dashboard(orch: SprintOrchestrator, session_id: str) -> None:
     if kind_rows:
         print(render_table(["event_kind", "count"], kind_rows, widths=[36, 8]))
     print()
-    print(panel(
-        "Quick Actions",
-        [
-            "1) dashboard  2) autodispatch  3) workers  4) providers",
-            "5) mcp-tools  6) tail eventos  7) follow eventos  8) noc live",
-            "9) journal  10) manager  11) monitor  12) guide  13) logs  14) commit-tree  0) salir",
-        ],
-        border_char=".",
-    ))
+    print(
+        panel(
+            "Quick Actions",
+            [
+                "1) dashboard  2) autodispatch  3) workers  4) providers",
+                "5) mcp-tools  6) tail eventos  7) follow eventos  8) noc live",
+                "9) journal  10) manager  11) monitor  12) guide  13) logs  14) commit-tree  0) salir",
+            ],
+            border_char=".",
+        )
+    )
 
 
 def _print_providers(rows: list[dict]) -> None:
@@ -223,7 +249,16 @@ def _print_providers(rows: list[dict]) -> None:
         )
     print(
         render_table(
-            ["provider", "mode", "request_format", "configured", "missing_env", "endpoint", "queue", "notes"],
+            [
+                "provider",
+                "mode",
+                "request_format",
+                "configured",
+                "missing_env",
+                "endpoint",
+                "queue",
+                "notes",
+            ],
             table_rows,
             widths=[14, 8, 18, 11, 24, 36, 18, 24],
         )
@@ -239,11 +274,15 @@ def _load_provider_rows(orch: SprintOrchestrator) -> list[dict]:
     return [s.as_dict() for s in load_provider_statuses(orch.config)]
 
 
-def _print_stage(*, idx: int, total: int, name: str, status: str, detail: str = "") -> None:
+def _print_stage(
+    *, idx: int, total: int, name: str, status: str, detail: str = ""
+) -> None:
     pct = int((idx / max(1, total)) * 100)
     filled = max(1, int((pct / 100.0) * 20))
     bar = ("#" * filled).ljust(20, ".")
-    print(f"[{str(pct).rjust(3)}%] [{bar}] {name}: {status_badge(status)} {detail}".rstrip())
+    print(
+        f"[{str(pct).rjust(3)}%] [{bar}] {name}: {status_badge(status)} {detail}".rstrip()
+    )
 
 
 def _apply_dispatch_result_to_registry(
@@ -276,20 +315,24 @@ def _render_journal(orch: SprintOrchestrator, session_id: str) -> None:
     if not project_path:
         project_path = str(Path.cwd())
 
-    journal = orch.registry.build_journal(project_path=project_path, session_id=session_id)
+    journal = orch.registry.build_journal(
+        project_path=project_path, session_id=session_id
+    )
     pending = journal.get("pending") or []
     in_progress = journal.get("in_progress") or []
     done = journal.get("done") or []
 
-    print(panel(
-        f"Git Journal :: {session_id}",
-        [
-            f"proposal_id={journal.get('proposal_id') or '-'}",
-            f"pending={len(pending)} in_progress={len(in_progress)} done={len(done)}",
-            f"project={project_path}",
-        ],
-        border_char="~",
-    ))
+    print(
+        panel(
+            f"Git Journal :: {session_id}",
+            [
+                f"proposal_id={journal.get('proposal_id') or '-'}",
+                f"pending={len(pending)} in_progress={len(in_progress)} done={len(done)}",
+                f"project={project_path}",
+            ],
+            border_char="~",
+        )
+    )
     if pending:
         print(gray_dark("Pending"))
         for item in pending[:40]:
@@ -303,14 +346,18 @@ def _render_journal(orch: SprintOrchestrator, session_id: str) -> None:
         for item in done[:80]:
             ts = str(item.get("completed_utc") or item.get("updated_utc") or "")
             provider = str(item.get("provider") or "unknown")
-            print(f"{done_tick()} [{item.get('phase')}] {item.get('task')} ({provider}, {ts})")
+            print(
+                f"{done_tick()} [{item.get('phase')}] {item.get('task')} ({provider}, {ts})"
+            )
 
     stubs = orch.registry.list_stub_validations(project_path=project_path, limit=12)
     if stubs:
         print()
         print(panel("Stub Validations", [f"records={len(stubs)}"], border_char=":"))
         for row in stubs:
-            marker = done_tick() if str(row.get("decision")) == "approved" else warn("⛔")
+            marker = (
+                done_tick() if str(row.get("decision")) == "approved" else warn("⛔")
+            )
             print(
                 f"{marker} {row.get('decision')} {row.get('file_path')}:{row.get('line_no')} "
                 f"{row.get('category')} ({row.get('provider')}, {row.get('created_utc')})"
@@ -351,14 +398,16 @@ def _render_commit_tree_view(
         print(warn("No projects found for commit-tree view."))
         return
 
-    print(panel(
-        "Project Commit Tree",
-        [
-            f"projects={len(projects)} max_commits={max_commits} all_branches={all_branches}",
-            "Tree is commit-oriented (not file-oriented).",
-        ],
-        border_char="^",
-    ))
+    print(
+        panel(
+            "Project Commit Tree",
+            [
+                f"projects={len(projects)} max_commits={max_commits} all_branches={all_branches}",
+                "Tree is commit-oriented (not file-oriented).",
+            ],
+            border_char="^",
+        )
+    )
     for item in projects:
         path = str(item.get("path") or "").strip()
         if not path:
@@ -369,12 +418,19 @@ def _render_commit_tree_view(
         ahead = int(item.get("ahead") or 0)
         behind = int(item.get("behind") or 0)
         print()
-        print(panel(
-            f"{name} ({branch})",
-            [f"path={path}", f"state={'dirty' if dirty else 'clean'} ahead=+{ahead} behind=-{behind}"],
-            border_char="-",
-        ))
-        lines = read_commit_tree(Path(path), max_commits=max_commits, all_branches=all_branches)
+        print(
+            panel(
+                f"{name} ({branch})",
+                [
+                    f"path={path}",
+                    f"state={'dirty' if dirty else 'clean'} ahead=+{ahead} behind=-{behind}",
+                ],
+                border_char="-",
+            )
+        )
+        lines = read_commit_tree(
+            Path(path), max_commits=max_commits, all_branches=all_branches
+        )
         for line_item in lines:
             print(gray_light(line_item))
 
@@ -399,7 +455,9 @@ def _render_commit_tree_compact(
         ahead = int(item.get("ahead") or 0)
         behind = int(item.get("behind") or 0)
         print(gray_light(f"{name} ({branch}) dirty={dirty} +{ahead}/-{behind}"))
-        lines = read_commit_tree(Path(path), max_commits=max_commits, all_branches=all_branches)
+        lines = read_commit_tree(
+            Path(path), max_commits=max_commits, all_branches=all_branches
+        )
         for line_item in lines[:max_commits]:
             print(gray_light(f"  {line_item}"))
         print()
@@ -410,8 +468,12 @@ def _extract_commit_sha(line_item: str) -> str:
     return str(match.group(1)) if match else ""
 
 
-def _read_commit_entries(repo_path: Path, *, max_commits: int, all_branches: bool = True) -> list[dict[str, str]]:
-    lines = read_commit_tree(repo_path, max_commits=max_commits, all_branches=all_branches)
+def _read_commit_entries(
+    repo_path: Path, *, max_commits: int, all_branches: bool = True
+) -> list[dict[str, str]]:
+    lines = read_commit_tree(
+        repo_path, max_commits=max_commits, all_branches=all_branches
+    )
     entries: list[dict[str, str]] = []
     for raw in lines[:max_commits]:
         entries.append({"line": raw, "sha": _extract_commit_sha(raw)})
@@ -494,7 +556,9 @@ def _read_keypress(timeout_sec: float = 0.25) -> str | None:
     return mapping.get(code, ch + nxt + code)
 
 
-def _cycle_filter_option(options: list[str | None], current: str | None, *, forward: bool = True) -> str | None:
+def _cycle_filter_option(
+    options: list[str | None], current: str | None, *, forward: bool = True
+) -> str | None:
     if not options:
         return current
     try:
@@ -513,7 +577,9 @@ def _render_phase_progress(orch: SprintOrchestrator, session_id: str) -> None:
         project_path = str(projects[0].get("path") or "")
     if not project_path:
         project_path = str(Path.cwd())
-    journal = orch.registry.build_journal(project_path=project_path, session_id=session_id)
+    journal = orch.registry.build_journal(
+        project_path=project_path, session_id=session_id
+    )
 
     phase_stats: dict[str, dict[str, int]] = {}
     for bucket in ("pending", "in_progress", "done"):
@@ -540,7 +606,13 @@ def _render_phase_progress(orch: SprintOrchestrator, session_id: str) -> None:
                 f"{pct}%",
             ]
         )
-    print(render_table(["phase", "pending", "in_progress", "done", "progress"], rows, widths=[10, 9, 12, 8, 10]))
+    print(
+        render_table(
+            ["phase", "pending", "in_progress", "done", "progress"],
+            rows,
+            widths=[10, 9, 12, 8, 10],
+        )
+    )
 
 
 def _render_journal_snapshot(
@@ -556,39 +628,49 @@ def _render_journal_snapshot(
         project_path = str(projects[0].get("path") or "")
     if not project_path:
         project_path = str(Path.cwd())
-    journal = orch.registry.build_journal(project_path=project_path, session_id=session_id)
+    journal = orch.registry.build_journal(
+        project_path=project_path, session_id=session_id
+    )
 
     pending = journal.get("pending") or []
     in_progress = journal.get("in_progress") or []
     done = journal.get("done") or []
-    print(muted(f"pending={len(pending)} in_progress={len(in_progress)} done={len(done)}"))
+    print(
+        muted(f"pending={len(pending)} in_progress={len(in_progress)} done={len(done)}")
+    )
     for item in in_progress[:limit]:
         print(gray_light(f"~ [{item.get('phase')}] {item.get('task')}"))
     for item in done[: max(1, limit // 2)]:
-        print(ok(f"{done_tick()} [{item.get('phase')}] {item.get('task')} ({item.get('provider')})"))
+        print(
+            ok(
+                f"{done_tick()} [{item.get('phase')}] {item.get('task')} ({item.get('provider')})"
+            )
+        )
 
 
 def _print_help_panel() -> None:
-    print(panel(
-        "Sprintctl Guide",
-        [
-            "Flujo recomendado:",
-            "1) propose --file <md>  -> validar/rehacer/cancelar",
-            "2) start --autodispatch  -> arranca workers",
-            "3) manager <session_id>  -> vista unica (commit-tree + fases + chat)",
-            "4) monitor <session_id>  -> fases + chat en vivo",
-            "5) journal <session_id>  -> bitacora completa",
-            "6) commit-tree [--session-id] -> gestion por arbol de commits",
-            "Atajos:",
-            "- ctrl+p o journal (en modo interactivo) para bitacora",
-            "- manager para trabajar en modo gerencial completo",
-            "- en manager: j/k commit, h/l proyecto, w/t filtros, d detalle, f scope, q salir",
-            "- monitor --chat-only para foco en acciones de agentes/workers",
-            "- logs --follow para stream de auditoria JSONL del bus",
-            "- commit-tree muestra historia por proyecto (no por archivos)",
-        ],
-        border_char="+",
-    ))
+    print(
+        panel(
+            "Sprintctl Guide",
+            [
+                "Flujo recomendado:",
+                "1) propose --file <md>  -> validar/rehacer/cancelar",
+                "2) start --autodispatch  -> arranca workers",
+                "3) manager <session_id>  -> vista unica (commit-tree + fases + chat)",
+                "4) monitor <session_id>  -> fases + chat en vivo",
+                "5) journal <session_id>  -> bitacora completa",
+                "6) commit-tree [--session-id] -> gestion por arbol de commits",
+                "Atajos:",
+                "- ctrl+p o journal (en modo interactivo) para bitacora",
+                "- manager para trabajar en modo gerencial completo",
+                "- en manager: j/k commit, h/l proyecto, w/t filtros, d detalle, f scope, q salir",
+                "- monitor --chat-only para foco en acciones de agentes/workers",
+                "- logs --follow para stream de auditoria JSONL del bus",
+                "- commit-tree muestra historia por proyecto (no por archivos)",
+            ],
+            border_char="+",
+        )
+    )
 
 
 def _print_chat_events(
@@ -598,7 +680,9 @@ def _print_chat_events(
     kind_filter: str | None = None,
     limit: int = 25,
 ) -> None:
-    filtered = _filter_events(events, worker_filter=worker_filter, kind_filter=kind_filter)
+    filtered = _filter_events(
+        events, worker_filter=worker_filter, kind_filter=kind_filter
+    )
     if not filtered:
         print(muted("(sin mensajes)"))
         return
@@ -626,15 +710,17 @@ def _monitor_loop(
 ) -> None:
     def render_once() -> None:
         clear_screen()
-        print(panel(
-            f"Sprint Monitor :: {session_id}",
-            [
-                f"worker_filter={worker_filter or 'all'} kind_filter={kind_filter or 'all'}",
-                f"chat_only={chat_only} follow={follow} refresh={interval_sec:.1f}s",
-                f"event_log={orch.bus.status().get('log_path', '')}",
-            ],
-            border_char="=",
-        ))
+        print(
+            panel(
+                f"Sprint Monitor :: {session_id}",
+                [
+                    f"worker_filter={worker_filter or 'all'} kind_filter={kind_filter or 'all'}",
+                    f"chat_only={chat_only} follow={follow} refresh={interval_sec:.1f}s",
+                    f"event_log={orch.bus.status().get('log_path', '')}",
+                ],
+                border_char="=",
+            )
+        )
         if not chat_only:
             _print_dashboard(orch, session_id)
             print()
@@ -681,15 +767,20 @@ def _manager_loop(
     follow: bool = True,
 ) -> None:
     approval_engine = ApprovalEngine(orch.store)
-    projects = _resolve_projects_for_commit_view(orch, session_id=session_id, scan_root=None)
+    projects = _resolve_projects_for_commit_view(
+        orch, session_id=session_id, scan_root=None
+    )
     if project_filter:
         token = project_filter.strip().lower()
         projects = [
-            item for item in projects
+            item
+            for item in projects
             if token in str(item.get("name") or "").lower()
             or token in str(item.get("path") or "").lower()
         ]
-    current_worker_filter = None if worker_filter in {None, "", "all"} else worker_filter
+    current_worker_filter = (
+        None if worker_filter in {None, "", "all"} else worker_filter
+    )
     current_kind_filter = None if kind_filter in {None, "", "all"} else kind_filter
     project_scope = "all"
     focused_project_idx = 0
@@ -723,7 +814,9 @@ def _manager_loop(
             return [project], 0
         return list(projects), max(0, min(focused_project_idx, len(projects) - 1))
 
-    def _render_commit_tree_interactive(visible_projects: list[dict], selected_idx: int) -> tuple[dict | None, dict | None]:
+    def _render_commit_tree_interactive(
+        visible_projects: list[dict], selected_idx: int
+    ) -> tuple[dict | None, dict | None]:
         nonlocal focus_commit_counts
         focus_commit_counts = {}
         if not visible_projects:
@@ -741,7 +834,9 @@ def _manager_loop(
             dirty = bool(item.get("dirty"))
             ahead = int(item.get("ahead") or 0)
             behind = int(item.get("behind") or 0)
-            entries = _read_commit_entries(Path(path), max_commits=max_commits, all_branches=True)
+            entries = _read_commit_entries(
+                Path(path), max_commits=max_commits, all_branches=True
+            )
             focus_commit_counts[path] = len(entries)
             cursor = commit_cursor_by_path.get(path, 0)
             cursor = max(0, min(cursor, max(0, len(entries) - 1)))
@@ -761,19 +856,31 @@ def _manager_loop(
 
             if is_selected_project:
                 selected_project = item
-                selected_commit = entries[cursor] if entries else {"line": "(no commits)", "sha": ""}
+                selected_commit = (
+                    entries[cursor] if entries else {"line": "(no commits)", "sha": ""}
+                )
 
         return selected_project, selected_commit
 
     def render_once() -> None:
         nonlocal worker_options, kind_options
         events = orch.store.read_events(session_id)
-        event_workers = sorted({str(evt.get("worker_id") or "").strip() for evt in events if str(evt.get("worker_id") or "").strip()})
+        event_workers = sorted(
+            {
+                str(evt.get("worker_id") or "").strip()
+                for evt in events
+                if str(evt.get("worker_id") or "").strip()
+            }
+        )
         worker_options = [None] + sorted(set(assignment_workers + event_workers))
         if current_worker_filter and current_worker_filter not in worker_options:
             worker_options.append(current_worker_filter)
 
-        kinds = {str(evt.get("kind") or "").strip() for evt in events if str(evt.get("kind") or "").strip()}
+        kinds = {
+            str(evt.get("kind") or "").strip()
+            for evt in events
+            if str(evt.get("kind") or "").strip()
+        }
         kind_prefixes = sorted({item.split(".")[0] for item in kinds})
         kind_options = [None] + kind_prefixes
         if current_kind_filter and current_kind_filter not in kind_options:
@@ -783,30 +890,38 @@ def _manager_loop(
         selected_project, selected_commit = (None, None)
 
         clear_screen()
-        print(panel(
-            f"Sprint Manager :: {session_id}",
-            [
-                f"project_scope={project_scope} project_filter={project_filter or 'all'}",
-                f"worker_filter={current_worker_filter or 'all'} kind_filter={current_kind_filter or 'all'}",
-                f"max_commits={max_commits} follow={follow} refresh={interval_sec:.1f}s detail={'on' if show_commit_detail else 'off'}",
-                f"event_log={orch.bus.status().get('log_path', '')}",
-                "keys: j/k commits  h/l project  f scope  w/t filters  d detail  r reset  a approve  r reject  q quit",
-            ],
-            border_char="#",
-        ))
+        print(
+            panel(
+                f"Sprint Manager :: {session_id}",
+                [
+                    f"project_scope={project_scope} project_filter={project_filter or 'all'}",
+                    f"worker_filter={current_worker_filter or 'all'} kind_filter={current_kind_filter or 'all'}",
+                    f"max_commits={max_commits} follow={follow} refresh={interval_sec:.1f}s detail={'on' if show_commit_detail else 'off'}",
+                    f"event_log={orch.bus.status().get('log_path', '')}",
+                    "keys: j/k commits  h/l project  f scope  w/t filters  d detail  r reset  a approve  r reject  q quit",
+                ],
+                border_char="#",
+            )
+        )
         print(panel("Commit Tree", [], border_char="-"))
-        selected_project, selected_commit = _render_commit_tree_interactive(visible_projects, selected_idx)
+        selected_project, selected_commit = _render_commit_tree_interactive(
+            visible_projects, selected_idx
+        )
         if show_commit_detail:
             project_path = str((selected_project or {}).get("path") or "")
             project_name = str((selected_project or {}).get("name") or "")
             sha = str((selected_commit or {}).get("sha") or "")
-            print(panel(
-                "Selected Commit",
-                [f"project={project_name or '-'}", f"sha={sha or '-'}"],
-                border_char=".",
-            ))
+            print(
+                panel(
+                    "Selected Commit",
+                    [f"project={project_name or '-'}", f"sha={sha or '-'}"],
+                    border_char=".",
+                )
+            )
             if project_path and sha:
-                for line_item in _read_commit_detail(Path(project_path), sha, max_lines=24):
+                for line_item in _read_commit_detail(
+                    Path(project_path), sha, max_lines=24
+                ):
                     print(gray_light(line_item))
             else:
                 print(muted("(select a commit with j/k)"))
@@ -819,7 +934,16 @@ def _manager_loop(
         print()
         approvals = approval_engine.get_pending_approvals(session_id)
         if approvals:
-            print(panel("Pending Approvals", [f"{a['approval_id'][:8]}: {a['reason'][:50]}" for a in approvals[:3]], border_char="?"))
+            print(
+                panel(
+                    "Pending Approvals",
+                    [
+                        f"{a['approval_id'][:8]}: {a['reason'][:50]}"
+                        for a in approvals[:3]
+                    ],
+                    border_char="?",
+                )
+            )
         print()
         print(panel("Agent/Worker Chat", [], border_char="-"))
         _print_chat_events(
@@ -862,7 +986,9 @@ def _manager_loop(
             next_refresh = time.monotonic() + max(0.2, float(interval_sec))
             while True:
                 now = time.monotonic()
-                timeout = max(0.05, min(max(0.2, float(interval_sec)), next_refresh - now))
+                timeout = max(
+                    0.05, min(max(0.2, float(interval_sec)), next_refresh - now)
+                )
                 key = _read_keypress(timeout)
                 refresh = False
                 if key is None:
@@ -879,7 +1005,9 @@ def _manager_loop(
                         if path:
                             count = int(focus_commit_counts.get(path) or max_commits)
                             current = int(commit_cursor_by_path.get(path) or 0)
-                            commit_cursor_by_path[path] = min(max(0, count - 1), current + 1)
+                            commit_cursor_by_path[path] = min(
+                                max(0, count - 1), current + 1
+                            )
                             refresh = True
                 elif key in {"k"}:
                     focused = _focused_project()
@@ -892,12 +1020,22 @@ def _manager_loop(
                 elif key in {"a", "A"}:
                     pending = approval_engine.get_pending_approvals(session_id)
                     if pending:
-                        approval_engine.decision(session_id=session_id, approval_id=pending[0]['approval_id'], decision="approved", reviewer=getpass.getuser())
+                        approval_engine.decision(
+                            session_id=session_id,
+                            approval_id=pending[0]["approval_id"],
+                            decision="approved",
+                            reviewer=getpass.getuser(),
+                        )
                         refresh = True
                 elif key in {"r", "R"}:
                     pending = approval_engine.get_pending_approvals(session_id)
                     if pending:
-                        approval_engine.decision(session_id=session_id, approval_id=pending[0]['approval_id'], decision="rejected", reviewer=getpass.getuser())
+                        approval_engine.decision(
+                            session_id=session_id,
+                            approval_id=pending[0]["approval_id"],
+                            decision="rejected",
+                            reviewer=getpass.getuser(),
+                        )
                         refresh = True
                 elif key in {"h", "p"}:
                     if projects:
@@ -914,16 +1052,24 @@ def _manager_loop(
                     project_scope = "selected" if project_scope == "all" else "all"
                     refresh = True
                 elif key in {"w"}:
-                    current_worker_filter = _cycle_filter_option(worker_options, current_worker_filter, forward=True)
+                    current_worker_filter = _cycle_filter_option(
+                        worker_options, current_worker_filter, forward=True
+                    )
                     refresh = True
                 elif key in {"W"}:
-                    current_worker_filter = _cycle_filter_option(worker_options, current_worker_filter, forward=False)
+                    current_worker_filter = _cycle_filter_option(
+                        worker_options, current_worker_filter, forward=False
+                    )
                     refresh = True
                 elif key in {"t"}:
-                    current_kind_filter = _cycle_filter_option(kind_options, current_kind_filter, forward=True)
+                    current_kind_filter = _cycle_filter_option(
+                        kind_options, current_kind_filter, forward=True
+                    )
                     refresh = True
                 elif key in {"T"}:
-                    current_kind_filter = _cycle_filter_option(kind_options, current_kind_filter, forward=False)
+                    current_kind_filter = _cycle_filter_option(
+                        kind_options, current_kind_filter, forward=False
+                    )
                     refresh = True
                 elif key in {"r"}:
                     current_worker_filter = None
@@ -987,7 +1133,11 @@ def _ask_yes_no(*, prompt: str, default: str = "no", mode: str = "ask") -> bool:
         return default_norm == "yes"
     while True:
         try:
-            raw = input(f"{prompt} [{'Y/n' if default_norm == 'yes' else 'y/N'}]: ").strip().lower()
+            raw = (
+                input(f"{prompt} [{'Y/n' if default_norm == 'yes' else 'y/N'}]: ")
+                .strip()
+                .lower()
+            )
         except EOFError:
             return default_norm == "yes"
         if not raw:
@@ -1062,7 +1212,11 @@ def _enforce_contract_approval(
             worker_id=worker_id,
             kind="contract.change.decision",
             message=f"{decision}:{file_path}",
-            payload={"file_path": file_path, "change_type": change_type, "provider": provider},
+            payload={
+                "file_path": file_path,
+                "change_type": change_type,
+                "provider": provider,
+            },
         )
         orch.registry.record_contract_decision(
             session_id=session_id,
@@ -1151,7 +1305,9 @@ def _enforce_post_dispatch_controls(
     contract_decision_mode: str = "ask",
     stub_decision_mode: str = "ask",
 ) -> tuple[bool, str]:
-    project_path = _resolve_project_path_for_worker(orch, session_id=session_id, worker_id=worker_id)
+    project_path = _resolve_project_path_for_worker(
+        orch, session_id=session_id, worker_id=worker_id
+    )
     contracts_ok = _enforce_contract_approval(
         orch,
         session_id=session_id,
@@ -1175,7 +1331,9 @@ def _enforce_post_dispatch_controls(
     return True, ""
 
 
-def _resolve_dispatch_provider(orch: SprintOrchestrator, provider_hint: str | None = None) -> tuple[str | None, str]:
+def _resolve_dispatch_provider(
+    orch: SprintOrchestrator, provider_hint: str | None = None
+) -> tuple[str | None, str]:
     statuses = load_provider_statuses(orch.config)
     status_map = provider_status_map(statuses)
     hint = (provider_hint or "").strip()
@@ -1186,7 +1344,11 @@ def _resolve_dispatch_provider(orch: SprintOrchestrator, provider_hint: str | No
         return None, f"provider_not_configured:{hint}"
 
     for item in statuses:
-        if item.configured and item.request_format in {"openai_chat", "anthropic_messages", "celery_task"}:
+        if item.configured and item.request_format in {
+            "openai_chat",
+            "anthropic_messages",
+            "celery_task",
+        }:
             return item.provider, ""
     return None, "no_dispatchable_provider"
 
@@ -1258,7 +1420,9 @@ def _execute_intent_route(
             )
         )
     if action == "note":
-        note = str(slots.get("prompt") or route.raw.get("text") or "rasa-approved action")
+        note = str(
+            slots.get("prompt") or route.raw.get("text") or "rasa-approved action"
+        )
         orch.emit(
             session_id=session_id,
             worker_id=str(slots.get("worker_id") or worker_id),
@@ -1337,14 +1501,16 @@ def _noc_loop(
     try:
         while True:
             clear_screen()
-            print(panel(
-                f"NOC Live :: {session_id}",
-                [
-                    f"worker_filter={worker_filter or 'all'} kind_filter={kind_filter or 'all'}",
-                    f"limit={limit} refresh={interval_sec:.1f}s (Ctrl+C to stop)",
-                ],
-                border_char="=",
-            ))
+            print(
+                panel(
+                    f"NOC Live :: {session_id}",
+                    [
+                        f"worker_filter={worker_filter or 'all'} kind_filter={kind_filter or 'all'}",
+                        f"limit={limit} refresh={interval_sec:.1f}s (Ctrl+C to stop)",
+                    ],
+                    border_char="=",
+                )
+            )
             _print_dashboard(orch, session_id)
             print()
             print(panel("Event Stream", [], border_char="-"))
@@ -1366,27 +1532,29 @@ def _simple_menu_loop(orch: SprintOrchestrator, session_id: str) -> int:
         clear_screen()
         _print_dashboard(orch, session_id)
         print()
-        print(panel(
-            "Modo Simple",
-            [
-                "1) Ver dashboard",
-                "2) Ejecutar autodispatch",
-                "3) Ver workers",
-                "4) Ver providers",
-                "5) Ver tools MCP",
-                "6) Ver ultimos eventos",
-                "7) Seguir eventos en vivo",
-                "8) NOC live",
-                "9) Journal (bitacora)",
-                "10) Manager (commit+fases+chat)",
-                "11) Monitor chat+fases",
-                "12) Ayuda guiada",
-                "13) Logs de auditoria",
-                "14) Arbol de commits",
-                "0) Salir",
-            ],
-            border_char="*",
-        ))
+        print(
+            panel(
+                "Modo Simple",
+                [
+                    "1) Ver dashboard",
+                    "2) Ejecutar autodispatch",
+                    "3) Ver workers",
+                    "4) Ver providers",
+                    "5) Ver tools MCP",
+                    "6) Ver ultimos eventos",
+                    "7) Seguir eventos en vivo",
+                    "8) NOC live",
+                    "9) Journal (bitacora)",
+                    "10) Manager (commit+fases+chat)",
+                    "11) Monitor chat+fases",
+                    "12) Ayuda guiada",
+                    "13) Logs de auditoria",
+                    "14) Arbol de commits",
+                    "0) Salir",
+                ],
+                border_char="*",
+            )
+        )
         choice = input("Elige opcion [0-14]: ").strip()
 
         if choice == "1":
@@ -1492,7 +1660,12 @@ def _simple_menu_loop(orch: SprintOrchestrator, session_id: str) -> int:
 
 def cmd_list_projects(args: argparse.Namespace) -> int:
     orch = _load_orchestrator()
-    projects = [p.as_dict() for p in orch.discover_projects(Path(args.scan_root) if args.scan_root else None)]
+    projects = [
+        p.as_dict()
+        for p in orch.discover_projects(
+            Path(args.scan_root) if args.scan_root else None
+        )
+    ]
     print(h1("Git Projects"))
     _print_projects(projects)
     return 0
@@ -1531,7 +1704,9 @@ def _read_env_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8", errors="ignore").splitlines()
 
 
-def _update_env_file(path: Path, updates: dict[str, str], *, create_backup: bool = True) -> str | None:
+def _update_env_file(
+    path: Path, updates: dict[str, str], *, create_backup: bool = True
+) -> str | None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = _read_env_lines(path)
     index_map: dict[str, int] = {}
@@ -1581,9 +1756,13 @@ def cmd_start(args: argparse.Namespace) -> int:
     workers = max(1, min(4, int(workers)))
 
     provider_status = load_provider_statuses(orch.config)
-    real_providers = ordered_configured_provider_ids(config=orch.config, statuses=provider_status)
+    real_providers = ordered_configured_provider_ids(
+        config=orch.config, statuses=provider_status
+    )
     if not real_providers:
-        print("No configured providers found. Run `sprintctl providers` and set keys/endpoints first.")
+        print(
+            "No configured providers found. Run `sprintctl providers` and set keys/endpoints first."
+        )
         return 3
 
     projects = orch.discover_projects(Path(args.scan_root) if args.scan_root else None)
@@ -1641,7 +1820,11 @@ def cmd_simple(args: argparse.Namespace) -> int:
 def _interactive_loop(orch: SprintOrchestrator, session_id: str) -> int:
     router = RasaIntentRouter(orch.config)
     print(h1(line("-")))
-    print(muted("Interactive mode: help, guide, dashboard, journal, manager [project] [worker] [kind], commit-tree [project], monitor [worker] [kind], chat [worker] [kind], noc [worker] [kind], show, projects, workers, providers, mcp-tools, tail [worker] [kind], follow [worker] [kind], logs, validate <target> [worker], run <worker> -- <cmd>, adapt <provider> <msg>, dispatch <provider> <msg>, autodispatch [worker], propose --file <md>, intent <texto>, clear, quit"))
+    print(
+        muted(
+            "Interactive mode: help, guide, dashboard, journal, manager [project] [worker] [kind], commit-tree [project], monitor [worker] [kind], chat [worker] [kind], noc [worker] [kind], show, projects, workers, providers, mcp-tools, tail [worker] [kind], follow [worker] [kind], logs, validate <target> [worker], run <worker> -- <cmd>, adapt <provider> <msg>, dispatch <provider> <msg>, autodispatch [worker], propose --file <md>, intent <texto>, clear, quit"
+        )
+    )
     print(h1(line("-")))
     while True:
         try:
@@ -1658,7 +1841,9 @@ def _interactive_loop(orch: SprintOrchestrator, session_id: str) -> int:
             return 0
 
         if cmd == "help":
-            print("commands: guide | dashboard | journal | manager [project] [worker] [kind] (j/k,h/l,w/t,d,f,q) | commit-tree [project] | monitor [worker] [kind] | chat [worker] [kind] | noc [worker] [kind] | show | projects | workers | providers | mcp-tools | tail [worker] [kind] | follow [worker] [kind] | logs [limit] | validate <target> [worker] | run <worker> -- <cmd> | adapt <provider> <msg> | dispatch <provider> <msg> | autodispatch [worker] | propose --file <md> | intent <texto> | clear | quit")
+            print(
+                "commands: guide | dashboard | journal | manager [project] [worker] [kind] (j/k,h/l,w/t,d,f,q) | commit-tree [project] | monitor [worker] [kind] | chat [worker] [kind] | noc [worker] [kind] | show | projects | workers | providers | mcp-tools | tail [worker] [kind] | follow [worker] [kind] | logs [limit] | validate <target> [worker] | run <worker> -- <cmd> | adapt <provider> <msg> | dispatch <provider> <msg> | autodispatch [worker] | propose --file <md> | intent <texto> | clear | quit"
+            )
             continue
         if cmd == "guide":
             _print_help_panel()
@@ -1821,13 +2006,20 @@ def _interactive_loop(orch: SprintOrchestrator, session_id: str) -> int:
                 cwd=Path.cwd(),
                 bus=orch.bus,
             )
-            print(f"run: {status_badge(str(result['status']))} rc={result['returncode']} duration_ms={result['duration_ms']} lines={result['lines']}")
+            print(
+                f"run: {status_badge(str(result['status']))} rc={result['returncode']} duration_ms={result['duration_ms']} lines={result['lines']}"
+            )
             continue
         if cmd == "adapt":
             if len(parts) < 3:
                 print("usage: adapt <provider> <message>")
                 continue
-            args = argparse.Namespace(provider=parts[1], message=" ".join(parts[2:]), max_tokens=None, stream=False)
+            args = argparse.Namespace(
+                provider=parts[1],
+                message=" ".join(parts[2:]),
+                max_tokens=None,
+                stream=False,
+            )
             cmd_adapt(args)
             continue
         if cmd == "dispatch":
@@ -1865,20 +2057,34 @@ def _interactive_loop(orch: SprintOrchestrator, session_id: str) -> int:
             parser.add_argument("--file", default=None)
             parser.add_argument("--pick-file", action="store_true")
             parser.add_argument("--topic", default=None)
-            parser.add_argument("--decision", choices=["validar", "rehacer", "cancelar"], default=None)
+            parser.add_argument(
+                "--decision", choices=["validar", "rehacer", "cancelar"], default=None
+            )
             parser.add_argument("--feedback", default=None)
             parser.add_argument("--workers", type=int, default=2)
             parser.add_argument("--scan-root", default=None)
-            parser.add_argument("--start-machinery", action=argparse.BooleanOptionalAction, default=True)
+            parser.add_argument(
+                "--start-machinery", action=argparse.BooleanOptionalAction, default=True
+            )
             parser.add_argument("--autodispatch", action="store_true")
             parser.add_argument("--timeout-sec", type=float, default=45.0)
-            parser.add_argument("--stub-decision", choices=["ask", "yes", "no"], default="ask")
-            parser.add_argument("--contract-decision", choices=["ask", "yes", "no"], default="ask")
-            parser.add_argument("--rework-on-reject", action=argparse.BooleanOptionalAction, default=True)
+            parser.add_argument(
+                "--stub-decision", choices=["ask", "yes", "no"], default="ask"
+            )
+            parser.add_argument(
+                "--contract-decision", choices=["ask", "yes", "no"], default="ask"
+            )
+            parser.add_argument(
+                "--rework-on-reject",
+                action=argparse.BooleanOptionalAction,
+                default=True,
+            )
             try:
                 parsed = parser.parse_args(parts[1:])
             except SystemExit:
-                print("usage: propose --file <markdown> [--pick-file] [--topic <label>] [--decision validar|rehacer|cancelar]")
+                print(
+                    "usage: propose --file <markdown> [--pick-file] [--topic <label>] [--decision validar|rehacer|cancelar]"
+                )
                 continue
             cmd_propose(parsed)
             continue
@@ -1891,12 +2097,19 @@ def _interactive_loop(orch: SprintOrchestrator, session_id: str) -> int:
                 continue
             worker_id = parts[1]
             message = " ".join(parts[2:])
-            orch.emit(session_id=session_id, worker_id=worker_id, kind="worker.note", message=message)
+            orch.emit(
+                session_id=session_id,
+                worker_id=worker_id,
+                kind="worker.note",
+                message=message,
+            )
             print(ok("event appended"))
             continue
         if cmd == "validate":
             if len(parts) < 2:
-                print(f"usage: validate <target> [worker_id], targets={', '.join(TARGET_NAMES)}")
+                print(
+                    f"usage: validate <target> [worker_id], targets={', '.join(TARGET_NAMES)}"
+                )
                 continue
             target_name = parts[1]
             worker_id = parts[2] if len(parts) > 2 else "worker-2"
@@ -1912,7 +2125,9 @@ def _interactive_loop(orch: SprintOrchestrator, session_id: str) -> int:
                 target=target,
                 bus=orch.bus,
             )
-            print(f"validation {target_name}: {status_badge(str(result['status']))} duration_ms={result['duration_ms']}")
+            print(
+                f"validation {target_name}: {status_badge(str(result['status']))} duration_ms={result['duration_ms']}"
+            )
             continue
         if cmd == "intent":
             if len(parts) < 2:
@@ -2056,12 +2271,18 @@ def cmd_secrets(args: argparse.Namespace) -> int:
     if getattr(args, "path", None):
         target_path = Path(str(args.path))
     else:
-        target_path = (root / ".env.local") if scope == "root" else (orch.config.projects_scan_root / ".env.local")
+        target_path = (
+            (root / ".env.local")
+            if scope == "root"
+            else (orch.config.projects_scan_root / ".env.local")
+        )
 
     env = merged_env(orch.config)
     resource = str(getattr(args, "resource", "") or "").strip().lower()
 
-    def ensure_keys(specs: list[tuple[str, bool, str | None]]) -> tuple[dict[str, str], list[str]]:
+    def ensure_keys(
+        specs: list[tuple[str, bool, str | None]],
+    ) -> tuple[dict[str, str], list[str]]:
         updates: dict[str, str] = {}
         missing: list[str] = []
         for key, is_secret, default in specs:
@@ -2069,7 +2290,9 @@ def cmd_secrets(args: argparse.Namespace) -> int:
             if present and not show_all:
                 continue
             if present and show_all:
-                overwrite = _ask_yes_no(prompt=f"{key} already set. Overwrite?", default="no", mode="ask")
+                overwrite = _ask_yes_no(
+                    prompt=f"{key} already set. Overwrite?", default="no", mode="ask"
+                )
                 if not overwrite:
                     continue
             if non_interactive:
@@ -2090,7 +2313,11 @@ def cmd_secrets(args: argparse.Namespace) -> int:
 
         resolved = ensure_neo4j_env_auto()
         if str(resolved.get("status")) == "ok":
-            print(ok(f"Neo4j OK: {resolved.get('selected_uri')} user={resolved.get('selected_user')}"))
+            print(
+                ok(
+                    f"Neo4j OK: {resolved.get('selected_uri')} user={resolved.get('selected_user')}"
+                )
+            )
             return 0
 
         specs = [
@@ -2116,7 +2343,11 @@ def cmd_secrets(args: argparse.Namespace) -> int:
 
         resolved2 = ensure_neo4j_env_auto()
         if str(resolved2.get("status")) == "ok":
-            print(ok(f"Neo4j OK: {resolved2.get('selected_uri')} user={resolved2.get('selected_user')}"))
+            print(
+                ok(
+                    f"Neo4j OK: {resolved2.get('selected_uri')} user={resolved2.get('selected_user')}"
+                )
+            )
             return 0
         print(warn(f"Neo4j not ready: {resolved2.get('error') or 'unknown'}"))
         return 1
@@ -2129,22 +2360,38 @@ def cmd_secrets(args: argparse.Namespace) -> int:
 
         provider_specs: dict[str, list[tuple[str, bool, str | None]]] = {
             "denis_canonical": [
-                ("DENIS_CANONICAL_URL", False, "http://127.0.0.1:8084/v1/chat/completions"),
+                (
+                    "DENIS_CANONICAL_URL",
+                    False,
+                    "http://127.0.0.1:8084/v1/chat/completions",
+                ),
                 ("DENIS_CANONICAL_MODEL", False, "denis-cognitive"),
                 ("DENIS_CANONICAL_API_KEY", True, None),
             ],
             "legacy_core": [
-                ("DENIS_MASTER_URL", False, "http://127.0.0.1:8084/v1/chat/completions"),
+                (
+                    "DENIS_MASTER_URL",
+                    False,
+                    "http://127.0.0.1:8084/v1/chat/completions",
+                ),
                 ("LLM_API_KEY", True, None),
             ],
             "openrouter": [
                 ("OPENROUTER_API_KEY", True, None),
-                ("DENIS_OPENROUTER_URL", False, "https://openrouter.ai/api/v1/chat/completions"),
+                (
+                    "DENIS_OPENROUTER_URL",
+                    False,
+                    "https://openrouter.ai/api/v1/chat/completions",
+                ),
                 ("DENIS_OPENROUTER_MODEL", False, "openai/gpt-4o-mini"),
             ],
             "groq": [
                 ("GROQ_API_KEY", True, None),
-                ("DENIS_GROQ_URL", False, "https://api.groq.com/openai/v1/chat/completions"),
+                (
+                    "DENIS_GROQ_URL",
+                    False,
+                    "https://api.groq.com/openai/v1/chat/completions",
+                ),
                 ("DENIS_GROQ_MODEL", False, "llama-3.1-70b-versatile"),
             ],
             "claude": [
@@ -2188,10 +2435,18 @@ def cmd_secrets(args: argparse.Namespace) -> int:
         return 0
 
     if resource == "custom":
-        keys = [str(k).strip() for k in (getattr(args, "key", None) or []) if str(k).strip()]
-        secret_keys = {str(k).strip() for k in (getattr(args, "secret", None) or []) if str(k).strip()}
+        keys = [
+            str(k).strip() for k in (getattr(args, "key", None) or []) if str(k).strip()
+        ]
+        secret_keys = {
+            str(k).strip()
+            for k in (getattr(args, "secret", None) or [])
+            if str(k).strip()
+        }
         if not keys:
-            print("usage: sprintctl secrets custom --key KEY [--key KEY2 ...] [--secret KEY]")
+            print(
+                "usage: sprintctl secrets custom --key KEY [--key KEY2 ...] [--secret KEY]"
+            )
             return 2
         specs = [(k, k in secret_keys, None) for k in keys]
         updates, missing = ensure_keys(specs)
@@ -2263,7 +2518,9 @@ def cmd_monitor(args: argparse.Namespace) -> int:
 def cmd_manager(args: argparse.Namespace) -> int:
     orch = _load_orchestrator()
     _manager_loop(
-        plan=build_plan(args.prompt, route.intent, route.confidence, args.project, orch.config),
+        plan=build_plan(
+            args.prompt, route.intent, route.confidence, args.project, orch.config
+        ),
         worker_filter=args.worker,
         kind_filter=args.kind,
         max_commits=max(1, int(args.max_commits)),
@@ -2288,7 +2545,9 @@ def cmd_logs(args: argparse.Namespace) -> int:
 
     def read_rows() -> list[dict]:
         rows: list[dict] = []
-        for log_line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        for log_line in log_path.read_text(
+            encoding="utf-8", errors="ignore"
+        ).splitlines():
             raw = log_line.strip()
             if not raw:
                 continue
@@ -2357,7 +2616,9 @@ def cmd_adapt(args: argparse.Namespace) -> int:
         print(f"Unknown provider: {args.provider}")
         return 2
     if not status.configured:
-        print(f"Provider {args.provider} is not configured: missing_env={status.missing_env}")
+        print(
+            f"Provider {args.provider} is not configured: missing_env={status.missing_env}"
+        )
         return 3
     if status.request_format == "celery_task":
         payload = {
@@ -2395,7 +2656,9 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
         print(f"Unknown provider: {args.provider}")
         return 2
     if not status.configured:
-        print(f"Provider {args.provider} is not configured: missing_env={status.missing_env}")
+        print(
+            f"Provider {args.provider} is not configured: missing_env={status.missing_env}"
+        )
         return 3
     result = dispatch_worker_task(
         config=orch.config,
@@ -2500,7 +2763,9 @@ def cmd_autodispatch(args: argparse.Namespace) -> int:
             )
             if not controls_ok and bool(getattr(args, "rework_on_reject", True)):
                 assignment = assignments_by_worker.get(worker_id, {})
-                provider_status = provider_status_map(load_provider_statuses(orch.config)).get(provider)
+                provider_status = provider_status_map(
+                    load_provider_statuses(orch.config)
+                ).get(provider)
                 if provider_status is not None:
                     base_task = str(assignment.get("task") or "")
                     rework_message = (
@@ -2525,7 +2790,9 @@ def cmd_autodispatch(args: argparse.Namespace) -> int:
                             session_id=args.session_id,
                             worker_id=worker_id,
                             provider=provider,
-                            contract_decision_mode=getattr(args, "contract_decision", "ask"),
+                            contract_decision_mode=getattr(
+                                args, "contract_decision", "ask"
+                            ),
                             stub_decision_mode=getattr(args, "stub_decision", "ask"),
                         )
                     item["status"] = "ok" if controls_ok else "error"
@@ -2547,7 +2814,9 @@ def cmd_autodispatch(args: argparse.Namespace) -> int:
 
     if reworked_results:
         summary["results"] = reworked_results
-        summary["workers_ok"] = len([r for r in reworked_results if str(r.get("status")) == "ok"])
+        summary["workers_ok"] = len(
+            [r for r in reworked_results if str(r.get("status")) == "ok"]
+        )
         summary["workers_error"] = len(reworked_results) - int(summary["workers_ok"])
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0 if int(summary.get("workers_error", 0)) == 0 else 1
@@ -2616,13 +2885,18 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
     while True:
         attempts += 1
-        _print_stage(idx=1, total=5, name="ingest", status="ok", detail=str(proposal_file))
+        _print_stage(
+            idx=1, total=5, name="ingest", status="ok", detail=str(proposal_file)
+        )
         orch.emit(
             session_id=proposal_trace_id,
             worker_id="system",
             kind="proposal.ingest",
             message=f"source={proposal_file}",
-            payload={"attempt": attempts, "normalized_title": normalized.get("title", "")},
+            payload={
+                "attempt": attempts,
+                "normalized_title": normalized.get("title", ""),
+            },
         )
 
         proposal = pipeline.run(
@@ -2642,14 +2916,19 @@ def cmd_propose(args: argparse.Namespace) -> int:
             total=5,
             name="rasa_struct",
             status=str((proposal.get("rasa") or {}).get("status") or "ok"),
-            detail=str((proposal.get("rasa") or {}).get("lines_analyzed") or "0") + " lines",
+            detail=str((proposal.get("rasa") or {}).get("lines_analyzed") or "0")
+            + " lines",
         )
         _print_stage(idx=4, total=5, name="merge", status="ok", detail="")
 
-        phase_file, todo_file = pipeline.write_generated_docs(root_dir=Path.cwd(), proposal=proposal)
+        phase_file, todo_file = pipeline.write_generated_docs(
+            root_dir=Path.cwd(), proposal=proposal
+        )
         merged = proposal.get("merged") or {}
         phases = merged.get("phases") or []
-        _print_stage(idx=5, total=5, name="review", status="ok", detail=f"phases={len(phases)}")
+        _print_stage(
+            idx=5, total=5, name="review", status="ok", detail=f"phases={len(phases)}"
+        )
 
         orch.emit(
             session_id=proposal_trace_id,
@@ -2665,7 +2944,9 @@ def cmd_propose(args: argparse.Namespace) -> int:
         )
 
         print()
-        print(panel("Proposal Final", [str(merged.get("summary") or "")], border_char="-"))
+        print(
+            panel("Proposal Final", [str(merged.get("summary") or "")], border_char="-")
+        )
         rows = []
         for phase in phases:
             rows.append(
@@ -2677,7 +2958,13 @@ def cmd_propose(args: argparse.Namespace) -> int:
                 ]
             )
         if rows:
-            print(render_table(["phase", "name", "tasks", "validations"], rows, widths=[8, 48, 8, 12]))
+            print(
+                render_table(
+                    ["phase", "name", "tasks", "validations"],
+                    rows,
+                    widths=[8, 48, 8, 12],
+                )
+            )
         print(f"Generated: {phase_file}")
         print(f"Generated: {todo_file}")
 
@@ -2723,11 +3010,17 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
         workers = max(1, min(4, int(args.workers)))
         provider_status = load_provider_statuses(orch.config)
-        real_providers = ordered_configured_provider_ids(config=orch.config, statuses=provider_status)
+        real_providers = ordered_configured_provider_ids(
+            config=orch.config, statuses=provider_status
+        )
         if not real_providers:
-            print("No configured providers found. Run `sprintctl providers` and set keys/endpoints first.")
+            print(
+                "No configured providers found. Run `sprintctl providers` and set keys/endpoints first."
+            )
             return 3
-        projects = orch.discover_projects(Path(args.scan_root) if args.scan_root else None)
+        projects = orch.discover_projects(
+            Path(args.scan_root) if args.scan_root else None
+        )
         session = orch.create_session(
             prompt=str(merged.get("summary") or "Refactor incremental validated"),
             workers=workers,
@@ -2791,7 +3084,8 @@ def cmd_commit_tree(args: argparse.Namespace) -> int:
     if getattr(args, "project", None):
         match_project = str(args.project).strip().lower()
         projects = [
-            item for item in projects
+            item
+            for item in projects
             if match_project in str(item.get("name") or "").lower()
             or match_project in str(item.get("path") or "").lower()
         ]
@@ -2821,7 +3115,13 @@ def cmd_sessions(_: argparse.Namespace) -> int:
                 item.get("prompt", ""),
             ]
         )
-    print(render_table(["session", "created_utc", "workers", "status", "prompt"], rows, widths=[20, 28, 8, 10, 52]))
+    print(
+        render_table(
+            ["session", "created_utc", "workers", "status", "prompt"],
+            rows,
+            widths=[20, 28, 8, 10, 52],
+        )
+    )
     return 0
 
 
@@ -2829,7 +3129,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="DENIS Sprint Orchestrator CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_projects = sub.add_parser("list-projects", help="Discover git projects and show status")
+    p_projects = sub.add_parser(
+        "list-projects", help="Discover git projects and show status"
+    )
     p_projects.add_argument("--scan-root", default=None)
     p_projects.set_defaults(func=cmd_list_projects)
 
@@ -2838,47 +3140,100 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--workers", type=int, default=None)
     p_start.add_argument("--scan-root", default=None)
     p_start.add_argument("--interactive", action="store_true")
-    p_start.add_argument("--watch", action="store_true", help="Enter interactive loop after session creation")
-    p_start.add_argument("--autodispatch", action="store_true", help="Automatically dispatch tasks for all workers")
-    p_start.add_argument("--timeout-sec", type=float, default=45.0, help="Timeout per worker dispatch")
-    p_start.add_argument("--simple", action="store_true", help="Open guided simple menu after session creation")
+    p_start.add_argument(
+        "--watch",
+        action="store_true",
+        help="Enter interactive loop after session creation",
+    )
+    p_start.add_argument(
+        "--autodispatch",
+        action="store_true",
+        help="Automatically dispatch tasks for all workers",
+    )
+    p_start.add_argument(
+        "--timeout-sec", type=float, default=45.0, help="Timeout per worker dispatch"
+    )
+    p_start.add_argument(
+        "--simple",
+        action="store_true",
+        help="Open guided simple menu after session creation",
+    )
     p_start.add_argument("--stub-decision", choices=["ask", "yes", "no"], default="ask")
-    p_start.add_argument("--contract-decision", choices=["ask", "yes", "no"], default="ask")
-    p_start.add_argument("--rework-on-reject", action=argparse.BooleanOptionalAction, default=True)
+    p_start.add_argument(
+        "--contract-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_start.add_argument(
+        "--rework-on-reject", action=argparse.BooleanOptionalAction, default=True
+    )
     p_start.set_defaults(func=cmd_start)
 
-    p_simple = sub.add_parser("simple", help="Start sprint in guided simple mode (recommended)")
+    p_simple = sub.add_parser(
+        "simple", help="Start sprint in guided simple mode (recommended)"
+    )
     p_simple.add_argument("--prompt", default=None)
     p_simple.add_argument("--workers", type=int, default=None)
     p_simple.add_argument("--scan-root", default=None)
     p_simple.add_argument("--autodispatch", action="store_true")
     p_simple.add_argument("--timeout-sec", type=float, default=45.0)
-    p_simple.add_argument("--stub-decision", choices=["ask", "yes", "no"], default="ask")
-    p_simple.add_argument("--contract-decision", choices=["ask", "yes", "no"], default="ask")
-    p_simple.add_argument("--rework-on-reject", action=argparse.BooleanOptionalAction, default=True)
+    p_simple.add_argument(
+        "--stub-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_simple.add_argument(
+        "--contract-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_simple.add_argument(
+        "--rework-on-reject", action=argparse.BooleanOptionalAction, default=True
+    )
     p_simple.set_defaults(func=cmd_simple)
 
-    p_providers = sub.add_parser("providers", help="Show provider load status (real-only)")
+    p_providers = sub.add_parser(
+        "providers", help="Show provider load status (real-only)"
+    )
     p_providers.set_defaults(func=cmd_providers)
 
-    p_template = sub.add_parser("providers-template", help="Print/write provider env template")
+    p_template = sub.add_parser(
+        "providers-template", help="Print/write provider env template"
+    )
     p_template.add_argument("--out", default=None, help="Optional output file path")
     p_template.set_defaults(func=cmd_providers_template)
 
-    p_secrets = sub.add_parser("secrets", help="Credential modal (writes to .env.local by default)")
+    p_secrets = sub.add_parser(
+        "secrets", help="Credential modal (writes to .env.local by default)"
+    )
     p_secrets.add_argument("resource", choices=["neo4j", "provider", "custom"])
     p_secrets.add_argument("--provider", default="", help="When resource=provider")
-    p_secrets.add_argument("--key", action="append", default=[], help="When resource=custom (repeatable)")
-    p_secrets.add_argument("--secret", action="append", default=[], help="When resource=custom (repeatable)")
+    p_secrets.add_argument(
+        "--key", action="append", default=[], help="When resource=custom (repeatable)"
+    )
+    p_secrets.add_argument(
+        "--secret",
+        action="append",
+        default=[],
+        help="When resource=custom (repeatable)",
+    )
     p_secrets.add_argument("--scope", choices=["root", "project"], default="root")
-    p_secrets.add_argument("--path", default=None, help="Optional explicit env file (default is scope-based .env.local)")
-    p_secrets.add_argument("--persist", action=argparse.BooleanOptionalAction, default=True)
+    p_secrets.add_argument(
+        "--path",
+        default=None,
+        help="Optional explicit env file (default is scope-based .env.local)",
+    )
+    p_secrets.add_argument(
+        "--persist", action=argparse.BooleanOptionalAction, default=True
+    )
     p_secrets.add_argument("--non-interactive", action="store_true")
-    p_secrets.add_argument("--all", action="store_true", help="Allow overwrite prompts for already-set keys")
+    p_secrets.add_argument(
+        "--all",
+        action="store_true",
+        help="Allow overwrite prompts for already-set keys",
+    )
     p_secrets.set_defaults(func=cmd_secrets)
 
-    p_mcp = sub.add_parser("mcp-tools", help="List real MCP tools from Denis MCP endpoint")
-    p_mcp.add_argument("--session-id", default=None, help="Optional session id to append catalog event")
+    p_mcp = sub.add_parser(
+        "mcp-tools", help="List real MCP tools from Denis MCP endpoint"
+    )
+    p_mcp.add_argument(
+        "--session-id", default=None, help="Optional session id to append catalog event"
+    )
     p_mcp.add_argument("--worker", default="worker-1")
     p_mcp.set_defaults(func=cmd_mcp_tools)
 
@@ -2888,41 +3243,65 @@ def build_parser() -> argparse.ArgumentParser:
     p_guide = sub.add_parser("guide", help="Show guided help panel")
     p_guide.set_defaults(func=cmd_guide)
 
-    p_journal = sub.add_parser("journal", help="Show git/sprint journal (pending/in-progress/done + providers)")
+    p_journal = sub.add_parser(
+        "journal", help="Show git/sprint journal (pending/in-progress/done + providers)"
+    )
     p_journal.add_argument("session_id", nargs="?", default=None)
     p_journal.set_defaults(func=cmd_journal)
 
-    p_commit_tree = sub.add_parser("commit-tree", help="Show commit-tree management view by project")
-    p_commit_tree.add_argument("--session-id", default=None, help="Use projects from a known sprint session")
-    p_commit_tree.add_argument("--scan-root", default=None, help="Optional root for project discovery")
-    p_commit_tree.add_argument("--project", default=None, help="Optional project name/path filter")
+    p_commit_tree = sub.add_parser(
+        "commit-tree", help="Show commit-tree management view by project"
+    )
+    p_commit_tree.add_argument(
+        "--session-id", default=None, help="Use projects from a known sprint session"
+    )
+    p_commit_tree.add_argument(
+        "--scan-root", default=None, help="Optional root for project discovery"
+    )
+    p_commit_tree.add_argument(
+        "--project", default=None, help="Optional project name/path filter"
+    )
     p_commit_tree.add_argument("--max-commits", type=int, default=30)
-    p_commit_tree.add_argument("--all-branches", action=argparse.BooleanOptionalAction, default=True)
+    p_commit_tree.add_argument(
+        "--all-branches", action=argparse.BooleanOptionalAction, default=True
+    )
     p_commit_tree.set_defaults(func=cmd_commit_tree)
 
-    p_dashboard = sub.add_parser("dashboard", help="Show visual dashboard for a session")
+    p_dashboard = sub.add_parser(
+        "dashboard", help="Show visual dashboard for a session"
+    )
     p_dashboard.add_argument("session_id")
     p_dashboard.set_defaults(func=cmd_dashboard)
 
-    p_manager = sub.add_parser("manager", help="Unified manager view with keyboard nav (j/k,h/l,w/t,d,f,q)")
+    p_manager = sub.add_parser(
+        "manager", help="Unified manager view with keyboard nav (j/k,h/l,w/t,d,f,q)"
+    )
     p_manager.add_argument("session_id")
     p_manager.add_argument("--project", default=None)
     p_manager.add_argument("--worker", default=None)
     p_manager.add_argument("--kind", default=None)
     p_manager.add_argument("--max-commits", type=int, default=10)
     p_manager.add_argument("--limit", type=int, default=20)
-    p_manager.add_argument("--follow", action=argparse.BooleanOptionalAction, default=True)
+    p_manager.add_argument(
+        "--follow", action=argparse.BooleanOptionalAction, default=True
+    )
     p_manager.add_argument("--interval-sec", type=float, default=1.0)
     p_manager.set_defaults(func=cmd_manager)
 
-    p_monitor = sub.add_parser("monitor", help="Live monitor with phases and worker chat")
+    p_monitor = sub.add_parser(
+        "monitor", help="Live monitor with phases and worker chat"
+    )
     p_monitor.add_argument("session_id")
     p_monitor.add_argument("--worker", default=None)
     p_monitor.add_argument("--kind", default=None)
     p_monitor.add_argument("--limit", type=int, default=25)
-    p_monitor.add_argument("--follow", action=argparse.BooleanOptionalAction, default=True)
+    p_monitor.add_argument(
+        "--follow", action=argparse.BooleanOptionalAction, default=True
+    )
     p_monitor.add_argument("--interval-sec", type=float, default=1.0)
-    p_monitor.add_argument("--chat-only", action=argparse.BooleanOptionalAction, default=False)
+    p_monitor.add_argument(
+        "--chat-only", action=argparse.BooleanOptionalAction, default=False
+    )
     p_monitor.set_defaults(func=cmd_monitor)
 
     p_noc = sub.add_parser("noc", help="Live NOC screen (dashboard + event stream)")
@@ -2942,76 +3321,194 @@ def build_parser() -> argparse.ArgumentParser:
     p_tail.add_argument("--interval-sec", type=float, default=1.0)
     p_tail.set_defaults(func=cmd_tail)
 
-    p_logs = sub.add_parser("logs", help="Read event-bus audit log (JSONL) as chat stream")
+    p_logs = sub.add_parser(
+        "logs", help="Read event-bus audit log (JSONL) as chat stream"
+    )
     p_logs.add_argument("--session-id", default=None)
     p_logs.add_argument("--limit", type=int, default=60)
-    p_logs.add_argument("--follow", action=argparse.BooleanOptionalAction, default=False)
+    p_logs.add_argument(
+        "--follow", action=argparse.BooleanOptionalAction, default=False
+    )
     p_logs.add_argument("--interval-sec", type=float, default=1.0)
     p_logs.set_defaults(func=cmd_logs)
 
-    p_validate = sub.add_parser("validate", help="Run validation target and log as events")
+    p_validate = sub.add_parser(
+        "validate", help="Run validation target and log as events"
+    )
     p_validate.add_argument("session_id")
     p_validate.add_argument("target", choices=list(TARGET_NAMES))
     p_validate.add_argument("--worker", default="worker-2")
     p_validate.set_defaults(func=cmd_validate)
 
-    p_run = sub.add_parser("run", help="Run a terminal command and stream output into session events")
+    p_run = sub.add_parser(
+        "run", help="Run a terminal command and stream output into session events"
+    )
     p_run.add_argument("session_id")
     p_run.add_argument("--worker", default="worker-1")
     p_run.add_argument("command", nargs=argparse.REMAINDER)
     p_run.set_defaults(func=cmd_run)
 
-    p_adapt = sub.add_parser("adapt", help="Show provider-specific JSON payload adaptation")
+    p_adapt = sub.add_parser(
+        "adapt", help="Show provider-specific JSON payload adaptation"
+    )
     p_adapt.add_argument("provider")
     p_adapt.add_argument("--message", required=True)
     p_adapt.add_argument("--max-tokens", type=int, default=None)
     p_adapt.add_argument("--stream", action="store_true")
     p_adapt.set_defaults(func=cmd_adapt)
 
-    p_dispatch = sub.add_parser("dispatch", help="Dispatch real worker call (API or Celery queue)")
+    p_dispatch = sub.add_parser(
+        "dispatch", help="Dispatch real worker call (API or Celery queue)"
+    )
     p_dispatch.add_argument("session_id")
     p_dispatch.add_argument("provider")
     p_dispatch.add_argument("--worker", default="worker-1")
     p_dispatch.add_argument("--message", required=True)
     p_dispatch.add_argument("--timeout-sec", type=float, default=45.0)
-    p_dispatch.add_argument("--stub-decision", choices=["ask", "yes", "no"], default="ask")
-    p_dispatch.add_argument("--contract-decision", choices=["ask", "yes", "no"], default="ask")
-    p_dispatch.add_argument("--rework-on-reject", action=argparse.BooleanOptionalAction, default=True)
+    p_dispatch.add_argument(
+        "--stub-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_dispatch.add_argument(
+        "--contract-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_dispatch.add_argument(
+        "--rework-on-reject", action=argparse.BooleanOptionalAction, default=True
+    )
     p_dispatch.set_defaults(func=cmd_dispatch)
 
-    p_autodispatch = sub.add_parser("autodispatch", help="Dispatch all worker tasks for a session automatically")
+    p_autodispatch = sub.add_parser(
+        "autodispatch", help="Dispatch all worker tasks for a session automatically"
+    )
     p_autodispatch.add_argument("session_id")
-    p_autodispatch.add_argument("--worker", default=None, help="Optional single worker_id filter")
+    p_autodispatch.add_argument(
+        "--worker", default=None, help="Optional single worker_id filter"
+    )
     p_autodispatch.add_argument("--timeout-sec", type=float, default=45.0)
-    p_autodispatch.add_argument("--stub-decision", choices=["ask", "yes", "no"], default="ask")
-    p_autodispatch.add_argument("--contract-decision", choices=["ask", "yes", "no"], default="ask")
-    p_autodispatch.add_argument("--rework-on-reject", action=argparse.BooleanOptionalAction, default=True)
+    p_autodispatch.add_argument(
+        "--stub-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_autodispatch.add_argument(
+        "--contract-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_autodispatch.add_argument(
+        "--rework-on-reject", action=argparse.BooleanOptionalAction, default=True
+    )
     p_autodispatch.set_defaults(func=cmd_autodispatch)
 
-    p_propose = sub.add_parser("propose", help="Build phased plan from proposal markdown using Groq+Rasa")
+    p_propose = sub.add_parser(
+        "propose", help="Build phased plan from proposal markdown using Groq+Rasa"
+    )
     p_propose.add_argument("--file", default=None, help="Path to proposal markdown")
-    p_propose.add_argument("--pick-file", action="store_true", help="Open Ubuntu file selector (zenity)")
-    p_propose.add_argument("--topic", default=None, help="Optional contextpack topic label")
-    p_propose.add_argument("--decision", choices=["validar", "rehacer", "cancelar"], default=None)
-    p_propose.add_argument("--feedback", default=None, help="Required when decision=rehacer")
+    p_propose.add_argument(
+        "--pick-file", action="store_true", help="Open Ubuntu file selector (zenity)"
+    )
+    p_propose.add_argument(
+        "--topic", default=None, help="Optional contextpack topic label"
+    )
+    p_propose.add_argument(
+        "--decision", choices=["validar", "rehacer", "cancelar"], default=None
+    )
+    p_propose.add_argument(
+        "--feedback", default=None, help="Required when decision=rehacer"
+    )
     p_propose.add_argument("--workers", type=int, default=2)
     p_propose.add_argument("--scan-root", default=None)
-    p_propose.add_argument("--start-machinery", action=argparse.BooleanOptionalAction, default=True)
+    p_propose.add_argument(
+        "--start-machinery", action=argparse.BooleanOptionalAction, default=True
+    )
     p_propose.add_argument("--autodispatch", action="store_true")
     p_propose.add_argument("--timeout-sec", type=float, default=45.0)
-    p_propose.add_argument("--stub-decision", choices=["ask", "yes", "no"], default="ask")
-    p_propose.add_argument("--contract-decision", choices=["ask", "yes", "no"], default="ask")
-    p_propose.add_argument("--rework-on-reject", action=argparse.BooleanOptionalAction, default=True)
+    p_propose.add_argument(
+        "--stub-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_propose.add_argument(
+        "--contract-decision", choices=["ask", "yes", "no"], default="ask"
+    )
+    p_propose.add_argument(
+        "--rework-on-reject", action=argparse.BooleanOptionalAction, default=True
+    )
     p_propose.set_defaults(func=cmd_propose)
 
     p_intent = sub.add_parser("intent", help="Route natural language through Rasa gate")
     p_intent.add_argument("session_id")
     p_intent.add_argument("--text", required=True)
     p_intent.add_argument("--worker", default="worker-1")
-    p_intent.add_argument("--execute", action="store_true", help="Execute routed action instead of printing route")
+    p_intent.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute routed action instead of printing route",
+    )
     p_intent.set_defaults(func=cmd_intent)
 
+    # Work Compiler - compile real work from artifacts
+    p_compile = sub.add_parser(
+        "compile-work",
+        help="Compile real work from artifacts using remediation registry",
+    )
+    p_compile.add_argument(
+        "--artifacts-root", default="artifacts", help="Root directory of artifacts"
+    )
+    p_compile.add_argument(
+        "--out-json",
+        default="artifacts/orchestration/work_plan.json",
+        help="Output JSON path",
+    )
+    p_compile.add_argument(
+        "--project-root", default=None, help="Project root (default: auto-detect)"
+    )
+    p_compile.set_defaults(func=cmd_compile_work)
+
     return parser
+
+
+def cmd_compile_work(args) -> int:
+    """Compile real work from artifacts."""
+    from pathlib import Path
+    import sys
+
+    # Auto-detect project root
+    if args.project_root:
+        project_root = Path(args.project_root)
+    else:
+        # Assume we're in the project root
+        project_root = Path.cwd()
+
+    artifacts_root = project_root / args.artifacts_root
+
+    if not artifacts_root.exists():
+        print(f"Error: artifacts root not found: {artifacts_root}")
+        return 1
+
+    # Import and run work compiler
+    sys.path.insert(0, str(project_root))
+
+    try:
+        from denis_unified_v1.sprint_orchestrator.work_compiler import PlanBuilder
+
+        builder = PlanBuilder(str(artifacts_root), project_root)
+        plan = builder.build_plan()
+
+        # Write output
+        out_path = project_root / args.out_json
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(out_path, "w") as f:
+            json.dump(plan, f, indent=2)
+
+        print(json.dumps(plan, indent=2))
+
+        print(f"\n✓ Work plan written to: {out_path}")
+        print(f"  Total items: {plan['total_items']}")
+        print(f"  Rejected: {plan['total_rejected']}")
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return 1
 
 
 def main(argv: list[str] | None = None) -> int:
