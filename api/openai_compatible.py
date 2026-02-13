@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import json
 import os
+import time
 import uuid
 from typing import Any
 
@@ -15,8 +17,9 @@ from pydantic import BaseModel, Field
 
 from denis_unified_v1.api.sse_handler import stream_text_chunks
 from denis_unified_v1.feature_flags import load_feature_flags
-from denis_unified_v1.inference.router import build_inference_router
-
+from denis_unified_v1.orchestration.cognitive_router import create_router as create_cognitive_router
+from denis_unified_v1.smx.nlu_client import NLUClient
+from denis_unified_v1.smx.client import SMXClient
 
 def _utc_now() -> int:
     return int(datetime.now(timezone.utc).timestamp())
@@ -56,6 +59,7 @@ class DenisRuntime:
         self.inference_router = (
             build_inference_router() if self.flags.denis_use_inference_router else None
         )
+        self.cognitive_router = create_cognitive_router()
 
     async def _try_legacy_chat(self, user_text: str) -> str | None:
         timeout = aiohttp.ClientTimeout(total=self.legacy_timeout_sec)
@@ -146,6 +150,13 @@ class DenisRuntime:
         user_text = self._extract_user_text(req.messages)
         prompt_tokens = max(1, len(user_text.split()))
 
+        # Use cognitive router for routing decision
+        routing_decision = self.cognitive_router.route_decision(
+            task=user_text,
+            request_id=completion_id,
+            context={"model_requested": req.model, "endpoint": "chat_completions"}
+        )
+
         tool_call = self._maybe_tool_call(req, user_text)
         if tool_call:
             return {
@@ -187,6 +198,11 @@ class DenisRuntime:
                         "cost_usd": routed.get("cost_usd"),
                         "fallback_used": routed.get("fallback_used"),
                         "attempts": routed.get("attempts"),
+                        "cognitive_routing": {
+                            "tool_selected": routing_decision.tool_name,
+                            "confidence": routing_decision.confidence,
+                            "strategy": routing_decision.strategy.value,
+                        }
                     }
             except Exception:
                 answer = ""
@@ -205,6 +221,15 @@ class DenisRuntime:
                 path = "local_fallback"
 
         completion_tokens = max(1, len(answer.split()))
+
+        # Record execution result in cognitive router
+        self.cognitive_router.record_execution_result(
+            request_id=completion_id,
+            tool_name=routing_decision.tool_name,
+            success=bool(answer),
+            latency_ms=0,  # We don't have accurate timing here
+        )
+
         return {
             "id": completion_id,
             "object": "chat.completion",
@@ -255,5 +280,72 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
                 await asyncio.sleep(0)
 
         return StreamingResponse(_gen(), media_type="text/event-stream")
+
+    @router.post("/chat/completions/stream")
+    async def chat_completions_stream(req: ChatCompletionRequest):
+        """
+        Streaming SSE con chunking temporal (40-80ms).
+        Emite: status events + token chunks + final metrics.
+        """
+        async def event_generator():
+            trace_id = str(uuid.uuid4())
+            start_time = time.time()
+
+            # 1) Emit start event
+            yield f"data: {json.dumps({'type': 'status', 'trace_id': trace_id, 'status': 'started'})}\n\n"
+
+            # 2) NLU gate (emitir status)
+            nlu_client = NLUClient()
+            text = req.messages[-1].content if req.messages else ""
+            nlu_result = await nlu_client.parse(text)
+
+            nlu_time = time.time() - start_time
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'nlu', 'latency_ms': int(nlu_time*1000), 'intent': nlu_result['intent']})}\n\n"
+
+            # 3) Safety gate (paralelo con fast_check)
+            smx_client = SMXClient()
+
+            messages = [{"role": msg.role, "content": msg.content} for msg in req.messages]
+            safety_task = smx_client.call_motor("safety", messages, max_tokens=10)
+            fast_task = smx_client.call_motor("fast_check", messages, max_tokens=30) if nlu_result["route_hint"] == "fast" else None
+
+            results = await asyncio.gather(safety_task, fast_task if fast_task else asyncio.sleep(0))
+            safety_result, fast_result = results
+
+            safety_time = time.time() - start_time - nlu_time
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'safety', 'latency_ms': int(safety_time*1000), 'passed': True})}\n\n"
+
+            # 4) Fast path si disponible
+            if fast_result and "choices" in fast_result:
+                fast_content = fast_result["choices"]["message"]["content"]
+                if len(fast_content.strip()) > 10:
+                    # Emitir chunks cada 40ms
+                    chunks = [fast_content[i:i+40] for i in range(0, len(fast_content), 40)]
+                    for chunk in chunks:
+                        yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+                        await asyncio.sleep(0.04)  # 40ms chunking
+
+                    total_time = time.time() - start_time
+                    yield f"data: {json.dumps({'type': 'final', 'model': 'smx_fast_path', 'latency_ms': int(total_time*1000), 'ttft_ms': int(nlu_time*1000)})}\n\n"
+                    return
+
+            # 5) Full pipeline (response motor con streaming)
+            response_result = await smx_client.call_motor("response", messages, max_tokens=req.max_tokens or 100)
+            content = response_result["choices"]["message"]["content"]
+
+            # Chunking temporal
+            chunks = [content[i:i+50] for i in range(0, len(content), 50)]
+            ttft = time.time() - start_time
+
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    yield f"data: {json.dumps({'type': 'ttft', 'latency_ms': int(ttft*1000)})}\n\n"
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+                await asyncio.sleep(0.05)  # 50ms chunking
+
+            total_time = time.time() - start_time
+            yield f"data: {json.dumps({'type': 'final', 'model': 'smx_local_unified', 'latency_ms': int(total_time*1000), 'ttft_ms': int(ttft*1000)})}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     return router

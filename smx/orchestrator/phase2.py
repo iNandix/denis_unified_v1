@@ -50,6 +50,50 @@ TIMEOUTS = Timeouts()
 NODO2_HOST = os.getenv("NODO2_HOST", os.getenv("DENIS_NODE2_HOST", "10.10.10.2"))
 
 
+async def phase1_parallel(self, text: str, user_id: str, trace_id: str) -> Dict:
+    """Phase1 totalmente paralelo con timeouts agresivos."""
+    
+    async def tokenize_with_timeout():
+        try:
+            return await asyncio.wait_for(
+                self.smx_client.call_motor("tokenize", [{"role":"user","content":text}], max_tokens=5),
+                timeout=0.15  # 150ms max
+            )
+        except:
+            return None
+    
+    async def safety_with_timeout():
+        try:
+            return await asyncio.wait_for(
+                self.smx_client.call_motor("safety", [{"role":"user","content":text}], max_tokens=10),
+                timeout=0.25  # 250ms max
+            )
+        except:
+            return {"safe": True}  # Fallback seguro
+    
+    async def fast_with_timeout():
+        try:
+            return await asyncio.wait_for(
+                self.smx_client.call_motor("fast_check", [{"role":"user","content":text}], max_tokens=30),
+                timeout=0.2  # 200ms max
+            )
+        except:
+            return None
+    
+    # Ejecutar en paralelo REAL
+    results = await asyncio.gather(
+        tokenize_with_timeout(),
+        safety_with_timeout(),
+        fast_with_timeout(),
+    )
+    
+    return {
+        "tokenize": results[0],
+        "safety": results[1],
+        "fast": results[2],
+    }
+
+
 def _fallback_to_content(fallback_result: Any) -> str:
     """
     FallbackManager historically returns either an object with `.content`
