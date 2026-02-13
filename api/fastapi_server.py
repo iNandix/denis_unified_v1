@@ -10,6 +10,9 @@ from typing import Any
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from .metacognitive_api import router as metacognitive_router
 from .agent_heart_api import router as agent_heart_router
 # All other imports moved inside create_app() for complete fail-open behavior
@@ -17,6 +20,14 @@ from .agent_heart_api import router as agent_heart_router
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_json(obj: Any) -> Any:
+    """Safely convert object to JSON-serializable format."""
+    try:
+        return jsonable_encoder(obj)
+    except Exception as e:
+        return {"_type": type(obj).__name__, "_error": str(e)}
 
 
 class InMemoryRateLimiter:
@@ -44,12 +55,19 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Denis Cognitive Engine", version="1.0.0")
 
     # Load feature flags with fail-open
-    flags = None
     try:
-        flags = load_feature_flags()
-    except ImportError:
-        # Create minimal feature flags if module not available
-        flags = {"denis_use_voice_pipeline": False, "denis_use_memory_unified": False, "denis_use_atlas": False, "denis_use_inference_router": False}
+        from feature_flags import load_feature_flags
+        raw_flags = load_feature_flags()
+    except Exception:
+        raw_flags = {"denis_use_voice_pipeline": False, "denis_use_memory_unified": False, "denis_use_atlas": False, "denis_use_inference_router": False}
+
+    try:
+        if hasattr(raw_flags, "as_dict"):
+            flags = dict(raw_flags.as_dict())
+        else:
+            flags = dict(raw_flags) if not isinstance(raw_flags, dict) else raw_flags
+    except Exception:
+        flags = {}
 
     # Initialize runtime with fail-open
     runtime = None
@@ -91,34 +109,32 @@ def create_app() -> FastAPI:
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
         ip = request.client.host if request.client else "unknown"
 
-        if auth_token:
-            auth_header = request.headers.get("authorization", "")
-            if not auth_header.startswith("Bearer "):
-                return JSONResponse(
-                    status_code=401,
-                    content={
-                        "error": "unauthorized",
-                        "request_id": request_id,
-                        "timestamp_utc": _utc_now(),
-                    },
-                )
+        try:
+            if auth_token:
+                auth_header = request.headers.get("authorization", "")
+                if not auth_header.startswith("Bearer "):
+                    return JSONResponse(status_code=401, content={"error": "unauthorized", "request_id": request_id, "timestamp_utc": _utc_now()})
 
-        if not limiter.is_allowed(ip):
+            if not limiter.is_allowed(ip):
+                return JSONResponse(status_code=429, content={"error": "rate_limited", "request_id": request_id, "timestamp_utc": _utc_now()})
+
+            start = time.perf_counter()
+            response = await call_next(request)
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            response.headers["x-request-id"] = request_id
+            response.headers["x-duration-ms"] = str(duration_ms)
+            return response
+
+        except Exception as e:
             return JSONResponse(
-                status_code=429,
+                status_code=500,
                 content={
-                    "error": "rate_limited",
+                    "error": "internal_error",
+                    "detail": str(e),
                     "request_id": request_id,
                     "timestamp_utc": _utc_now(),
                 },
             )
-
-        start = time.perf_counter()
-        response = await call_next(request)
-        duration_ms = int((time.perf_counter() - start) * 1000)
-        response.headers["x-request-id"] = request_id
-        response.headers["x-duration-ms"] = str(duration_ms)
-        return response
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -126,7 +142,7 @@ def create_app() -> FastAPI:
             "status": "ok",
             "version": "unified-v1",
             "timestamp_utc": _utc_now(),
-            "feature_flags": flags.as_dict() if hasattr(flags, 'as_dict') else flags,
+            "feature_flags": _safe_json(flags),
             "components": {
                 "openai_compatible": runtime is not None and not isinstance(runtime, MinimalRuntime),
                 "query_interface": True,  # Always available as fallback
@@ -206,6 +222,14 @@ def create_app() -> FastAPI:
         from autopoiesis.dashboard import build_router as build_autopoiesis_router
         _safe_include(build_autopoiesis_router)
     except Exception:
+        pass
+
+    # Encryption API (optional, fail-open)
+    try:
+        from denis_persona_encryption import encryption_router
+        app.include_router(encryption_router)
+    except Exception:
+        # Si falta cryptography, neo4j driver o el módulo, el core sigue vivo
         pass
 
     try:
