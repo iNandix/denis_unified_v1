@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "status": "skippeddependency",
+  "reason": "Neo4j not available - GraphWriter operating in deferred mode",
+  "timestamp_utc": "2026-02-13T20:28:42.425150+00:00",
+  "neo4j_available": false,
+  "operations": {
+    "turn_recorded": false,
+    "trace_recorded": false,
+    "tool_recorded": false,
+    "memory_recorded": false,
+    "episode_concepts_recorded": false,
+    "neuro_mental_recorded": false,
+    "voice_recorded": false,
+    "llm_recorded": false
+  },
+  "deferred_events": 8,
+  "turn_id": "smoke_turn_1771014522"
+}
