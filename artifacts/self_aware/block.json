@@ -1,0 +1,55 @@
+{
+  "timestamp_utc": "2026-02-13T20:07:12Z",
+  "stream": "S13_self_aware_block",
+  "gate_status": "degraded",
+  "gate_reason": "Mixed results: 0 passed, 4 failed",
+  "total_tests": 4,
+  "passed_tests": 0,
+  "failed_tests": 4,
+  "skipped_tests": 0,
+  "hard_failures": 0,
+  "test_results": [
+    {
+      "test_script": "phase7_self_aware_inference_smoke.py",
+      "success": false,
+      "error": "name 'cmd' is not defined",
+      "executed": false,
+      "description": "Self-aware inference validation",
+      "expected_artifact": "artifacts/self_aware/inference.json"
+    },
+    {
+      "test_script": "phase9_self_aware_memory_smoke.py",
+      "success": false,
+      "error": "name 'cmd' is not defined",
+      "executed": false,
+      "description": "Self-aware memory validation",
+      "expected_artifact": "artifacts/self_aware/memory.json"
+    },
+    {
+      "test_script": "phase10_self_model_smoke.py",
+      "success": false,
+      "error": "name 'cmd' is not defined",
+      "executed": false,
+      "description": "Self-model validation",
+      "expected_artifact": "artifacts/self_aware/self_model.json"
+    },
+    {
+      "test_script": "phase8_voice_smoke.py",
+      "success": false,
+      "error": "name 'cmd' is not defined",
+      "executed": false,
+      "description": "Voice pipeline validation",
+      "expected_artifact": "artifacts/self_aware/voice.json"
+    }
+  ],
+  "summary": {
+    "successful": [],
+    "failed": [
+      "phase7_self_aware_inference_smoke.py",
+      "phase9_self_aware_memory_smoke.py",
+      "phase10_self_model_smoke.py",
+      "phase8_voice_smoke.py"
+    ],
+    "skipped": []
+  }
+}
