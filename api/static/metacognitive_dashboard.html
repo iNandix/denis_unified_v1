@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Denis Metacognitive Dashboard</title>
+    <style>
+        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        .card { background: #2d2d2d; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .metric { display: inline-block; margin: 10px 20px 10px 0; }
+        .label { color: #569cd6; }
+        .value { color: #4ec9b0; font-weight: bold; }
+        .status-healthy { color: #4ec9b0; }
+        .status-degraded { color: #ce9178; }
+        h2 { color: #569cd6; }
+    </style>
+</head>
+<body>
+    <h1>🧠 Denis Metacognitive Dashboard</h1>
+    
+    <div class="card">
+        <h2>System Status</h2>
+        <div id="status"></div>
+    </div>
+    
+    <div class="card">
+        <h2>Metrics</h2>
+        <div id="metrics"></div>
+    </div>
+    
+    <div class="card">
+        <h2>Attention Focus</h2>
+        <div id="attention"></div>
+    </div>
+    
+    <div class="card">
+        <h2>Coherence</h2>
+        <div id="coherence"></div>
+    </div>
+    
+    <script>
+        async function refresh() {
+            // Status
+            const status = await fetch('/metacognitive/status').then(r => r.json());
+            document.getElementById('status').innerHTML = `
+                <span class="label">Status:</span> <span class="value status-${status.status}">${status.status}</span><br>
+                <span class="label">L0 Tools:</span> <span class="value">${status.layers.l0_tools}</span>
+                <span class="label">L1 Patterns:</span> <span class="value">${status.layers.l1_patterns}</span>
+                <span class="label">L2 Principles:</span> <span class="value">${status.layers.l2_principles}</span><br>
+                <span class="label">Coherence Score:</span> <span class="value">${status.coherence.coherence_score.toFixed(2)}</span>
+            `;
+            
+            // Metrics
+            const metrics = await fetch('/metacognitive/metrics').then(r => r.json());
+            let metricsHtml = '';
+            for (const [op, data] of Object.entries(metrics.operations)) {
+                if (data.count > 0) {
+                    metricsHtml += `<div class="metric">
+                        <span class="label">${op}:</span> 
+                        <span class="value">${data.avg_latency_ms}ms avg</span> 
+                        (p95: ${data.p95}ms, n=${data.count})
+                    </div>`;
+                }
+            }
+            document.getElementById('metrics').innerHTML = metricsHtml;
+            
+            // Attention
+            const attention = await fetch('/metacognitive/attention').then(r => r.json());
+            let attentionHtml = '<b>Top Patterns:</b><br>';
+            attention.focused_patterns.forEach(p => {
+                attentionHtml += `- ${p['p.id']} (usage: ${p['p.usage_count']}, conf: ${p['p.confidence']})<br>`;
+            });
+            document.getElementById('attention').innerHTML = attentionHtml;
+            
+            // Coherence
+            const coherence = await fetch('/metacognitive/coherence').then(r => r.json());
+            document.getElementById('coherence').innerHTML = `
+                <span class="label">Score:</span> <span class="value">${coherence.coherence_score.toFixed(2)}</span>
+                <span class="label">Status:</span> <span class="value">${coherence.status}</span><br>
+                <span class="label">Complete Paths:</span> <span class="value">${coherence.complete_paths}</span>
+                <span class="label">Orphans:</span> <span class="value">${coherence.orphan_patterns + coherence.orphan_principles}</span>
+            `;
+        }
+        
+        refresh();
+        setInterval(refresh, 5000);  // Refresh every 5s
+    </script>
+</body>
+</html>

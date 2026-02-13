@@ -19,9 +19,13 @@ from denis_unified_v1.api.query_interface import build_query_router
 from denis_unified_v1.api.provider_config_handler import build_provider_config_router
 from denis_unified_v1.api.voice_handler import build_voice_router
 from denis_unified_v1.api.websocket_handler import build_ws_router
-from denis_unified_v1.autopoiesis.dashboard import build_router as build_autopoiesis_router
+from denis_unified_v1.api.api_registry import build_registry_router
+from denis_unified_v1.autopoiesis.dashboard import (
+    build_router as build_autopoiesis_router,
+)
 from denis_unified_v1.feature_flags import load_feature_flags
 from denis_unified_v1.metagraph.dashboard import build_router as build_metagraph_router
+from denis_unified_v1.api.metacognitive_api import router as metacognitive_router
 
 
 def _utc_now() -> str:
@@ -49,7 +53,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Denis Cognitive Engine", version="1.0.0")
     flags = load_feature_flags()
     runtime = DenisRuntime()
-    limiter = InMemoryRateLimiter(limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100")))
+    limiter = InMemoryRateLimiter(
+        limit_per_minute=int(os.getenv("DENIS_RATE_LIMIT_PER_MIN", "100"))
+    )
     auth_token = (os.getenv("DENIS_API_BEARER_TOKEN") or "").strip()
 
     raw_origins = os.getenv("DENIS_CORS_ORIGINS", "*")
@@ -62,6 +68,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Mount static files
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/static", StaticFiles(directory="/media/jotah/SSD_denis/home_jotah/denis_unified_v1/api/static"), name="static")
 
     @app.middleware("http")
     async def trace_and_security_middleware(request: Request, call_next):
@@ -103,7 +113,7 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, Any]:
         return {
             "status": "ok",
-            "service": "denis_unified_v1_api",
+            "version": "unified-v1",
             "timestamp_utc": _utc_now(),
             "feature_flags": flags.as_dict(),
             "components": {
@@ -113,6 +123,8 @@ def create_app() -> FastAPI:
                 "voice_pipeline": flags.denis_use_voice_pipeline,
                 "memory_unified": flags.denis_use_memory_unified,
                 "atlas_bridge": flags.denis_use_atlas,
+                "cognitive_router": True,
+                "inference_router": flags.denis_use_inference_router,
             },
         }
 
@@ -130,6 +142,15 @@ def create_app() -> FastAPI:
     autopoiesis_router = build_autopoiesis_router()
     if autopoiesis_router is not None:
         app.include_router(autopoiesis_router)
+
+    # API Metacognitiva
+    app.include_router(metacognitive_router)
+
+    # API Registry Router
+    registry_router = build_registry_router()
+    if registry_router is not None:
+        app.include_router(registry_router, prefix="/registry")
+
     return app
 
 
