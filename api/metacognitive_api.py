@@ -21,7 +21,7 @@ except ImportError:
 from neo4j import GraphDatabase
 from neo4j import AsyncGraphDatabase
 
-from denis_unified_v1.api.sse_handler import sse_event
+from .sse_handler import sse_event
 
 from denis_unified_v1.capabilities_service import get_capabilities_service
 
@@ -2279,3 +2279,135 @@ async def inference_hedging_status():
         "hedge_threshold_ms": broker.adaptive_hedging.hedge_threshold_ms,
         "failure_threshold": broker.adaptive_hedging.failure_threshold,
     }
+
+
+@router.get("/capabilities")
+async def get_capabilities():
+    """Get current capabilities snapshot v1."""
+    service = get_capabilities_service()
+
+    snapshot = service.get_snapshot()
+    if not snapshot:
+        # Try to refresh if no cache
+        snapshot = await service.refresh_snapshot()
+
+    # Convert to API format
+    capabilities = []
+    for cap_id, cap_snapshot in snapshot.items():
+        capabilities.append({
+            "id": cap_id,
+            "category": cap_snapshot.category,
+            "status": cap_snapshot.status.value,
+            "confidence": cap_snapshot.confidence,
+            "evidence": [
+                {
+                    "source": ev.source,
+                    "timestamp": ev.timestamp,
+                    "confidence": ev.confidence,
+                    "data": ev.data,
+                    "error": ev.error
+                }
+                for ev in cap_snapshot.evidence
+            ],
+            "metrics": cap_snapshot.metrics,
+            "last_seen_utc": cap_snapshot.last_seen_utc,
+            "depends_on": cap_snapshot.depends_on,
+            "executable_actions": cap_snapshot.executable_actions,
+            "version": cap_snapshot.version
+        })
+
+    return {
+        "snapshot_version": "v1",
+        "capabilities": capabilities,
+        "total_count": len(capabilities),
+        "timestamp_utc": time.time(),
+        "status": "healthy"
+    }
+
+
+@router.post("/capabilities/query")
+async def query_capabilities(query: Dict[str, Any]):
+    """Query capabilities with filters."""
+    service = get_capabilities_service()
+    filters = query.get("filters", {})
+    results = service.query_snapshot(filters)
+
+    # Convert to API format
+    capabilities = []
+    for cap_snapshot in results:
+        capabilities.append({
+            "id": cap_snapshot.id,
+            "category": cap_snapshot.category,
+            "status": cap_snapshot.status.value,
+            "confidence": cap_snapshot.confidence,
+            "evidence": [
+                {
+                    "source": ev.source,
+                    "timestamp": ev.timestamp,
+                    "confidence": ev.confidence,
+                    "data": ev.data,
+                    "error": ev.error
+                }
+                for ev in cap_snapshot.evidence
+            ],
+            "metrics": cap_snapshot.metrics,
+            "executable_actions": cap_snapshot.executable_actions,
+            "version": cap_snapshot.version
+        })
+
+    return {
+        "query": query,
+        "results": capabilities,
+        "count": len(capabilities),
+        "timestamp_utc": time.time()
+    }
+
+
+@router.post("/capabilities/refresh")
+async def refresh_capabilities():
+    """Force refresh of capabilities snapshot."""
+    service = get_capabilities_service()
+    start_time = time.time()
+    snapshot = await service.refresh_snapshot()
+    refresh_time_ms = (time.time() - start_time) * 1000
+
+    return {
+        "refreshed_count": len(snapshot),
+        "refresh_time_ms": refresh_time_ms,
+        "timestamp_utc": time.time(),
+        "status": "refreshed"
+    }
+
+
+@router.get("/capabilities/events")
+async def capabilities_events():
+    """SSE stream for capabilities events."""
+    async def event_generator():
+        # Initial state
+        yield sse_event("capabilities_stream_started", {"timestamp": time.time()})
+
+        # Poll for updates every 30 seconds
+        while True:
+            try:
+                service = get_capabilities_service()
+                snapshot = service.get_snapshot()
+
+                # Check if cache was refreshed recently
+                if snapshot and service._cache_timestamp > time.time() - 60:  # Within last minute
+                    event_data = {
+                        "capabilities_count": len(snapshot),
+                        "timestamp": time.time(),
+                        "snapshot_version": "v1"
+                    }
+                    yield sse_event("capabilities_updated", event_data)
+
+            except Exception as e:
+                yield sse_event("capabilities_error", {"error": str(e), "timestamp": time.time()})
+
+            await asyncio.sleep(30)  # Poll every 30 seconds
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
