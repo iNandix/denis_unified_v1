@@ -3456,6 +3456,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_compile.add_argument(
         "--project-root", default=None, help="Project root (default: auto-detect)"
     )
+    p_compile.add_argument(
+        "--dry-run", action="store_true", help="Simulate without executing"
+    )
+    p_compile.add_argument("--verbose", action="store_true", help="Verbose output")
     p_compile.set_defaults(func=cmd_compile_work)
 
     return parser
@@ -3470,7 +3474,6 @@ def cmd_compile_work(args) -> int:
     if args.project_root:
         project_root = Path(args.project_root)
     else:
-        # Assume we're in the project root
         project_root = Path.cwd()
 
     artifacts_root = project_root / args.artifacts_root
@@ -3485,7 +3488,11 @@ def cmd_compile_work(args) -> int:
     try:
         from denis_unified_v1.sprint_orchestrator.work_compiler import PlanBuilder
 
-        builder = PlanBuilder(str(artifacts_root), project_root)
+        from denis_unified_v1.sprint_orchestrator.work_compiler import (
+            AdvancedPlanBuilder,
+        )
+
+        builder = AdvancedPlanBuilder(str(artifacts_root), project_root, args.dry_run)
         plan = builder.build_plan()
 
         # Write output
@@ -3497,9 +3504,14 @@ def cmd_compile_work(args) -> int:
 
         print(json.dumps(plan, indent=2))
 
-        print(f"\n✓ Work plan written to: {out_path}")
-        print(f"  Total items: {plan['total_items']}")
-        print(f"  Rejected: {plan['total_rejected']}")
+        print(
+            f"\n{'[DRY-RUN] ' if args.dry_run else ''}✓ Work plan written to: {out_path}"
+        )
+        print(f"  Total items: {plan['statistics']['total_items']}")
+        print(f"  Rejected: {plan['statistics']['total_rejected']}")
+        print(
+            f"  Estimated duration: {plan['statistics']['estimated_total_duration_sec']}s"
+        )
 
         return 0
 
