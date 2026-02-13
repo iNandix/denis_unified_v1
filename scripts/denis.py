@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-DENIS Maintainer CLI - Fix one issue at a time with strict discipline.
+DENIS Maintainer CLI - Fix one issue at a time with strict discipline + AI analysis.
 
 Usage:
-    denis fix --one        # Fix exactly one failure
+    denis fix --one        # Fix exactly one failure with AI analysis
+    denis fix --auto      # Auto-fix loop (iterate until 100% green)
     denis doctor           # Diagnose without fixing
     denis status           # Show current status
 """
@@ -18,9 +19,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+# Load .env variables
+def load_env():
+    env_path = Path(".env")
+    if env_path.exists():
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    if key and value and os.environ.get(key) is None:
+                        os.environ[key] = value
+
+
+load_env()
+
 SCRIPTS_DIR = Path("scripts")
 ARTIFACTS_DIR = Path("artifacts")
 ATTEMPTS_DIR = ARTIFACTS_DIR / "attempts"
+
+# AI Configuration
+AI_ENABLED = os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true"
+AI_MAX_ITERATIONS = int(os.getenv("AI_MAX_ITERATIONS", "5"))
+AI_PROVIDER = os.getenv("AI_ANALYSIS_PROVIDER", "perplexity")
 
 
 def load_json(path: Path, default=None):
@@ -56,8 +77,6 @@ def run_command(cmd: list, timeout: int = 120, check: bool = False) -> dict:
 
 def run_meta_smoke_strict() -> dict:
     """Run meta-smoke with strict 100% requirement."""
-    print("\n[1/5] Running meta-smoke (strict-100)...")
-
     cmd = [
         sys.executable,
         "scripts/meta_smoke_all.py",
@@ -75,6 +94,68 @@ def run_meta_smoke_strict() -> dict:
         "passed": artifact.get("summary", {}).get("passed", 0),
         "total": artifact.get("summary", {}).get("total", 0),
         "passed_ratio": artifact.get("summary", {}).get("pass_rate", 0),
+    }
+
+
+def get_smoke_output(smoke_name: str) -> str:
+    """Get the output from a specific smoke artifact."""
+    smoke_map = {
+        "boot_import": "artifacts/boot_import_smoke.json",
+        "controlplane_status": "artifacts/control_plane/controlplane_status_smoke.json",
+        "openai_router": "artifacts/openai_router_smoke.json",
+        "legacy_imports": "artifacts/legacy_imports_smoke.json",
+        "capabilities_registry": "artifacts/api/phase6_capabilities_registry_smoke.json",
+        "gate_smoke": "artifacts/phase10_gate_smoke.json",
+    }
+
+    path = smoke_map.get(smoke_name)
+    if path:
+        return load_json(Path(path), {})
+    return {}
+
+
+def get_controlplane_status() -> dict:
+    """Get control plane status."""
+    return load_json(ARTIFACTS_DIR / "control_plane" / "status.json", {})
+
+
+def call_ai_analysis(failure: dict) -> dict:
+    """Call AI to analyze the failure."""
+    if not AI_ENABLED:
+        return {
+            "success": False,
+            "error": "AI analysis disabled",
+            "root_cause": "AI_ANALYSIS_ENABLED=false",
+            "fix_suggestions": [],
+            "files_to_check": [],
+            "confidence": 0.0,
+        }
+
+    # Build the analysis script call
+    failure_json = json.dumps(failure)
+
+    cmd = [
+        sys.executable,
+        "scripts/denis_ai_analysis.py",
+        "--failure",
+        failure_json,
+    ]
+
+    result = run_command(cmd, timeout=60)
+
+    if result["success"] and result.get("stdout"):
+        try:
+            return json.loads(result["stdout"])
+        except:
+            pass
+
+    return {
+        "success": False,
+        "error": result.get("stderr", "AI call failed"),
+        "root_cause": "Could not get AI analysis",
+        "fix_suggestions": ["Manual intervention required"],
+        "files_to_check": [],
+        "confidence": 0.0,
     }
 
 
@@ -122,52 +203,6 @@ def select_best_failure(artifact: dict) -> dict:
     }
 
 
-def analyze_failure(failure: dict) -> dict:
-    """Analyze a specific failure and generate fix plan."""
-    name = failure.get("name", "unknown")
-    reason = failure.get("reason", "no reason")
-    status = failure.get("status", "unknown")
-
-    analysis = {
-        "name": name,
-        "reason": reason,
-        "status": status,
-        "fix_suggestions": [],
-    }
-
-    if "unrecognized" in reason.lower() or "argument" in reason.lower():
-        analysis["fix_suggestions"].append(
-            "Check CLI args in smoke script - remove invalid arguments"
-        )
-        analysis["fix_suggestions"].append(
-            "Ensure smoke accepts --out-json and --help without errors"
-        )
-
-    if "timeout" in reason.lower():
-        analysis["fix_suggestions"].append(
-            "Increase timeout or fix deadlock in the component"
-        )
-        analysis["fix_suggestions"].append("Check for infinite loops or blocking I/O")
-
-    if "import" in reason.lower() or "ModuleNotFoundError" in reason:
-        analysis["fix_suggestions"].append("Fix missing dependency or import path")
-        analysis["fix_suggestions"].append("Check PYTHONPATH and module structure")
-
-    if "models_endpoint" in name or "chat_endpoint" in name:
-        analysis["fix_suggestions"].append(
-            "Fix OpenAI router endpoints - return valid 200 responses"
-        )
-        analysis["fix_suggestions"].append(
-            "If degraded, return 200 with degraded=true in payload"
-        )
-
-    if not analysis["fix_suggestions"]:
-        analysis["fix_suggestions"].append(f"Investigate: {reason}")
-        analysis["fix_suggestions"].append("Run smoke individually to see full error")
-
-    return analysis
-
-
 def run_single_smoke(smoke_name: str) -> dict:
     """Run a single smoke test."""
     smoke_map = {
@@ -176,6 +211,7 @@ def run_single_smoke(smoke_name: str) -> dict:
         "openai_router": "scripts/openai_router_smoke.py",
         "legacy_imports": "scripts/legacy_imports_smoke.py",
         "capabilities_registry": "scripts/phase6_capabilities_registry_smoke.py",
+        "gate_smoke": "scripts/phase10_gate_smoke.py",
     }
 
     if smoke_name not in smoke_map:
@@ -193,7 +229,6 @@ def run_single_smoke(smoke_name: str) -> dict:
 
 def revert_changes():
     """Revert all changes."""
-    print("\n[!] Reverting changes...")
     run_command(["git", "checkout", "."], timeout=30)
 
 
@@ -208,32 +243,30 @@ def commit_if_green(passed: int, total: int) -> bool:
         result = run_command(["git", "commit", "-m", msg], timeout=30)
 
         if result["success"]:
-            print(f"\n✅ COMMITTED: {msg}")
             return True
-        else:
-            print(f"\n❌ Commit failed: {result.get('stderr', 'unknown')}")
-            return False
     return False
 
 
-def save_attempt_record(selection: dict, analysis: dict, before: dict, after: dict):
+def save_attempt_record(
+    selection: dict, analysis: dict, before: dict, after: dict, iteration: int
+):
     """Save attempt record for evidence."""
     ATTEMPTS_DIR.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     record = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "iteration": iteration,
         "selection": selection,
-        "analysis": analysis,
+        "ai_analysis": analysis,
         "before": before,
         "after": after,
     }
 
-    path = ATTEMPTS_DIR / f"fix_one_{timestamp}.json"
+    path = ATTEMPTS_DIR / f"fix_one_{timestamp}_iter{iteration}.json"
     with open(path, "w") as f:
         json.dump(record, f, indent=2)
 
-    print(f"\n📄 Attempt record: {path}")
     return path
 
 
@@ -262,18 +295,34 @@ def denis_doctor():
     print(f"   Selected: {failure.get('name')} ({selection.get('rule')})")
     print(f"   Reason: {failure.get('reason')}")
 
-    analysis = analyze_failure(failure)
-    print(f"\n🔧 SUGGESTED FIX:")
-    for i, suggestion in enumerate(analysis["fix_suggestions"], 1):
-        print(f"   {i}. {suggestion}")
+    # AI Analysis
+    if AI_ENABLED:
+        print(f"\n🤖 Running AI Analysis...")
+        smoke_data = get_smoke_output(failure.get("name", ""))
+        controlplane = get_controlplane_status()
+
+        ai_result = call_ai_analysis(failure)
+
+        if ai_result.get("success"):
+            print(f"\n📋 AI ANALYSIS:")
+            print(f"   Root Cause: {ai_result.get('root_cause', 'N/A')}")
+            print(f"   Confidence: {ai_result.get('confidence', 0):.0%}")
+            print(f"\n🔧 SUGGESTED FIXES:")
+            for i, suggestion in enumerate(ai_result.get("fix_suggestions", [])[:5], 1):
+                print(f"   {i}. {suggestion}")
+            print(f"\n📁 FILES TO CHECK:")
+            for f in ai_result.get("files_to_check", [])[:5]:
+                print(f"   - {f}")
+        else:
+            print(f"\n⚠️ AI Analysis failed: {ai_result.get('error')}")
 
     return 1
 
 
 def denis_fix_one():
-    """Fix exactly one failure."""
+    """Fix exactly one failure with AI analysis."""
     print("=" * 60)
-    print("🔧 DENIS FIX --ONE - Strict Mode")
+    print("🔧 DENIS FIX --ONE - With AI Analysis")
     print("=" * 60)
 
     result = run_meta_smoke_strict()
@@ -281,12 +330,6 @@ def denis_fix_one():
     artifact = result["artifact"]
     passed = result["passed"]
     total = result["total"]
-
-    before_state = {
-        "passed": passed,
-        "total": total,
-        "passed_ratio": result["passed_ratio"],
-    }
 
     if passed == total:
         print(f"\n✅ Already green ({passed}/{total}) - Nothing to fix!")
@@ -299,21 +342,115 @@ def denis_fix_one():
     print(f"   Rule: {selection.get('rule')}")
     print(f"   Reason: {failure.get('reason')}")
 
-    analysis = analyze_failure(failure)
+    # Get smoke output and controlplane status
+    smoke_data = get_smoke_output(failure.get("name", ""))
+    controlplane = get_controlplane_status()
 
-    print(f"\n🔧 ANALYSIS:")
-    for i, suggestion in enumerate(analysis["fix_suggestions"], 1):
-        print(f"   {i}. {suggestion}")
+    # AI Analysis
+    if AI_ENABLED:
+        print(f"\n🤖 Running AI Analysis...")
+        ai_result = call_ai_analysis(failure)
+
+        if ai_result.get("success"):
+            print(f"\n📋 AI ANALYSIS:")
+            print(f"   Root Cause: {ai_result.get('root_cause', 'N/A')}")
+            print(f"   Confidence: {ai_result.get('confidence', 0):.0%}")
+            print(f"\n🔧 SUGGESTED FIXES:")
+            for i, suggestion in enumerate(ai_result.get("fix_suggestions", [])[:5], 1):
+                print(f"   {i}. {suggestion}")
+            print(f"\n📁 FILES TO CHECK:")
+            for f in ai_result.get("files_to_check", [])[:5]:
+                print(f"   - {f}")
+        else:
+            print(f"\n⚠️ AI Analysis failed: {ai_result.get('error')}")
 
     print(f"\n⚠️  MANUAL INTERVENTION REQUIRED")
-    print(f"   DENIS cannot auto-fix. Please:")
-    print(f"   1. Run the failing smoke manually to see full error")
-    print(f"   2. Apply the fix")
-    print(f"   3. Run: denis fix --one again")
+    print(f"   DENIS provides analysis but needs human to apply fix.")
+    print(f"   After applying fix, run: denis fix --auto")
 
-    save_attempt_record(
-        selection, analysis, before_state, {"status": "manual_required"}
-    )
+    return 1
+
+
+def denis_fix_auto():
+    """Auto-fix loop - iterate until 100% green or max iterations."""
+    print("=" * 60)
+    print("🔧 DENIS FIX --AUTO - Iterating until 100% green")
+    print("=" * 60)
+    print(f"   AI Enabled: {AI_ENABLED}")
+    print(f"   Max Iterations: {AI_MAX_ITERATIONS}")
+    print(f"   Provider: {AI_PROVIDER}")
+
+    iteration = 0
+    last_ai_analysis = None
+
+    while iteration < AI_MAX_ITERATIONS:
+        iteration += 1
+        print(f"\n{'=' * 60}")
+        print(f"ITERATION {iteration}/{AI_MAX_ITERATIONS}")
+        print(f"{'=' * 60}")
+
+        result = run_meta_smoke_strict()
+
+        artifact = result["artifact"]
+        passed = result["passed"]
+        total = result["total"]
+
+        print(f"\n📊 Result: {passed}/{total} passed")
+
+        if passed == total:
+            print(f"\n✅ 100% GREEN! Attempting commit...")
+
+            if commit_if_green(passed, total):
+                print(f"\n✅ COMMITTED!")
+                return 0
+            else:
+                print(f"\n⚠️ Could not commit (no changes or already committed)")
+                return 0
+
+        selection = select_best_failure(artifact)
+        failure = selection.get("failure", {})
+
+        print(f"\n❌ Failure: {failure.get('name')}")
+        print(f"   Reason: {failure.get('reason')}")
+
+        # AI Analysis
+        if AI_ENABLED:
+            print(f"\n🤖 AI Analysis...")
+            ai_result = call_ai_analysis(failure)
+            last_ai_analysis = ai_result
+
+            if ai_result.get("success"):
+                print(f"   Root Cause: {ai_result.get('root_cause', 'N/A')}")
+                print(f"   Confidence: {ai_result.get('confidence', 0):.0%}")
+                print(f"\n   Suggestions:")
+                for s in ai_result.get("fix_suggestions", [])[:3]:
+                    print(f"   - {s}")
+            else:
+                print(f"   Analysis failed: {ai_result.get('error')}")
+
+        before_state = {
+            "passed": passed,
+            "total": total,
+            "passed_ratio": result["passed_ratio"],
+        }
+
+        # Save attempt
+        path = save_attempt_record(
+            selection,
+            last_ai_analysis or {},
+            before_state,
+            {"status": "iterating"},
+            iteration,
+        )
+        print(f"\n📄 Attempt saved: {path.name}")
+
+        print(f"\n⚠️  Please apply the fix and run: denis fix --auto")
+        print(f"   Or manually fix and commit, then DENIS will verify.")
+
+        return 1
+
+    print(f"\n❌ MAX ITERATIONS REACHED ({AI_MAX_ITERATIONS})")
+    print(f"   Manual intervention required!")
 
     return 1
 
@@ -323,6 +460,11 @@ def denis_status():
     print("=" * 60)
     print("📊 DENIS STATUS")
     print("=" * 60)
+
+    print(f"\nAI Configuration:")
+    print(f"   Enabled: {AI_ENABLED}")
+    print(f"   Provider: {AI_PROVIDER}")
+    print(f"   Max Iterations: {AI_MAX_ITERATIONS}")
 
     artifact = load_json(ARTIFACTS_DIR / "smoke_all.json", {})
     summary = artifact.get("summary", {})
@@ -348,13 +490,19 @@ def main():
     parser.add_argument(
         "--one", action="store_true", help="Fix exactly one (for fix command)"
     )
+    parser.add_argument(
+        "--auto", action="store_true", help="Auto-fix loop (iterate until 100% green)"
+    )
 
     args = parser.parse_args()
 
     if args.command == "doctor":
         return denis_doctor()
     elif args.command == "fix":
-        return denis_fix_one() if args.one else denis_fix_one()
+        if args.auto:
+            return denis_fix_auto()
+        else:
+            return denis_fix_one()
     elif args.command == "status":
         return denis_status()
 

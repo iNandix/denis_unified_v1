@@ -77,11 +77,13 @@ def run_smoke(name: str, config: Dict[str, Any]) -> Dict[str, Any]:
             cmd.extend(["--out-json", config["artifact"]])
         else:
             cmd.append(config["artifact"])
+        env = {"PYTHONPATH": ".", "DISABLE_OBSERVABILITY": "1", **os.environ}
         proc = subprocess.run(
             cmd,
             timeout=config["timeout"],
             capture_output=True,
             text=True,
+            env=env,
         )
 
         result["duration_ms"] = int((time.time() - start_time) * 1000)
