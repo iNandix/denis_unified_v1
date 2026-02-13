@@ -78,12 +78,13 @@ def test_graph_structure() -> Dict[str, Any]:
 
 
 async def test_cognitive_router() -> Dict[str, Any]:
-    """Verifica que Cognitive Router use el grafo metabongnitivo."""
+    """Verifica que Cognitive Router use el grafo metacognitivo."""
     # Añadir el directorio del proyecto al path
-    sys.path.append("/media/jotah/SSD_denis/home_jotah/denis_unified_v1")
+    import sys
+    sys.path.insert(0, "/media/jotah/SSD_denis/home_jotah")
 
     try:
-        from orchestration.cognitive_router import CognitiveRouter
+        from denis_unified_v1.orchestration.cognitive_router import CognitiveRouter
     except ImportError as e:
         return {
             "router_status": "error",

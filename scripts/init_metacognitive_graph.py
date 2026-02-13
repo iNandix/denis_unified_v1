@@ -209,10 +209,8 @@ def create_l2_principles(session):
         """,
             id=contract["id"],
             title=contract["title"],
-            rule=contract["description"],  # Se cambió de 'rule' a 'description'
-            severity=contract[
-                "severity"
-            ],  # Cambiado de 'violation_severity' a 'severity'
+            rule=contract["description"],
+            severity=contract["severity"],
             mutable=contract["mutable"],
         )
 
@@ -225,11 +223,11 @@ def create_governance_relations(session):
     """Crea relaciones de gobernanza L2→L1→L0."""
     print("Creando relaciones de gobernanza...")
 
-    # L2 (Principles) GOVERNS L1 (Patterns)
+    # L2 (Principles) GOVERNS L1 (Patterns) - usar IDs correctos
     governance_rules = [
-        ("L3.METACOGNITION.NEVER_BLOCK", "safety_gate_parallel"),
-        ("L3.METACOGNITION.SELF_REFLECTION_LATENCY", "phase1_parallel"),
-        ("L3.METACOGNITION.ONLY_OBSERVE_L0", "routing_fast_path"),
+        ("L3.META.NEVER_BLOCK", "safety_gate_parallel"),
+        ("L3.META.SELF_REFLECTION_LATENCY", "phase1_parallel"),
+        ("L3.META.ONLY_OBSERVE_L0", "routing_fast_path"),
     ]
 
     for principle_id, pattern_id in governance_rules:
@@ -309,6 +307,18 @@ def verify_structure(session):
     print("\n  Sample paths L2→L1→L0:")
     for record in sample:
         print(f"    {record['principle']} → {record['pattern']} → {record['tool']}")
+    
+    if not sample:
+        print("    (No hay paths L2→L1→L0 completos)")
+        # Mostrar paths parciales para debug
+        partial = session.run("""
+            MATCH (pr:Principle)-[:GOVERNS]->(pa:Pattern)
+            RETURN pr.id as principle, pa.id as pattern
+            LIMIT 3
+        """)
+        print("  Paths L2→L1 encontrados:")
+        for record in partial:
+            print(f"    {record['principle']} → {record['pattern']}")
 
 
 def main():
