@@ -3,11 +3,25 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def get_config():
+    return {
+        "mode": os.getenv("CONTROL_PLANE_MODE", "dev"),
+        "require_boot_import": os.getenv(
+            "CONTROL_PLANE_REQUIRE_BOOT_IMPORT", "true"
+        ).lower()
+        == "true",
+        "require_status": os.getenv("CONTROL_PLANE_REQUIRE_STATUS", "true").lower()
+        == "true",
+        "min_pass_ratio": float(os.getenv("CONTROL_PLANE_MIN_PASS_RATIO", "0.7")),
+    }
 
 
 SMOKE_SCRIPTS = {
@@ -128,13 +142,25 @@ def check_ok_coherence(artifacts: dict) -> dict:
 
 
 def evaluate_policy(results: dict, mode: str) -> dict:
+    config = get_config()
     policy = {
         "mode": mode,
+        "config": config,
         "checks": {},
         "releaseable": True,
         "blocked_by": [],
         "reasons": [],
     }
+
+    critical_checks = (
+        ["boot_import", "controlplane_status"]
+        if config["require_boot_import"] and config["require_status"]
+        else []
+    )
+    if config["require_boot_import"]:
+        critical_checks.append("boot_import")
+    if config["require_status"]:
+        critical_checks.append("controlplane_status")
 
     for name, data in results.items():
         if name in ["duplicates", "side_effects", "coherence"]:
@@ -156,7 +182,7 @@ def evaluate_policy(results: dict, mode: str) -> dict:
                 policy["blocked_by"].append(name)
                 policy["reasons"].append(f"{name}_failed")
         else:
-            if not smoke_ok and name in ["boot_import", "controlplane_status"]:
+            if not smoke_ok and name in critical_checks:
                 policy["releaseable"] = False
                 policy["blocked_by"].append(name)
                 policy["reasons"].append(f"{name}_failed_critical")

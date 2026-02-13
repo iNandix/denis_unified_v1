@@ -27,6 +27,8 @@ jobs:
       - name: Run Supervisor Gate (CI)
         env:
           PYTHONPATH: .
+          CONTROL_PLANE_MODE: ci
+          CI: true
         run: |
           python3 scripts/supervisor_gate.py --mode=ci
 
