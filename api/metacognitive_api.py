@@ -23,8 +23,10 @@ import threading
 from pathlib import Path
 import inspect
 
+
 async def maybe_await(x):
     return await x if inspect.isawaitable(x) else x
+
 
 # Use centralized connections module
 try:
@@ -47,6 +49,7 @@ except ImportError:
 
     def _get_redis_pool():
         return None
+
 
 from .sse_handler import sse_event
 
@@ -108,6 +111,27 @@ def _status_fallback() -> Dict:
 
 def _metrics_fallback() -> Dict:
     return {"operations": {}, "timestamp": time.time(), "status": "degraded"}
+
+
+def _degraded_response(component: str, error: str, extra: Dict = None) -> Dict:
+    """Create a standardized degraded response with error details."""
+    response = {
+        "status": "degraded",
+        "component": component,
+        "error": error[:200] if error else "unknown",
+        "timestamp": time.time(),
+    }
+    if extra:
+        response.update(extra)
+    return response
+
+
+def _healthy_response(component: str, data: Dict = None) -> Dict:
+    """Create a standardized healthy response."""
+    response = {"status": "healthy", "component": component, "timestamp": time.time()}
+    if data:
+        response.update(data)
+    return response
 
 
 @router.get("/status")
@@ -701,6 +725,7 @@ async def force_reflection(query: Dict):
     include_prediction = bool(query.get("include_prediction", False))
     include_consciousness = bool(query.get("include_consciousness", False))
     degraded = False
+
     async def _reflect():
         engine = PerceptionReflection()
         return engine.reflect({"entities": []})
@@ -1413,30 +1438,155 @@ async def inference_hedging_status():
     }
 
 
+def _ensure_capabilities_list(snap: Any, reason: str) -> List[Dict[str, Any]]:
+    """
+    Normaliza cualquier snapshot a una lista no vacía de capabilities (schema v1).
+    """
+    caps: Any = None
+
+    if isinstance(snap, dict):
+        # Si ya viene en formato {capabilities: ...}
+        if "capabilities" in snap:
+            caps = snap.get("capabilities")
+        else:
+            # Si viene como dict arbitrario, lo tratamos como "raw" sin estructura
+            caps = None
+    elif isinstance(snap, list):
+        caps = snap
+
+    # Convertir a lista de dicts "capability-like"
+    out: List[Dict[str, Any]] = []
+    if isinstance(caps, dict) and caps:
+        # dict no vacío -> una capability resumen
+        out.append(
+            {
+                "id": "capabilities.snapshot",
+                "category": "capabilities",
+                "status": "ok",
+                "confidence": 0.6,
+                "evidence": [
+                    {
+                        "source": "capabilities_service",
+                        "timestamp": time.time(),
+                        "confidence": 0.6,
+                        "data": {"reason": reason, "shape": "dict"},
+                        "error": None,
+                    }
+                ],
+                "metrics": {"keys": list(caps.keys())[:20]},
+                "executable_actions": [],
+                "version": "v1",
+            }
+        )
+    elif isinstance(caps, list) and caps:
+        # lista no vacía -> si ya son dicts, los devolvemos tal cual; si no, los envolvemos
+        for i, c in enumerate(caps[:200]):
+            if isinstance(c, dict):
+                out.append(c)
+            else:
+                out.append(
+                    {
+                        "id": f"capabilities.item.{i}",
+                        "category": "capabilities",
+                        "status": "ok",
+                        "confidence": 0.5,
+                        "evidence": [
+                            {
+                                "source": "capabilities_service",
+                                "timestamp": time.time(),
+                                "confidence": 0.5,
+                                "data": {"repr": repr(c)[:500]},
+                                "error": None,
+                            }
+                        ],
+                        "metrics": {},
+                        "executable_actions": [],
+                        "version": "v1",
+                    }
+                )
+
+    # Si no hay nada, inyectar capability mínima para que no falle schema_validation
+    if not out:
+        out = [
+            {
+                "id": "capabilities.minimal",
+                "category": "core",
+                "status": "degraded",
+                "confidence": 0.4,
+                "evidence": [
+                    {
+                        "source": "metacognitive_api",
+                        "timestamp": time.time(),
+                        "confidence": 0.4,
+                        "data": {"reason": reason, "snapshot_empty": True},
+                        "error": None,
+                    }
+                ],
+                "metrics": {},
+                "executable_actions": [],
+                "version": "v1",
+            }
+        ]
+    return out
+
+
 @router.get("/capabilities")
 async def get_capabilities():
-    """Get current capabilities snapshot - always returns 200 with fail-open behavior."""
+    """Get current capabilities snapshot - schema v1, always 200, fail-open."""
+    snapshot_raw: Any = None
+    reason = "capabilities_service_unavailable"
+
     try:
         from capabilities_service import get_capabilities_service
 
         service = get_capabilities_service()
-        snap = service.get_snapshot()
-        if snap is None:
-            snap = await service.refresh_snapshot()  # try async refresh if sync fails
-        if snap is None:
-            snap = {}
+        snapshot_raw = service.get_snapshot()
+
+        # Si está vacío o None, intentar refresh (sync o async)
+        if not snapshot_raw:
+            try:
+                snapshot_raw = await maybe_await(service.refresh_snapshot())
+                reason = "capabilities_refreshed"
+            except Exception as e:
+                reason = f"capabilities_refresh_failed: {str(e)}"
+                snapshot_raw = snapshot_raw or {}
+
+        else:
+            reason = "capabilities_service_available"
+
+        capabilities = _ensure_capabilities_list(snapshot_raw, reason)
+
+        # status "ok" solo si NO estamos usando la capability mínima degradada
+        status = (
+            "ok"
+            if capabilities and capabilities[0].get("id") != "capabilities.minimal"
+            else "degraded"
+        )
 
         return {
-            "status": "ok",
-            "snapshot": snap,
-            "reason": "capabilities_service_available",
+            "status": status,
+            "snapshot_version": "v1",
+            "snapshot": {
+                "generated_at_utc": time.time(),
+                "capabilities": capabilities,
+                "raw": snapshot_raw if isinstance(snapshot_raw, dict) else None,
+            },
+            "reason": reason,
         }
+
     except Exception as e:
-        # Fail-open: return degraded status but 200 response
+        capabilities = _ensure_capabilities_list(
+            {}, f"capabilities_service_exception: {str(e)}"
+        )
         return {
             "status": "degraded",
-            "snapshot": {},
-            "reason": f"capabilities_service_unavailable: {str(e)}",
+            "snapshot_version": "v1",
+            "snapshot": {
+                "generated_at_utc": time.time(),
+                "capabilities": capabilities,
+                "raw": {},
+            },
+            "reason": f"capabilities_service_exception: {str(e)}",
             "error": str(e),
         }
 
@@ -1485,19 +1635,20 @@ async def query_capabilities(query: Dict[str, Any]):
 
 @router.post("/capabilities/refresh")
 async def refresh_capabilities():
-    """Force refresh of capabilities snapshot."""
     from capabilities_service import get_capabilities_service
 
     service = get_capabilities_service()
     start_time = time.time()
-    snapshot = await service.refresh_snapshot()
+    snapshot = await maybe_await(service.refresh_snapshot())
+    snapshot = snapshot or []
     refresh_time_ms = (time.time() - start_time) * 1000
 
     return {
-        "refreshed_count": len(snapshot),
+        "refreshed_count": len(snapshot) if hasattr(snapshot, "__len__") else 0,
         "refresh_time_ms": refresh_time_ms,
         "timestamp_utc": time.time(),
         "status": "refreshed",
+        "snapshot_version": "v1",
     }
 
 

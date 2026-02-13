@@ -7,7 +7,7 @@
       "data: {\"status\":\"ok\"}",
       ""
     ],
-    "latency_ms": 2.2935867309570312,
+    "latency_ms": 1.7464160919189453,
     "ok": true,
     "sse_valid": true,
     "status_code": 200,
@@ -15,28 +15,515 @@
   },
   "capabilities_result": {
     "data": {
-      "reason": "capabilities_service_available",
-      "snapshot": {},
-      "status": "ok"
+      "reason": "capabilities_refreshed",
+      "snapshot": {
+        "capabilities": [
+          {
+            "category": "core",
+            "confidence": 0.4,
+            "evidence": [
+              {
+                "confidence": 0.4,
+                "data": {
+                  "reason": "capabilities_refreshed",
+                  "snapshot_empty": true
+                },
+                "error": null,
+                "source": "metacognitive_api",
+                "timestamp": 1771016883.116911
+              }
+            ],
+            "executable_actions": [],
+            "id": "capabilities.minimal",
+            "metrics": {},
+            "status": "degraded",
+            "version": "v1"
+          }
+        ],
+        "generated_at_utc": 1771016883.1169126,
+        "raw": {
+          "graph_database": {
+            "category": "backend_health",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "endpoint": "/graph/health"
+                },
+                "error": "All connection attempts failed",
+                "source": "backends",
+                "timestamp": 1771016882.7949383
+              }
+            ],
+            "executable_actions": [],
+            "id": "graph_database",
+            "last_seen_utc": 1771016882.7949424,
+            "metrics": {
+              "error": "All connection attempts failed"
+            },
+            "source_weights": {
+              "backends": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "graph_integration": {
+            "category": "graph_health",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {},
+                "error": "No graph data available",
+                "source": "graph",
+                "timestamp": 1771016883.1167467
+              }
+            ],
+            "executable_actions": [],
+            "id": "graph_integration",
+            "last_seen_utc": 1771016883.1167514,
+            "metrics": {},
+            "source_weights": {
+              "graph": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "inference_router": {
+            "category": "backend_health",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "endpoint": "/inference/status"
+                },
+                "error": "All connection attempts failed",
+                "source": "backends",
+                "timestamp": 1771016882.7496173
+              }
+            ],
+            "executable_actions": [],
+            "id": "inference_router",
+            "last_seen_utc": 1771016882.7496214,
+            "metrics": {
+              "error": "All connection attempts failed"
+            },
+            "source_weights": {
+              "backends": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "inference_worker": {
+            "category": "executable_workers",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "backend": "inference_router",
+                  "worker_id": "inference_worker"
+                },
+                "error": "No module named 'denis_unified_v1.inference'",
+                "source": "workers",
+                "timestamp": 1771016883.1167893
+              }
+            ],
+            "executable_actions": [],
+            "id": "inference_worker",
+            "last_seen_utc": 1771016883.116792,
+            "metrics": {},
+            "source_weights": {
+              "workers": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "memory_backend": {
+            "category": "backend_health",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "endpoint": "/memory/status"
+                },
+                "error": "All connection attempts failed",
+                "source": "backends",
+                "timestamp": 1771016882.727611
+              }
+            ],
+            "executable_actions": [],
+            "id": "memory_backend",
+            "last_seen_utc": 1771016882.7276156,
+            "metrics": {
+              "error": "All connection attempts failed"
+            },
+            "source_weights": {
+              "backends": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "memory_worker": {
+            "category": "executable_workers",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "backend": "memory_backend",
+                  "worker_id": "memory_worker"
+                },
+                "error": "No module named 'denis_unified_v1.memory'",
+                "source": "workers",
+                "timestamp": 1771016883.116831
+              }
+            ],
+            "executable_actions": [],
+            "id": "memory_worker",
+            "last_seen_utc": 1771016883.1168334,
+            "metrics": {},
+            "source_weights": {
+              "workers": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "metacognitive_api": {
+            "category": "backend_health",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "endpoint": "/metacognitive/status"
+                },
+                "error": "All connection attempts failed",
+                "source": "backends",
+                "timestamp": 1771016882.7030256
+              }
+            ],
+            "executable_actions": [],
+            "id": "metacognitive_api",
+            "last_seen_utc": 1771016882.703031,
+            "metrics": {
+              "error": "All connection attempts failed"
+            },
+            "source_weights": {
+              "backends": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase0_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase11_preflight.json"
+                },
+                "error": "Artifact phase11_preflight.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.5861611
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase0_integration",
+            "last_seen_utc": 1771016882.586166,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase10_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase10_self_model_smoke.json"
+                },
+                "error": "Artifact phase10_self_model_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.5862653
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase10_integration",
+            "last_seen_utc": 1771016882.58627,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase1_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "level3_metacognitive_smoke.json"
+                },
+                "error": "Artifact level3_metacognitive_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.5861845
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase1_integration",
+            "last_seen_utc": 1771016882.5861876,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase5_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase5_orchestration_smoke.json"
+                },
+                "error": "Artifact phase5_orchestration_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.5862017
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase5_integration",
+            "last_seen_utc": 1771016882.5862036,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase6_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase6_api_smoke.json"
+                },
+                "error": "Artifact phase6_api_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.586216
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase6_integration",
+            "last_seen_utc": 1771016882.5862176,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase7_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase7_inference_router_smoke.json"
+                },
+                "error": "Artifact phase7_inference_router_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.5862293
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase7_integration",
+            "last_seen_utc": 1771016882.5862308,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase8_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase8_voice_smoke.json"
+                },
+                "error": "Artifact phase8_voice_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.5862417
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase8_integration",
+            "last_seen_utc": 1771016882.5862434,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "phase9_integration": {
+            "category": "system_integration",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "missing_artifact": "phase9_memory_smoke.json"
+                },
+                "error": "Artifact phase9_memory_smoke.json not found",
+                "source": "artifacts",
+                "timestamp": 1771016882.586254
+              }
+            ],
+            "executable_actions": [],
+            "id": "phase9_integration",
+            "last_seen_utc": 1771016882.5862553,
+            "metrics": {},
+            "source_weights": {
+              "artifacts": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "tool_worker": {
+            "category": "executable_workers",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "backend": "tool_executor",
+                  "worker_id": "tool_worker"
+                },
+                "error": "No module named 'denis_unified_v1.orchestration'",
+                "source": "workers",
+                "timestamp": 1771016883.1168997
+              }
+            ],
+            "executable_actions": [],
+            "id": "tool_worker",
+            "last_seen_utc": 1771016883.1169019,
+            "metrics": {},
+            "source_weights": {
+              "workers": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "voice_pipeline": {
+            "category": "backend_health",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "endpoint": "/voice/health"
+                },
+                "error": "All connection attempts failed",
+                "source": "backends",
+                "timestamp": 1771016882.7735054
+              }
+            ],
+            "executable_actions": [],
+            "id": "voice_pipeline",
+            "last_seen_utc": 1771016882.7735097,
+            "metrics": {
+              "error": "All connection attempts failed"
+            },
+            "source_weights": {
+              "backends": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          },
+          "voice_worker": {
+            "category": "executable_workers",
+            "confidence": 0.0,
+            "depends_on": [],
+            "evidence": [
+              {
+                "confidence": 0.0,
+                "data": {
+                  "backend": "voice_pipeline",
+                  "worker_id": "voice_worker"
+                },
+                "error": "No module named 'denis_unified_v1.voice'",
+                "source": "workers",
+                "timestamp": 1771016883.1168597
+              }
+            ],
+            "executable_actions": [],
+            "id": "voice_worker",
+            "last_seen_utc": 1771016883.1168623,
+            "metrics": {},
+            "source_weights": {
+              "workers": 0.0
+            },
+            "status": "skipped",
+            "version": "v1"
+          }
+        }
+      },
+      "snapshot_version": "v1",
+      "status": "degraded"
     },
-    "latency_ms": 3.236055374145508,
+    "latency_ms": 535.1972579956055,
     "ok": true,
     "status_code": 200
   },
   "endpoint_status": "success",
   "ok": true,
-  "overall_success": false,
-  "port": 42539,
+  "overall_success": true,
+  "port": 54195,
   "router_mounted": true,
   "schema_validation": {
-    "capabilities_present": false,
+    "capabilities_present": true,
     "core_evidence": {},
-    "errors": [
-      "Expected snapshot_version 'v1', got 'None'",
-      "Capabilities array/dict is empty or missing"
-    ],
-    "schema_valid": false,
-    "snapshot_version_ok": false
+    "errors": [],
+    "schema_valid": true,
+    "snapshot_version_ok": true
   },
   "server_started": true,
   "status_endpoint_code": 200

@@ -212,7 +212,8 @@ def validate_capabilities_schema(data: dict) -> dict[str, Any]:
         result["errors"].append(f"Expected snapshot_version 'v1', got '{snapshot_version}'")
 
     # Check capabilities presence
-    capabilities = data.get("capabilities", [])
+    snapshot = data.get("snapshot", {})
+    capabilities = snapshot.get("capabilities", [])
     if isinstance(capabilities, list) and len(capabilities) > 0:
         result["capabilities_present"] = True
     elif isinstance(capabilities, dict) and len(capabilities) > 0:
@@ -428,6 +429,10 @@ def main() -> int:
 
     print("Running self-hosted capabilities smoke test...")
     result = run_self_hosted_smoke(port=args.port)
+
+    # Set ok to overall_success for proper exit code
+    if "overall_success" in result:
+        result["ok"] = result["overall_success"]
 
     # Write artifact
     out_path = Path(args.out_json)
