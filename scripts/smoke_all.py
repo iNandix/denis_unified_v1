@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple
 
 tests = [
     ("Streaming SSE", "smoke_streaming.py"),
-    ("API Metacognitiva", "smoke_metacognitive_api.py"),
+    ("API Metacognitiva", "phase6_metacognitive_api_smoke.py"),
     ("Autopoiesis", "smoke_autopoiesis.py"),
 ]
 
@@ -53,14 +53,20 @@ def detect_status(output: Dict[str, Any]) -> str:
     
     Casos:
     1. {"status": "pass", ...} → directo
-    2. {"/endpoint": {"status": "pass"}, ...} → todos los sub-tests pass
-    3. {"cycle": {...}, "proposals": {...}} → verificar campos específicos
+    2. {"ok": true/false, ...} → ok field
+    3. {"/endpoint": {"status": "pass"}, ...} → todos los sub-tests pass
+    4. {"cycle": {...}, "proposals": {...}} → verificar campos específicos
+    5. {"status_check": {...}, "sse_check": {...}, "capabilities_check": {...}} → unified metacognitive
     """
     # Caso 1: status directo
     if "status" in output:
         return output["status"]
     
-    # Caso 2: múltiples endpoints (API Metacognitiva)
+    # Caso 2: ok field directo
+    if "ok" in output:
+        return "pass" if output["ok"] else "error"
+    
+    # Caso 3: múltiples endpoints (API Metacognitiva antigua)
     if all(isinstance(v, dict) for v in output.values()):
         sub_statuses = [v.get("status") for v in output.values() if "status" in v]
         if sub_statuses and all(s == "pass" for s in sub_statuses):
@@ -68,11 +74,20 @@ def detect_status(output: Dict[str, Any]) -> str:
         if any(s == "error" for s in sub_statuses):
             return "error"
     
-    # Caso 3: estructura específica (Autopoiesis)
+    # Caso 4: estructura específica (Autopoiesis)
     if "cycle" in output and "proposals" in output:
         cycle_status = output.get("cycle", {}).get("status")
         if cycle_status in ["awaiting_approval", "pass"]:
             return "pass"
+    
+    # Caso 5: unified metacognitive API smoke
+    if "status_check" in output and "sse_check" in output and "capabilities_check" in output:
+        checks = [output["status_check"], output["sse_check"], output["capabilities_check"]]
+        check_oks = [check.get("ok", False) for check in checks if isinstance(check, dict)]
+        if check_oks and all(check_oks):
+            return "pass"
+        elif check_oks and any(not ok for ok in check_oks):
+            return "error"  # Some checks failed
     
     return "unknown"
 
