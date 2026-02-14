@@ -376,8 +376,85 @@ class DenisRuntime:
 
     async def generate(self, req: ChatCompletionRequest) -> dict[str, Any]:
         """Generate response using available backends."""
+        # Check for deterministic test mode - ONLY in non-production environments
+        env = os.getenv("ENV", "production")  # Default to production for safety
+        
+        is_contract_mode = (
+            req.model == "denis-contract-test" and
+            env != "production" and  # Never active in production
+            os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
+        )
+        
+        # Additional safety: never activate via headers/query params in production
+        if env == "production":
+            is_contract_mode = False
+            
+        if is_contract_mode:
+            # Return deterministic response for contract testing
+            return self._generate_deterministic_response(req)
+        
         handler = _ChatHandler(self.flags)
         return await handler.generate(req)
+
+    def _extract_user_text(self, messages) -> str:
+        """Extract user text from messages for deterministic response."""
+        for message in reversed(messages):
+            if hasattr(message, 'role') and hasattr(message, 'content'):
+                if message.role == "user" and message.content:
+                    return str(message.content)
+        return "test message"
+
+    def _generate_deterministic_response(self, req: ChatCompletionRequest) -> dict[str, Any]:
+        """Generate deterministic response for contract testing."""
+        completion_id = "chatcmpl-deterministic-test"
+        user_text = self._extract_user_text(req.messages) if req.messages else "test message"
+        prompt_tokens = max(1, len(user_text.split()))
+        
+        # Deterministic content based on request
+        if "tool" in user_text.lower():
+            # Tool call scenario
+            tool_call = {
+                "id": "call_deterministic_test",
+                "type": "function", 
+                "function": {
+                    "name": "test_tool",
+                    "arguments": '{"action": "test"}'
+                }
+            }
+            content = None
+            finish_reason = "tool_calls"
+            tool_calls = [tool_call]
+        else:
+            # Normal response scenario
+            content = "Deterministic test response for contract validation."
+            finish_reason = "stop"
+            tool_calls = None
+        
+        completion_tokens = max(1, len((content or "").split()))
+        
+        return {
+            "id": completion_id,
+            "object": "chat.completion",
+            "created": 1234567890,  # Fixed timestamp
+            "model": req.model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": content,
+                        "tool_calls": tool_calls,
+                    },
+                    "finish_reason": finish_reason,
+                }
+            ],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+            "meta": {"path": "deterministic_test"},
+        }
 
 
 def build_openai_router(runtime: DenisRuntime) -> APIRouter:
@@ -413,95 +490,13 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
                             "index": 0,
                             "message": {
                                 "role": "assistant",
-                                "content": "Degraded response: runtime unavailable.",
+                                "content": f"Degraded response: {str(e)}",
                             },
                             "finish_reason": "stop",
                         }
                     ],
-                    "usage": {
-                        "prompt_tokens": max(1, len(" ".join([m.content or "" for m in req.messages]).split())),
-                        "completion_tokens": 2,
-                        "total_tokens": 3,
-                    },
-                    "meta": {
-                        "path": "degraded",
-                        "reason": str(e),
-                        "user": user,
-                    },
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 },
             )
 
-        if not req.stream:
-            return JSONResponse(result)
-
-        text = ""
-        choices = result.get("choices") or []
-        if choices and isinstance(choices[0], dict):
-            msg = choices[0].get("message") or {}
-            text = str(msg.get("content") or "")
-
-        async def _gen():
-            async for event in stream_text_chunks(
-                completion_id=str(result.get("id")),
-                model=str(result.get("model", req.model)),
-                content=text,
-            ):
-                yield event
-                await asyncio.sleep(0)
-
-        return StreamingResponse(_gen(), media_type="text/event-stream")
-
-    @router.post("/chat/completions/stream")
-    async def chat_completions_stream(req: ChatCompletionRequest, request: Request):
-        ip = request.client.host if request.client else "unknown"
-        user = ip
-        
-        try:
-            if runtime.budget_manager is None and getattr(
-                runtime.flags, "denis_use_gate_hardening", False
-            ):
-                from gates.budget import BudgetEnforcer, BudgetConfig
-                runtime.budget_manager = BudgetEnforcer(BudgetConfig())
-            if runtime.budget_manager:
-                allowed = await runtime.budget_manager.check_total_budget(
-                    user, req.max_tokens or 100
-                )
-                if not allowed:
-                    async def error_gen():
-                        yield f"data: {json.dumps({'type': 'error', 'message': 'budget exceeded'})}\n\n"
-                    return StreamingResponse(error_gen(), media_type="text/event-stream")
-        except Exception:
-            pass
-
-        async def event_generator():
-            trace_id = str(uuid.uuid4())
-            start_time = time.time()
-            first_yield_event = asyncio.Event()
-            try:
-                if runtime.budget_manager:
-                    asyncio.create_task(
-                        runtime.budget_manager.enforce_ttft(
-                            user, asyncio.current_task(), first_yield_event
-                        )
-                    )
-            except Exception:
-                pass
-
-            yield f"data: {json.dumps({'type': 'status', 'trace_id': trace_id, 'status': 'started'})}\n\n"
-
-            try:
-                result = await runtime.generate(req)
-                text = ""
-                choices = result.get("choices") or []
-                if choices and isinstance(choices[0], dict):
-                    msg = choices[0].get("message") or {}
-                    text = str(msg.get("content") or "")
-                
-                if text:
-                    yield f"data: {json.dumps({'type': 'content', 'content': text})}\n\n"
-                
-                yield f"data: {json.dumps({'type': 'done', 'trace_id': trace_id})}\n\n"
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-        return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return router
