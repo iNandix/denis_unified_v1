@@ -32,6 +32,7 @@ from denis_unified_v1.kernel.scheduler import InferencePlan
 from denis_unified_v1.kernel.engine_registry import get_engine_registry
 from denis_unified_v1.kernel.internet_health import get_internet_health
 from denis_unified_v1.inference.legacy_core_client import LegacyCoreClient
+from denis_unified_v1.inference.llamacpp_client import LlamaCppClient
 from denis_unified_v1.inference.vllm_client import VLLMClient
 from denis_unified_v1.inference.groq_client import GroqClient
 from denis_unified_v1.inference.openrouter_client import OpenRouterClient
@@ -209,14 +210,12 @@ class InferenceRouter:
         ]
         self.max_fallback_attempts = int(os.getenv("DENIS_ROUTER_MAX_ATTEMPTS", "3"))
         self.clients: dict[str, ProviderClient] = {
-            "llamacpp": LegacyCoreClient(),
+            # llamacpp clients are instantiated per-engine with correct endpoint
             "vllm": VLLMClient(),
             "groq": GroqClient(),
             "openrouter": OpenRouterClient(),
+            "legacy_core": LegacyCoreClient(),
         }
-
-        # Temporal alias for migration
-        self.clients["legacy_core"] = self.clients["llamacpp"]
 
         # Deep-copy so test mutations don't leak back into the global singleton
         self.engine_registry = {
@@ -231,24 +230,22 @@ class InferenceRouter:
 
             # Create client instance with engine-specific endpoint
             if pk == "llamacpp":
-                client = LegacyCoreClient()
-                client.endpoint = endpoint  # Override endpoint
-                e["client"] = client
+                e["client"] = LlamaCppClient(endpoint)
             elif pk == "groq" and endpoint:
-                client = self.clients.get("groq")
-                e["client"] = client
+                e["client"] = self.clients.get("groq")
             elif pk == "openrouter" and endpoint:
-                client = self.clients.get("openrouter")
-                e["client"] = client
+                e["client"] = self.clients.get("openrouter")
             elif pk in self.clients:
                 e["client"] = self.clients[pk]
 
-        # Validate
-        missing = [
-            eid
-            for eid, e in self.engine_registry.items()
-            if e.get("provider_key", e.get("provider", "unknown")) not in self.clients
-        ]
+        # Validate - skip llamacpp since it's per-engine
+        missing = []
+        for eid, e in self.engine_registry.items():
+            pk = e.get("provider_key", e.get("provider", "unknown"))
+            if pk == "llamacpp":
+                continue  # Per-engine instantiation
+            if pk not in self.clients:
+                missing.append(eid)
         if missing:
             raise RuntimeError(
                 f"Unknown provider_key in engine_registry for engines: {missing}"
