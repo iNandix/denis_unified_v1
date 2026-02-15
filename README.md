@@ -4,32 +4,39 @@ This scaffold initializes a safe Phase-0 baseline without touching legacy runtim
 
 ## Master tracking
 - Refactor phased plan + TODO board:
-  - `/home/jotah/denis_unified_v1/REFRACTOR_PHASED_TODO.md`
+  - `REFRACTOR_PHASED_TODO.md`
 - Daily operational checklist:
-  - `/home/jotah/denis_unified_v1/DAILY_TODO.md`
+  - `DAILY_TODO.md`
 - Dual-agent sync protocol + shared log:
-  - `/home/jotah/denis_unified_v1/DUAL_AGENT_SYNC.md`
-  - `/home/jotah/denis_unified_v1/DUAL_AGENT_LOG.md`
+  - `DUAL_AGENT_SYNC.md`
+  - `DUAL_AGENT_LOG.md`
 
 ## What is included
 - `feature_flags.py`: single source of defaults for Phase-0 flags.
 - `scripts/unified_v1_baseline_check.py`: captures ports, `/health` endpoints, and writes:
-  - `denis_unified_v1/DENIS_BASELINE.md`
-  - `denis_unified_v1/baseline_report.json`
+  - `DENIS_BASELINE.md`
+  - `baseline_report.json`
 - `.env.phase0.example`: reference values for incremental rollout.
 
 ## Run
 ```bash
-cd /media/jotah/SSD_denis/home_jotah
+# Clone and setup
+git clone https://github.com/iNandix/denis_unified_v1.git
+cd denis_unified_v1
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run baseline check
 python3 -m denis_unified_v1.feature_flags
-python3 denis_unified_v1/scripts/unified_v1_baseline_check.py
+python3 scripts/unified_v1_baseline_check.py
 ```
 
 ## Phase-1 (Neo4j Quantum Augmentation)
 Dry-run (safe):
 ```bash
-python3 denis_unified_v1/scripts/phase1_quantum_augment.py \
-  --out-json denis_unified_v1/phase1_augment_dry_run.json
+python3 scripts/phase1_quantum_augment.py \
+  --out-json phase1_augment_dry_run.json
 ```
 
 Execute writes (requires `NEO4J_PASSWORD`):
@@ -37,41 +44,41 @@ Execute writes (requires `NEO4J_PASSWORD`):
 export NEO4J_URI=bolt://10.10.10.1:7687
 export NEO4J_USER=neo4j
 export NEO4J_PASSWORD='***'
-python3 denis_unified_v1/scripts/phase1_quantum_augment.py \
+python3 scripts/phase1_quantum_augment.py \
   --execute \
-  --out-json denis_unified_v1/phase1_augment_execute.json
+  --out-json phase1_augment_execute.json
 ```
 
 Rollback dry-run:
 ```bash
-python3 denis_unified_v1/scripts/phase1_quantum_rollback.py \
-  --out-json denis_unified_v1/phase1_rollback_dry_run.json
+python3 scripts/phase1_quantum_rollback.py \
+  --out-json phase1_rollback_dry_run.json
 ```
 
 Rollback execute:
 ```bash
-python3 denis_unified_v1/scripts/phase1_quantum_rollback.py \
+python3 scripts/phase1_quantum_rollback.py \
   --execute \
-  --out-json denis_unified_v1/phase1_rollback_execute.json
+  --out-json phase1_rollback_execute.json
 ```
 
 ## Phase-2 (Cortex Wrappers)
 Dry-run smoke:
 ```bash
-python3 denis_unified_v1/scripts/phase2_cortex_smoke.py \
-  --out-json denis_unified_v1/phase2_cortex_smoke.json
+python3 scripts/phase2_cortex_smoke.py \
+  --out-json phase2_cortex_smoke.json
 ```
 
 Execute smoke (real perceive calls):
 ```bash
-python3 denis_unified_v1/scripts/phase2_cortex_smoke.py \
+python3 scripts/phase2_cortex_smoke.py \
   --execute \
   --out-json denis_unified_v1/phase2_cortex_smoke_execute.json
 ```
 
 Run polling daemon (5s, HASS + infra + tailscale refresh):
 ```bash
-python3 denis_unified_v1/scripts/cortex_polling_daemon.py \
+python3 scripts/cortex_polling_daemon.py \
   --poll-interval 5 \
   --redis-url redis://localhost:6379/0
 ```
@@ -79,20 +86,20 @@ python3 denis_unified_v1/scripts/cortex_polling_daemon.py \
 Phase-2 rollback:
 ```bash
 rm -rf denis_unified_v1/cortex
-rm -f denis_unified_v1/scripts/phase2_cortex_smoke.py
-rm -f denis_unified_v1/scripts/cortex_polling_daemon.py
+rm -f scripts/phase2_cortex_smoke.py
+rm -f scripts/cortex_polling_daemon.py
 ```
 
 ## Phase-3 (Metagraph Passive)
 Snapshot (read-only graph analysis):
 ```bash
-python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
+python3 scripts/phase3_metagraph_snapshot.py \
   --out-json denis_unified_v1/phase3_metagraph_snapshot.json
 ```
 
 Snapshot + Redis persistence:
 ```bash
-python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
+python3 scripts/phase3_metagraph_snapshot.py \
   --persist-redis \
   --out-json denis_unified_v1/phase3_metagraph_snapshot.json
 ```
@@ -100,7 +107,7 @@ python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
 If auto Neo4j config cannot resolve credentials, run with explicit env:
 ```bash
 NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
-python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
+python3 scripts/phase3_metagraph_snapshot.py \
   --persist-redis \
   --out-json denis_unified_v1/phase3_metagraph_snapshot.json
 ```
@@ -108,20 +115,20 @@ python3 denis_unified_v1/scripts/phase3_metagraph_snapshot.py \
 Phase-3 rollback:
 ```bash
 rm -rf denis_unified_v1/metagraph
-rm -f denis_unified_v1/scripts/phase3_metagraph_snapshot.py
+rm -f scripts/phase3_metagraph_snapshot.py
 ```
 
 ## Phase-4 (Autopoiesis Supervised)
 Generate proposals + Redis persistence:
 ```bash
-python3 denis_unified_v1/scripts/phase4_autopoiesis_smoke.py \
+python3 scripts/phase4_autopoiesis_smoke.py \
   --out-json denis_unified_v1/phase4_autopoiesis_smoke.json
 ```
 
 Generate + approve first proposal (sandbox rollback, no auto-apply):
 ```bash
 NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
-python3 denis_unified_v1/scripts/phase4_autopoiesis_smoke.py \
+python3 scripts/phase4_autopoiesis_smoke.py \
   --approve-first \
   --out-json denis_unified_v1/phase4_autopoiesis_smoke.json
 ```
@@ -129,27 +136,27 @@ python3 denis_unified_v1/scripts/phase4_autopoiesis_smoke.py \
 Phase-4 rollback:
 ```bash
 rm -rf denis_unified_v1/autopoiesis
-rm -f denis_unified_v1/scripts/phase4_autopoiesis_smoke.py
+rm -f scripts/phase4_autopoiesis_smoke.py
 ```
 
 ## Phase-5 (Orchestration Augmentation)
 Run orchestration smoke (cortex + legacy fallback + circuit breaker):
 ```bash
 NEO4J_URI='bolt://10.10.10.1:7687' NEO4J_USER='neo4j' NEO4J_PASSWORD='***' \
-python3 denis_unified_v1/scripts/phase5_orchestration_smoke.py \
+python3 scripts/phase5_orchestration_smoke.py \
   --out-json denis_unified_v1/phase5_orchestration_smoke.json
 ```
 
 Phase-5 rollback:
 ```bash
 rm -rf denis_unified_v1/orchestration
-rm -f denis_unified_v1/scripts/phase5_orchestration_smoke.py
+rm -f scripts/phase5_orchestration_smoke.py
 ```
 
 ## Phase-6 (API Unified Incremental)
 Run API smoke (health + models + chat + tools + stream + websocket route):
 ```bash
-python3 denis_unified_v1/scripts/phase6_api_smoke.py \
+python3 scripts/phase6_api_smoke.py \
   --out-json denis_unified_v1/phase6_api_smoke.json
 ```
 
@@ -169,13 +176,13 @@ uvicorn denis_unified_v1.api.fastapi_server:app --host 0.0.0.0 --port 8001 --wor
 Phase-6 rollback:
 ```bash
 rm -rf denis_unified_v1/api
-rm -f denis_unified_v1/scripts/phase6_api_smoke.py
+rm -f scripts/phase6_api_smoke.py
 ```
 
 ## Phase-7 (Inference Router)
 Run inference router smoke (provider scoring + fallback + metrics):
 ```bash
-python3 denis_unified_v1/scripts/phase7_inference_smoke.py \
+python3 scripts/phase7_inference_smoke.py \
   --out-json denis_unified_v1/phase7_inference_smoke.json
 ```
 
@@ -188,13 +195,13 @@ uvicorn denis_unified_v1.api.fastapi_server:app --host 0.0.0.0 --port 8001 --wor
 Phase-7 rollback:
 ```bash
 rm -rf denis_unified_v1/inference
-rm -f denis_unified_v1/scripts/phase7_inference_smoke.py
+rm -f scripts/phase7_inference_smoke.py
 ```
 
 ## Phase-8 (Voice Pipeline Incremental)
 Run voice pipeline smoke (STT -> chat -> TTS + websocket streaming):
 ```bash
-python3 denis_unified_v1/scripts/phase8_voice_smoke.py \
+python3 scripts/phase8_voice_smoke.py \
   --out-json denis_unified_v1/phase8_voice_smoke.json
 ```
 
@@ -213,13 +220,13 @@ Phase-8 rollback:
 ```bash
 rm -rf denis_unified_v1/voice
 rm -f denis_unified_v1/api/voice_handler.py
-rm -f denis_unified_v1/scripts/phase8_voice_smoke.py
+rm -f scripts/phase8_voice_smoke.py
 ```
 
 ## Phase-9 (Unified Memory + Neuroplastic Contracts)
 Run memory smoke (episodic/semantic/procedural/working + neuro/atlas bridge):
 ```bash
-python3 denis_unified_v1/scripts/phase9_memory_smoke.py \
+python3 scripts/phase9_memory_smoke.py \
   --out-json denis_unified_v1/phase9_memory_smoke.json
 ```
 
@@ -253,20 +260,20 @@ Phase-9 rollback:
 ```bash
 rm -rf denis_unified_v1/memory
 rm -f denis_unified_v1/api/memory_handler.py
-rm -f denis_unified_v1/scripts/phase9_memory_smoke.py
+rm -f scripts/phase9_memory_smoke.py
 ```
 
 ## Phase-10 (Gate Hardening Real Tooling)
 Run gate pentest against real sandbox tooling (`py_compile`, `ruff`, `mypy`, `pytest`, `bandit`):
 ```bash
-python3 denis_unified_v1/scripts/phase4_gate_pentest.py \
+python3 scripts/phase4_gate_pentest.py \
   --out-json denis_unified_v1/phase10_gate_pentest.json
 ```
 
 Optional explicit sandbox interpreter:
 ```bash
 DENIS_SELF_EXTENSION_SANDBOX_PYTHON=/tmp/denis_gate_venv/bin/python \
-python3 denis_unified_v1/scripts/phase4_gate_pentest.py \
+python3 scripts/phase4_gate_pentest.py \
   --out-json denis_unified_v1/phase10_gate_pentest.json
 ```
 
@@ -301,17 +308,17 @@ rm -rf /media/jotah/SSD_denis/home_jotah/denis_unified_v1
 
 Run provider status (real tools only):
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py providers
+python3 scripts/sprintctl.py providers
 ```
 
 Generate provider load template:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py providers-template --out denis_unified_v1/.env.sprint.providers.example
+python3 scripts/sprintctl.py providers-template --out denis_unified_v1/.env.sprint.providers.example
 ```
 
 Start interactive sprint session (1..4 workers):
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py start --interactive --watch
+python3 scripts/sprintctl.py start --interactive --watch
 ```
 
 Commands in interactive mode:
@@ -336,7 +343,7 @@ Commands in interactive mode:
 
 Generate phased plan from proposal markdown:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py propose \
+python3 scripts/sprintctl.py propose \
   --file denis_unified_v1/REFRACTOR_PHASED_TODO.md \
   --autodispatch
 ```
@@ -348,7 +355,7 @@ make -C denis_unified_v1 phase11-smoke
 
 Start sprint with automatic worker dispatch:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py start \
+python3 scripts/sprintctl.py start \
   --prompt "Sprint A/B kickoff real" \
   --workers 2 \
   --autodispatch
@@ -356,38 +363,38 @@ python3 denis_unified_v1/scripts/sprintctl.py start \
 
 Re-run auto dispatch on an existing session:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py autodispatch <session_id>
+python3 scripts/sprintctl.py autodispatch <session_id>
 ```
 
 Live monitor (phases + chat):
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py monitor <session_id> --follow
+python3 scripts/sprintctl.py monitor <session_id> --follow
 ```
 
 Unified manager view:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py manager <session_id> --follow
+python3 scripts/sprintctl.py manager <session_id> --follow
 ```
 Manager hotkeys: `j/k` commit, `h/l` project, `w/t` filters, `d` detail, `f` scope, `q` quit.
 
 Commit tree management view:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py commit-tree --session-id <session_id> --max-commits 40
+python3 scripts/sprintctl.py commit-tree --session-id <session_id> --max-commits 40
 ```
 
 Guide panel:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py guide
+python3 scripts/sprintctl.py guide
 ```
 
 Audit logs:
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py logs --session-id <session_id> --follow
+python3 scripts/sprintctl.py logs --session-id <session_id> --follow
 ```
 
 NOC live (dashboard + stream en una pantalla):
 ```bash
-python3 denis_unified_v1/scripts/sprintctl.py noc <session_id> --worker worker-1 --kind worker.dispatch
+python3 scripts/sprintctl.py noc <session_id> --worker worker-1 --kind worker.dispatch
 ```
 
 Notes:
