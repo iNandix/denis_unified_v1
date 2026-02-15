@@ -1,16 +1,12 @@
 {
-  "ok": true,
-  "reason": null,
-  "server_boot": true,
-  "controlplane_endpoint": true,
-  "schema_valid": true,
-  "releaseable": false,
-  "degraded_count": 3,
-  "top_reasons": [
-    "noop_shim_active",
-    "noop_shim_active",
-    "noop_shim_active"
-  ],
-  "timestamp_utc": 1771022839.169374,
-  "overall_success": true
+  "ok": false,
+  "reason": "Server failed to start",
+  "server_boot": false,
+  "controlplane_endpoint": false,
+  "schema_valid": false,
+  "releaseable": null,
+  "degraded_count": 0,
+  "top_reasons": [],
+  "timestamp_utc": 1771166787.6385424,
+  "overall_success": false
 }

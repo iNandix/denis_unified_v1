@@ -1,41 +1,9 @@
 {
-  "ok": true,
-  "reason": null,
-  "router_boot": true,
-  "models_endpoint": true,
-  "chat_endpoint": true,
-  "timestamp_utc": 1771023168.1688123,
-  "overall_success": true,
-  "models_status_code": 200,
-  "models_body": {
-    "object": "list",
-    "data": [
-      {
-        "id": "denis-cognitive",
-        "object": "model"
-      }
-    ]
-  },
-  "chat_status_code": 200,
-  "chat_body": {
-    "id": "chatcmpl-d76be6caaa914199",
-    "object": "chat.completion",
-    "created": 1771023168,
-    "model": "denis-cognitive",
-    "choices": [
-      {
-        "index": 0,
-        "message": {
-          "role": "assistant",
-          "content": "Degraded runtime response."
-        },
-        "finish_reason": "stop"
-      }
-    ],
-    "usage": {
-      "prompt_tokens": 1,
-      "completion_tokens": 1,
-      "total_tokens": 2
-    }
-  }
+  "ok": false,
+  "reason": "Server failed to start",
+  "router_boot": false,
+  "models_endpoint": false,
+  "chat_endpoint": false,
+  "timestamp_utc": 1771166799.9534023,
+  "overall_success": false
 }

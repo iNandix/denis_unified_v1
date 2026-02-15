@@ -1,10 +1,10 @@
 {
-  "ok": true,
-  "reason": null,
+  "ok": false,
+  "reason": "status endpoint not reachable after 3s",
   "boot_import": true,
   "create_app": true,
-  "uvicorn_start": true,
-  "status_endpoint": true,
-  "timestamp_utc": 1771023165.4511702,
-  "overall_success": true
+  "uvicorn_start": false,
+  "status_endpoint": false,
+  "timestamp_utc": 1771166790.8139246,
+  "overall_success": false
 }

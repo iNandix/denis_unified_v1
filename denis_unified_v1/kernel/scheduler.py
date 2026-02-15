@@ -197,7 +197,7 @@ class ModelScheduler:
                 endpoint=engine_info.get("endpoint", ""),
                 max_context=engine_info.get("max_context", 4096),
                 max_output=2048,
-                priority=10,
+                priority=engine_info.get("priority", 50),  # Read from registry
                 cost_per_1k_tokens=engine_info.get("cost_factor", 0.001),
                 tags=engine_info.get("tags", []),
             )

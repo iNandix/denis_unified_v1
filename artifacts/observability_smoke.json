@@ -1,10 +1,10 @@
 {
-  "ok": true,
-  "reason": null,
-  "server_boot": true,
-  "observability_endpoint": true,
-  "tracing_enabled": false,
-  "metrics_enabled": false,
-  "timestamp_utc": 1771023169.0983815,
-  "overall_success": true
+  "ok": false,
+  "reason": "Server failed to start",
+  "server_boot": false,
+  "observability_endpoint": false,
+  "tracing_enabled": null,
+  "metrics_enabled": null,
+  "timestamp_utc": 1771166803.0845354,
+  "overall_success": false
 }

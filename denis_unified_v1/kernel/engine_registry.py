@@ -19,7 +19,7 @@ _PROVIDER_KEY_MAP = {
 def _build_static_registry() -> dict[str, dict]:
     """Build the static engine registry (canonical source)."""
     return {
-        # Local llama.cpp engines (node2)
+        # Local llama.cpp engines (node2) - sorted by priority (lower = better)
         "llamacpp_node2_1": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
@@ -28,6 +28,7 @@ def _build_static_registry() -> dict[str, dict]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
+            "priority": 10,  # Lower = better
             "tags": ["local", "node2", "fast"],
         },
         "llamacpp_node2_2": {
@@ -38,9 +39,10 @@ def _build_static_registry() -> dict[str, dict]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
+            "priority": 20,
             "tags": ["local", "node2"],
         },
-        # Groq boosters
+        # Groq boosters - higher priority number = fallback
         "groq_1": {
             "provider_key": "groq",
             "provider": "groq",
@@ -49,6 +51,7 @@ def _build_static_registry() -> dict[str, dict]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.05,
             "max_context": 128000,
+            "priority": 5,  # Lower = better (fast)
             "tags": ["booster", "internet_required", "fast"],
         },
     }
