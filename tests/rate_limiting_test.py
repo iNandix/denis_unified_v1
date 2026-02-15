@@ -1,6 +1,7 @@
 """
 Tests for Rate Limiting Module.
 """
+
 import asyncio
 import time
 import pytest
@@ -10,7 +11,7 @@ from denis_unified_v1.rate_limiting import RateLimiter
 
 
 @pytest.fixture
-async def mock_redis():
+def mock_redis():
     """Mock Redis client."""
     mock_client = AsyncMock()
     mock_client.ping.return_value = None
@@ -28,7 +29,9 @@ async def test_rate_limiter_redis_allowed(mock_redis):
 
     allowed = await limiter.is_allowed("client1")
     assert allowed is True
-    mock_redis.evalsha.assert_called_once_with("sha1_script", keys=["rate_limit:client1"], args=[10, 60])
+    mock_redis.evalsha.assert_called_once_with(
+        "sha1_script", keys=["rate_limit:client1"], args=[10, 60]
+    )
 
 
 @pytest.mark.asyncio
@@ -70,7 +73,9 @@ async def test_rate_limiter_fallback_ttl():
 @pytest.mark.asyncio
 async def test_initialize_success(mock_redis):
     """Test initialize with Redis success."""
-    with patch('denis_unified_v1.rate_limiting.redis.from_url', return_value=mock_redis):
+    with patch(
+        "denis_unified_v1.rate_limiting.redis.from_url", return_value=mock_redis
+    ):
         limiter = RateLimiter()
         await limiter.initialize()
         assert limiter.redis_client is mock_redis
@@ -80,7 +85,10 @@ async def test_initialize_success(mock_redis):
 @pytest.mark.asyncio
 async def test_initialize_failure():
     """Test initialize with Redis failure."""
-    with patch('denis_unified_v1.rate_limiting.redis.from_url', side_effect=Exception("Connection failed")):
+    with patch(
+        "denis_unified_v1.rate_limiting.redis.from_url",
+        side_effect=Exception("Connection failed"),
+    ):
         limiter = RateLimiter()
         await limiter.initialize()
         assert limiter.redis_client is None
