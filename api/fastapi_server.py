@@ -767,6 +767,39 @@ def create_app() -> FastAPI:
             },
         }
 
+    @app.get("/gps")
+    async def get_gps_location():
+        import requests
+        from fastapi import HTTPException
+
+        hass_url = os.getenv("HASS_URL")
+        hass_token = os.getenv("HASS_TOKEN")
+        device_id = os.getenv("HASS_DEVICE_ID", "person.jotah")
+
+        if not hass_url or not hass_token:
+            raise HTTPException(status_code=500, detail="Hass config missing")
+
+        url = f"{hass_url}/api/states/device_tracker.{device_id}"
+        headers = {
+            "Authorization": f"Bearer {hass_token}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            lat = data.get("attributes", {}).get("latitude")
+            lng = data.get("attributes", {}).get("longitude")
+            if lat is not None and lng is not None:
+                return {"latitude": lat, "longitude": lng}
+            else:
+                raise HTTPException(status_code=404, detail="Location not available")
+        except requests.RequestException as e:
+            raise HTTPException(
+                status_code=500, detail=f"Hass request failed: {str(e)}"
+            )
+
     return app
 
 
