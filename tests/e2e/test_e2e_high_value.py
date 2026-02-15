@@ -15,8 +15,8 @@ import httpx
 from typing import Dict, Any
 
 # Import the components we need to test
-# Skip all E2E tests - require full server runtime
-pytestmark = pytest.mark.skip(reason="Requires full server runtime")
+# Skip all E2E tests - require full server with auth
+pytestmark = pytest.mark.skip(reason="Requires full server runtime with auth")
 
 try:
     from denis_unified_v1.kernel.decision_trace import get_trace_sink

@@ -1,0 +1,31 @@
+{
+  "request_id": "test_002",
+  "ts_utc": "2026-02-15T18:37:01.568535+00:00",
+  "intent": {
+    "intent": "run_tests_ci",
+    "confidence": 0.75,
+    "confidence_band": "medium",
+    "sources_used": [
+      "rasa",
+      "heuristics"
+    ],
+    "reason_codes": [
+      "default_fallback"
+    ]
+  },
+  "plan": {
+    "plan_id": "run_tests_ci_fast_triage",
+    "plan_type": "read_only",
+    "steps_total": 2,
+    "steps_completed": 0,
+    "steps_failed": 0
+  },
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "internet_status": "OK",
+  "engine_used": null,
+  "degraded_reason": null,
+  "reentry_count": 1
+}

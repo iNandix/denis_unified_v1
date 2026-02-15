@@ -1,0 +1,25 @@
+{
+  "request_id": "test_001",
+  "ts_utc": "2026-02-15T18:36:10.700668+00:00",
+  "intent": {
+    "intent": "run_tests_ci",
+    "confidence": 0.75,
+    "confidence_band": "medium",
+    "sources_used": [
+      "rasa",
+      "heuristics"
+    ],
+    "reason_codes": [
+      "default_fallback"
+    ]
+  },
+  "plan": null,
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "internet_status": "OK",
+  "engine_used": null,
+  "degraded_reason": null,
+  "reentry_count": 1
+}
