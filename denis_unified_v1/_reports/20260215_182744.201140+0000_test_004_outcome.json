@@ -1,0 +1,24 @@
+{
+  "request_id": "test_004",
+  "ts_utc": "2026-02-15T18:27:44.201140+00:00",
+  "intent": {
+    "intent": "debug_repo",
+    "confidence": 0.9,
+    "confidence_band": "high",
+    "sources_used": [
+      "heuristics"
+    ],
+    "reason_codes": [
+      "heuristics_wins_all_low"
+    ]
+  },
+  "plan": null,
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "internet_status": "DOWN",
+  "engine_used": null,
+  "degraded_reason": null,
+  "reentry_count": 1
+}

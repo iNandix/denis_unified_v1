@@ -20,7 +20,7 @@ import subprocess
 import json
 import hashlib
 
-from git_graph_comparator import GitGraphComparator, GraphGitGap
+from .git_graph_comparator import GitGraphComparator, GraphGitGap
 import re
 
 
