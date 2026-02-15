@@ -1,13 +1,14 @@
-"""
-Engine registry: canonical source of truth for engine_id  provider_key/endpoint/model/tags/priority.
+"""Engine registry (canonical).
 
-Scheduler and Router MUST read from here (or from a future config/DB loader that produces the same schema).
+Canonical source of truth for engine_id -> provider_key/endpoint/model/tags/priority.
+
+Scheduler and Router MUST read from here (or from a future loader that produces the same schema).
 
 Contract (minimal required fields per engine):
   - provider_key: str
   - model: str
   - endpoint: str
-  - tags: list[str]  (must include "local" OR "internet_required" depending on type)
+  - tags: list[str]  (must include "local" OR "internet_required")
   - priority: int    (lower = better)
 Optional:
   - params_default: dict
@@ -49,7 +50,7 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "priority": 20,
         },
 
-        # Groq boosters
+        # Groq boosters (internet required)
         "groq_1": {
             "provider_key": "groq",
             "provider": "groq",
@@ -106,7 +107,6 @@ def validate_engine_registry(registry: dict[str, dict[str, Any]]) -> None:
             if not is_local and not needs_net:
                 _err(f"{engine_id}: tags must include 'local' or 'internet_required'")
 
-            # Local endpoints must be HTTP(S)
             if is_local and isinstance(endpoint, str):
                 if not (endpoint.startswith("http://") or endpoint.startswith("https://")):
                     _err(f"{engine_id}: local endpoint must be http(s), got {endpoint!r}")
