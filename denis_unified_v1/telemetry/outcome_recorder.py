@@ -76,6 +76,15 @@ class ReasonCode(str, Enum):
     REENTRY_ITERATION = "reentry_iteration"
     REENTRY_NEW_EVIDENCE = "reentry_new_evidence"
 
+    # Catalog / capability decisions (P1.3 spec)
+    CONFIDENCE_MEDIUM_READONLY = "confidence_medium_readonly"
+    CAPABILITY_EXISTS = "capability_exists"
+    CAPABILITY_PARTIAL_COMPOSE = "capability_partial_compose"
+    CAPABILITY_MISSING = "capability_missing"
+    TOOL_COMPOSED = "tool_composed"
+    CAPABILITY_CREATED = "capability_created"
+    STOP_IF_TRIGGERED = "stop_if_triggered"
+
 
 class InternetStatus(str, Enum):
     OK = "OK"
@@ -183,6 +192,14 @@ class ExecutionOutcome:
     reason_codes: List[str] = field(default_factory=list)
     reentry_count: int = 0
 
+    # Catalog features (P1.3 spec)
+    catalog_size: int = 0
+    num_matches: int = 0
+    top_score: float = 0.0
+    booster_health: bool = False
+    steps_planned: int = 0
+    blocked_steps: int = 0
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "request_id": self.request_id,
@@ -209,6 +226,13 @@ class ExecutionOutcome:
             "degraded": self.degraded,
             "reason_codes": self.reason_codes,
             "reentry_count": self.reentry_count,
+            # Catalog features (P1.3 spec)
+            "catalog_size": self.catalog_size,
+            "num_matches": self.num_matches,
+            "top_score": self.top_score,
+            "booster_health": self.booster_health,
+            "steps_planned": self.steps_planned,
+            "blocked_steps": self.blocked_steps,
         }
 
     @property
@@ -316,6 +340,7 @@ class OutcomeRecorder:
         allow_boosters: Optional[bool] = None,
         degraded: bool = False,
         reason_codes: Optional[List[ReasonCode]] = None,
+        catalog_features: Optional[Dict[str, Any]] = None,
     ) -> ExecutionOutcome:
         """Record a complete execution outcome with P1.3 fields."""
 
@@ -417,6 +442,30 @@ class OutcomeRecorder:
 
             evidence.extend(getattr(execution_result, "evidence_artifacts", []))
 
+        # Catalog-derived features (P1.3 spec)
+        cat_size = 0
+        cat_matches = 0
+        cat_top_score = 0.0
+        cat_booster_health = False
+        if catalog_features:
+            cat_size = catalog_features.get("catalog_size", 0)
+            cat_matches = catalog_features.get("num_matches", 0)
+            cat_top_score = catalog_features.get("top_score", 0.0)
+            cat_booster_health = catalog_features.get("booster_health", False)
+
+        # Steps planned vs blocked
+        steps_planned = 0
+        blocked_steps = 0
+        if plan_result:
+            steps_planned = len(getattr(plan_result, "steps", []))
+        if execution_result:
+            blocked_steps = sum(
+                1 for sr in getattr(execution_result, "step_results", [])
+                if getattr(sr, "status", None) in ("blocked", "skipped")
+                or (hasattr(sr, "status") and hasattr(sr.status, "value")
+                    and sr.status.value in ("blocked", "skipped"))
+            )
+
         outcome = ExecutionOutcome(
             request_id=request_id,
             ts_utc=ts,
@@ -441,6 +490,12 @@ class OutcomeRecorder:
             reentry_count=getattr(execution_result, "iterations", 1)
             if execution_result
             else 1,
+            catalog_size=cat_size,
+            num_matches=cat_matches,
+            top_score=cat_top_score,
+            booster_health=cat_booster_health,
+            steps_planned=steps_planned,
+            blocked_steps=blocked_steps,
         )
 
         self._save_outcome(outcome)
@@ -494,12 +549,19 @@ def create_ml_features(outcome: ExecutionOutcome) -> Dict[str, Any]:
         else 0,
         "steps_total": len(outcome.steps),
         "steps_success_rate": outcome.success_rate,
+        # Catalog features (P1.3 spec)
+        "catalog_size": outcome.catalog_size,
+        "num_matches": outcome.num_matches,
+        "top_score": outcome.top_score,
+        "steps_planned": outcome.steps_planned,
+        "blocked_steps": outcome.blocked_steps,
         # Execution
         "total_duration_ms": outcome.total_duration_ms,
         "has_evidence": int(len(outcome.evidence_artifacts) > 0),
         # Context (P1.3)
         "internet_ok": int(outcome.internet_status == InternetStatus.OK),
         "allow_boosters": int(outcome.allow_boosters),
+        "booster_health": int(outcome.booster_health),
         "degraded": int(outcome.degraded),
         "reentry_count": outcome.reentry_count,
         # Reason codes (P1.3)

@@ -1,8 +1,10 @@
 """DENIS Persona Runtime: Thin handler over unified kernel (scheduler->plan->router).
 
-P1.3 Integration:
+P1.3 + P2 Integration:
 - Mode selection: clarify/actions_plan/direct_local/direct_boosted
 - LocalResponder fallback when boosters not allowed
+- Engine probe pre/post for health reporting
+- Actions execution with reentry on failure
 - Outcome recording for CatBoost
 """
 
@@ -34,6 +36,12 @@ from denis_unified_v1.telemetry.outcome_recorder import (
     get_allow_boosters,
 )
 from denis_unified_v1.cognition.local_responder import create_local_responder
+from denis_unified_v1.cognition.executor import Executor, Evaluator, ReentryController, save_toolchain_log
+from denis_unified_v1.kernel.ops.engine_probe import run_engine_probe
+from denis_unified_v1.catalog.tool_catalog import get_tool_catalog, CatalogContext
+
+
+MAX_REENTRY = 2
 
 
 class ChatRequest(BaseModel):
@@ -42,19 +50,25 @@ class ChatRequest(BaseModel):
     group_id: str = "default"
 
 
-app = FastAPI(title="DENIS Persona Runtime", version="1.1")
+app = FastAPI(title="DENIS Persona Runtime", version="1.1-P2")
 
 router = InferenceRouter()
 scheduler = get_model_scheduler()
 outcome_recorder = OutcomeRecorder()
 local_responder = create_local_responder()
+executor = Executor()
+evaluator = Evaluator()
+reentry_controller = ReentryController()
 
 
 @app.post("/chat")
 async def chat(req: ChatRequest) -> dict[str, Any]:
-    """Persona chat: P1.3 mode selection + execution."""
+    """Persona chat: P1.3 + P2 mode selection + execution with reentry."""
     request_id = str(uuid.uuid4())
     text = req.message
+
+    # P2: Engine probe pre-execution
+    probe_pre = run_engine_probe(mode="ping", timeout_ms=800)
 
     # P1.3: Get internet status and boosters policy
     internet_status = get_internet_status()
@@ -68,50 +82,160 @@ async def chat(req: ChatRequest) -> dict[str, Any]:
         else str(intent_result.intent)
     )
 
+    # P1.3: Dynamic Tool Catalog lookup (exists vs create)
+    tool_catalog = get_tool_catalog()
+    catalog_ctx = CatalogContext(
+        request_id=request_id,
+        allow_boosters=allow_boosters,
+        internet_gate=internet_status == "up",
+        booster_health=internet_status == "up",
+        confidence_band=intent_result.confidence_band,
+        meta={"user_id": req.user_id, "group_id": req.group_id},
+    )
+    catalog_lookup = tool_catalog.lookup(
+        intent=intent_str,
+        entities={"user_id": req.user_id, "group_id": req.group_id},
+        ctx=catalog_ctx,
+    )
+
+    # Add catalog decision to reason_codes
+    if catalog_lookup.exists_vs_create == "exists":
+        reason_codes = ["capability_exists"]
+        reason_codes.extend(
+            [f"tool_selected:{m.name}" for m in catalog_lookup.matched_tools[:3]]
+        )
+    elif catalog_lookup.exists_vs_create == "compose":
+        reason_codes = ["capability_partial_compose", "tool_composed"]
+        reason_codes.extend(
+            [f"tool_selected:{m.name}" for m in catalog_lookup.matched_tools[:3]]
+        )
+    elif catalog_lookup.exists_vs_create == "create":
+        reason_codes = ["capability_missing", "capability_created"]
+    else:
+        reason_codes = ["needs_clarification"]
+
     # P1.3: Mode selection
     confidence_band = ConfidenceBand(intent_result.confidence_band)
-    selected_mode, reason_codes = select_mode(
+    selected_mode, mode_reason_codes = select_mode(
         confidence_band,
         intent_str,
         internet_status,
         allow_boosters,
     )
+    reason_codes.extend(mode_reason_codes)
 
     degraded = selected_mode in [ExecutionMode.DIRECT_DEGRADED_LOCAL]
 
-    # Execute based on mode
-    if selected_mode == ExecutionMode.DIRECT_BOOSTED:
-        # Normal path: use scheduler + router
-        result = await _execute_boosted(request_id, text, req)
-    elif selected_mode == ExecutionMode.ACTIONS_PLAN:
-        # Execute via actions plan
-        result = await _execute_actions_plan(request_id, text, req, intent_result)
-    elif selected_mode == ExecutionMode.CLARIFY:
-        # Low confidence: ask clarification
-        result = _execute_clarify(text, intent_result)
-    else:
-        # Direct local or degraded: use LocalResponder
-        result = await _execute_local(
-            request_id,
-            text,
-            req,
-            intent_result,
-            internet_status,
-            allow_boosters,
-            selected_mode,
-        )
+    result: dict[str, Any] = {"response": "", "meta": {}}
+    error: str | None = None
 
-    # P1.3: Record outcome
+    try:
+        # Execute with reentry (P2)
+        result = await _execute_with_reentry(
+            request_id=request_id,
+            text=text,
+            req=req,
+            intent_result=intent_result,
+            intent_str=intent_str,
+            selected_mode=selected_mode,
+            reason_codes=reason_codes,
+            degraded=degraded,
+            internet_status=internet_status,
+            allow_boosters=allow_boosters,
+        )
+    except Exception as e:
+        error = str(e)
+        result = {
+            "response": "Error interno en Persona. Por favor, inténtalo de nuevo.",
+            "meta": {
+                "request_id": request_id,
+                "error": error,
+                "degraded": True,
+            },
+        }
+
+    # P2: Engine probe post-execution
+    probe_post = run_engine_probe(mode="ping", timeout_ms=800)
+
+    # Add probe results to meta
+    if result and "meta" in result:
+        result["meta"]["probe_pre"] = probe_pre
+        result["meta"]["probe_post"] = probe_post
+
+    # P1.3: Record outcome (ALWAYS - even on error)
     outcome_recorder.record(
         request_id=request_id,
         intent_result=intent_result,
         internet_status=internet_status,
         selected_mode=selected_mode,
         allow_boosters=allow_boosters,
-        degraded=degraded,
-        reason_codes=reason_codes,
+        degraded=degraded or error is not None,
+        reason_codes=reason_codes + (["error:" + error] if error else []),
+        catalog_features=catalog_lookup.features,
     )
 
+    return result
+
+
+async def _execute_with_reentry(
+    request_id: str,
+    text: str,
+    req: ChatRequest,
+    intent_result: Any,
+    intent_str: str,
+    selected_mode: ExecutionMode,
+    reason_codes: list,
+    degraded: bool,
+    internet_status: InternetStatus,
+    allow_boosters: bool,
+) -> dict[str, Any]:
+    """Execute with reentry on failure (P2)."""
+
+    iteration = 0
+
+    while iteration < MAX_REENTRY:
+        iteration += 1
+
+        if selected_mode == ExecutionMode.DIRECT_BOOSTED:
+            result = await _execute_boosted(request_id, text, req)
+        elif selected_mode == ExecutionMode.ACTIONS_PLAN:
+            result = await _execute_actions_plan(request_id, text, req, intent_result)
+        elif selected_mode == ExecutionMode.CLARIFY:
+            result = _execute_clarify(text, intent_result)
+        else:
+            result = await _execute_local(
+                request_id,
+                text,
+                req,
+                intent_result,
+                internet_status,
+                allow_boosters,
+                selected_mode,
+            )
+
+        # Check if we need to reentry
+        if iteration >= MAX_REENTRY:
+            break
+
+        # Evaluate result and decide reentry
+        if "degraded" in result.get("meta", {}) and result["meta"]["degraded"]:
+            # Already degraded, no point reentering
+            break
+
+        # For actions_plan, check if steps failed
+        if selected_mode == ExecutionMode.ACTIONS_PLAN:
+            step_results = result.get("meta", {}).get("step_results", [])
+            failed_steps = [s for s in step_results if s.get("status") == "failed"]
+
+            if failed_steps and iteration < MAX_REENTRY:
+                reason_codes.append(f"reentry_iteration_{iteration}")
+                # Reentry: try with different plan or fallback
+                selected_mode = ExecutionMode.DIRECT_LOCAL
+                continue
+
+        break
+
+    result["meta"]["iteration"] = iteration
     return result
 
 
@@ -159,7 +283,7 @@ async def _execute_boosted(
 async def _execute_actions_plan(
     request_id: str, text: str, req: ChatRequest, intent_result: Any
 ) -> dict[str, Any]:
-    """Execute via actions plan."""
+    """Execute via actions plan with executor (P2)."""
     intent_v1 = Intent_v1(
         intent=intent_result.intent.value
         if hasattr(intent_result.intent, "value")
@@ -171,18 +295,69 @@ async def _execute_actions_plan(
     candidates = generate_candidate_plans(intent_v1)
     selected_plan = select_plan(candidates, intent_result.confidence_band)
 
-    # TODO: Execute plan with executor
-    # For now, return a placeholder
+    if not selected_plan:
+        return {
+            "response": "No se pudo generar un plan de acciones.",
+            "meta": {"request_id": request_id, "mode": "actions_plan", "plan_id": None},
+        }
+
+    # Execute plan with executor (P2)
+    context = {
+        "user_message": text,
+        "session_id": f"persona_{req.user_id}_{req.group_id}",
+    }
+
+    execution_result = executor.execute_plan(selected_plan, context)
+
+    # P1.3: Save toolchain step log (mandatory per plan execution)
+    reports_dir = outcome_recorder.reports_dir
+    save_toolchain_log(execution_result, reports_dir, request_id)
+
+    # Evaluate execution
+    evaluation = evaluator.evaluate(
+        selected_plan,
+        execution_result,
+        intent_result.acceptance_criteria or [],
+    )
+
+    # Build response from execution
+    steps_summary = []
+    for sr in execution_result.step_results:
+        steps_summary.append(
+            {
+                "step_id": sr.step_id,
+                "status": sr.status.value
+                if hasattr(sr.status, "value")
+                else str(sr.status),
+                "duration_ms": sr.duration_ms,
+            }
+        )
+
+    response_text = _build_actions_response(execution_result, evaluation)
 
     return {
-        "response": f"[Actions plan: {selected_plan.candidate_id if selected_plan else 'none'}]",
+        "response": response_text,
         "meta": {
             "request_id": request_id,
             "mode": "actions_plan",
-            "plan_id": selected_plan.candidate_id if selected_plan else None,
-            "degraded": False,
+            "plan_id": selected_plan.candidate_id,
+            "steps": steps_summary,
+            "evaluation_score": evaluation.score,
+            "evaluation_passed": evaluation.passed,
+            "degraded": execution_result.status == "degraded",
         },
     }
+
+
+def _build_actions_response(execution_result: Any, evaluation: Any) -> str:
+    """Build response from actions execution."""
+    if execution_result.status == "success":
+        completed = len(execution_result.step_results)
+        return f"Se completaron {completed} operaciones."
+    elif execution_result.status == "degraded":
+        return f"Se completaron algunas operaciones con degraded: {execution_result.degraded_reason or 'sin detalles'}"
+    else:
+        return f"No se pudieron completar las operaciones: {execution_result.reason_code or 'error desconocido'}"
 
 
 def _execute_clarify(text: str, intent_result: Any) -> dict[str, Any]:
@@ -264,7 +439,7 @@ async def meta() -> dict[str, Any]:
     )
 
     return {
-        "version": "v1.1-P1.3",
+        "version": "v1.1-P2",
         "registry_hash": hash(json.dumps(registry, sort_keys=True)),
         "internet_status": internet_status,
         "allow_boosters": allow_boosters,
@@ -273,6 +448,7 @@ async def meta() -> dict[str, Any]:
             "locals": locals_count,
             "boosters": boosters_count,
         },
+        "max_reentry": MAX_REENTRY,
         "uptime_sec": 0,
     }
 

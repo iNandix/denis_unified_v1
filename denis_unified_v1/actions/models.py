@@ -19,6 +19,7 @@ class StepStatus(str, Enum):
     ok = "ok"
     failed = "failed"
     skipped = "skipped"
+    blocked = "blocked"
 
 
 class StopOp(str, Enum):

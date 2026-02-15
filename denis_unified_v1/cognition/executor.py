@@ -30,6 +30,7 @@ class StepExecutionResult:
     facts: Dict[str, Any] = field(default_factory=dict)
     duration_ms: int = 0
     retry_count: int = 0
+    reason_codes: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -41,6 +42,7 @@ class StepExecutionResult:
             "facts": self.facts,
             "duration_ms": self.duration_ms,
             "retry_count": self.retry_count,
+            "reason_codes": self.reason_codes,
         }
 
 
@@ -49,7 +51,7 @@ class PlanExecutionResult:
     """Result of executing an entire action plan."""
 
     plan_id: str
-    status: str  # "success", "failed", "stopped", "degraded"
+    status: str = "pending"  # "pending", "success", "failed", "stopped", "degraded"
     step_results: List[StepExecutionResult] = field(default_factory=list)
     total_duration_ms: int = 0
     evidence_artifacts: List[str] = field(default_factory=list)
@@ -153,16 +155,67 @@ class Executor:
         plan: ActionPlanCandidate,
         context: Dict[str, Any],
     ) -> PlanExecutionResult:
-        """Execute an entire action plan."""
+        """Execute an entire action plan.
+
+        Guarantees: every step in plan.steps produces a StepExecutionResult
+        with status in {ok, failed, skipped, blocked} and reason_codes.
+        """
         import time
 
         start_time = time.perf_counter()
         plan_result = PlanExecutionResult(plan_id=plan.candidate_id)
+        enforce_read_only = context.get("enforce_read_only", False)
+        stopped = False
 
         for step in plan.steps:
+            # If a previous step triggered stop_if, mark remaining as skipped
+            if stopped:
+                plan_result.step_results.append(
+                    StepExecutionResult(
+                        step_id=step.step_id,
+                        status=StepStatus.skipped,
+                        reason_codes=["stop_if_triggered"],
+                    )
+                )
+                continue
+
+            # Block mutating steps when context enforces read_only
+            if enforce_read_only and not step.read_only:
+                plan_result.step_results.append(
+                    StepExecutionResult(
+                        step_id=step.step_id,
+                        status=StepStatus.skipped,
+                        reason_codes=["confidence_medium_readonly"],
+                    )
+                )
+                continue
+
+            # Block steps whose tools are missing from registry
+            missing_tools = [
+                tc.name for tc in step.tool_calls
+                if tc.name not in self.tool_registry
+            ]
+            if step.tool_calls and missing_tools:
+                plan_result.step_results.append(
+                    StepExecutionResult(
+                        step_id=step.step_id,
+                        status=StepStatus.blocked,
+                        error=f"Tools not in registry: {missing_tools}",
+                        reason_codes=["capability_missing"],
+                    )
+                )
+                if step.on_failure == "abort":
+                    plan_result.status = "failed"
+                    plan_result.reason_code = f"blocked_at_{step.step_id}"
+                    # Mark remaining steps as skipped
+                    stopped = True
+                continue
+
+            # Execute the step normally
             step_result = self.execute_step(step, context)
             plan_result.step_results.append(step_result)
 
+            # Evaluate stop_if conditions
             if step.stop_if:
                 from denis_unified_v1.actions.stop_eval import eval_stop_condition
 
@@ -170,13 +223,16 @@ class Executor:
                     if eval_stop_condition(stop_cond, step_result.facts):
                         plan_result.status = "stopped"
                         plan_result.reason_code = f"stopped_by_{step.step_id}"
+                        step_result.reason_codes.append("stop_if_triggered")
+                        stopped = True
                         break
 
             if step_result.status == StepStatus.failed:
+                step_result.reason_codes.append("step_failed")
                 if step.on_failure == "abort":
                     plan_result.status = "failed"
                     plan_result.reason_code = f"failed_at_{step.step_id}"
-                    break
+                    stopped = True
                 elif step.on_failure == "fallback":
                     plan_result.status = "degraded"
                     plan_result.degraded_reason = f"fallback_at_{step.step_id}"
@@ -342,7 +398,10 @@ def save_toolchain_log(
     path = reports_dir / filename
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    payload = execution.to_dict()
+    payload["kind"] = "toolchain_step_log_v1"
+
     with open(path, "w") as f:
-        json.dump(execution.to_dict(), f, indent=2)
+        json.dump(payload, f, indent=2)
 
     return path

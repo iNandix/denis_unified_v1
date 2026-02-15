@@ -197,5 +197,49 @@ async def main():
     return 0 if ok_count > 0 else 1
 
 
+def run_engine_probe(mode: str = "ping", timeout_ms: int = 800) -> dict:
+    """Synchronous wrapper for service_8084 to call engine probe.
+
+    Returns summary dict with engine health results.
+    """
+    registry = get_engine_registry()
+    internet = get_internet_health()
+    internet_ok = internet.is_internet_ok()
+
+    results = []
+    for engine_id, info in sorted(
+        registry.items(), key=lambda x: x[1].get("priority", 99)
+    ):
+        try:
+            result = asyncio.run(
+                probe_engine(
+                    engine_id=engine_id,
+                    endpoint=info.get("endpoint", ""),
+                    provider_key=info.get("provider_key", ""),
+                    mode=mode,
+                    timeout_ms=timeout_ms,
+                    allow_boosters=False,
+                    internet_ok=internet_ok,
+                )
+            )
+        except Exception as e:
+            result = {
+                "engine_id": engine_id,
+                "ok": False,
+                "error": str(e)[:200],
+            }
+        results.append(result)
+
+    ok_count = sum(1 for r in results if r.get("ok"))
+    return {
+        "mode": mode,
+        "total": len(results),
+        "ok": ok_count,
+        "failed": len(results) - ok_count,
+        "internet_ok": internet_ok,
+        "engines": results,
+    }
+
+
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
