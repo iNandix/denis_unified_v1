@@ -1,0 +1,71 @@
+=== Engine Probe (ping) ===
+Internet: True | Allow boosters: False
+Timeout: 800ms
+
+[
+  {
+    "engine_id": "llamacpp_node1_1",
+    "endpoint": "http://10.10.10.1:8081",
+    "provider_key": "llamacpp",
+    "mode": "ping",
+    "ok": false,
+    "latency_ms": 134,
+    "error": "Cannot connect to host 10.10.10.1:8081 ssl:default [Connect call failed ('10.10.10.1', 8081)]"
+  },
+  {
+    "engine_id": "llamacpp_node1_2",
+    "endpoint": "http://10.10.10.1:8082",
+    "provider_key": "llamacpp",
+    "mode": "ping",
+    "ok": false,
+    "latency_ms": 0,
+    "error": "Cannot connect to host 10.10.10.1:8082 ssl:default [Connect call failed ('10.10.10.1', 8082)]"
+  },
+  {
+    "engine_id": "llamacpp_node2_1",
+    "endpoint": "http://10.10.10.2:8081",
+    "provider_key": "llamacpp",
+    "mode": "ping",
+    "ok": false,
+    "latency_ms": 0,
+    "error": "Cannot connect to host 10.10.10.2:8081 ssl:default [Connect call failed ('10.10.10.2', 8081)]"
+  },
+  {
+    "engine_id": "llamacpp_node2_2",
+    "endpoint": "http://10.10.10.2:8082",
+    "provider_key": "llamacpp",
+    "mode": "ping",
+    "ok": false,
+    "latency_ms": 0,
+    "error": "Cannot connect to host 10.10.10.2:8082 ssl:default [Connect call failed ('10.10.10.2', 8082)]"
+  },
+  {
+    "engine_id": "llamacpp_node2_3",
+    "endpoint": "http://10.10.10.2:8083",
+    "provider_key": "llamacpp",
+    "mode": "ping",
+    "ok": false,
+    "latency_ms": 0,
+    "error": "Cannot connect to host 10.10.10.2:8083 ssl:default [Connect call failed ('10.10.10.2', 8083)]"
+  },
+  {
+    "engine_id": "llamacpp_node2_4",
+    "endpoint": "http://10.10.10.2:8084",
+    "provider_key": "llamacpp",
+    "mode": "ping",
+    "ok": false,
+    "latency_ms": 0,
+    "error": "Cannot connect to host 10.10.10.2:8084 ssl:default [Connect call failed ('10.10.10.2', 8084)]"
+  },
+  {
+    "engine_id": "groq_1",
+    "endpoint": "groq://api.groq.com/openai/v1",
+    "provider_key": "groq",
+    "mode": "ping",
+    "ok": true,
+    "latency_ms": 0,
+    "error": null,
+    "skipped": true,
+    "reason": "booster_disabled"
+  }
+]

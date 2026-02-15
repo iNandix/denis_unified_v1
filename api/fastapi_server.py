@@ -660,6 +660,14 @@ def create_app() -> FastAPI:
     except Exception:
         pass
 
+    # Healthz endpoint for brain visibility
+    try:
+        from .healthz import router as healthz_router
+
+        app.include_router(healthz_router)
+    except Exception:
+        pass
+
     # Voice/Memory/Metagraph/Autopoiesis/Registry (gated + fail-open)
     try:
         if (

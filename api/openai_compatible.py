@@ -18,6 +18,12 @@ from pydantic import BaseModel, Field
 from denis_unified_v1.kernel.scheduler import get_model_scheduler, InferenceRequest
 
 
+# Canary switch for unified kernel migration
+# DENIS_PERSONA_UNIFIED=1 -> Use new unified kernel (scheduler + router)
+# DENIS_PERSONA_UNIFIED=0 -> Use legacy handler (if available)
+_USE_UNIFIED_KERNEL = os.getenv("DENIS_PERSONA_UNIFIED", "1") == "1"
+
+
 def _utc_now() -> int:
     return int(datetime.now(timezone.utc).timestamp())
 
@@ -55,9 +61,9 @@ class _ChatHandler:
             "act as",
             "pretend you are",
         ]
-        
+
         found_patterns = [p for p in suspicious_patterns if p in text_lower]
-        
+
         if len(found_patterns) >= 3:
             return "high", found_patterns
         elif len(found_patterns) >= 1:
@@ -99,6 +105,7 @@ class _ChatHandler:
         # 1) Límite de longitud
         try:
             from observability.metrics import gate_output_blocked
+
             max_tokens = int(getattr(self.flags, "phase10_max_output_tokens", 512))
             max_chars = max_tokens * 8
             if len(text) > max_chars:
@@ -130,10 +137,13 @@ class _ChatHandler:
                 meta["reasons"].append("secret_pattern")
                 try:
                     from observability.metrics import gate_output_blocked
+
                     gate_output_blocked.labels(reason="secret_pattern").inc()
                 except Exception:
                     pass
-                safe_msg = "El modelo generó contenido que parece incluir secretos o claves."
+                safe_msg = (
+                    "El modelo generó contenido que parece incluir secretos o claves."
+                )
                 return safe_msg, meta
 
         return text, meta
@@ -146,7 +156,7 @@ class _ChatHandler:
         ]
 
         timeout = aiohttp.ClientTimeout(total=5.0)
-        
+
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for endpoint in endpoints:
@@ -156,7 +166,12 @@ class _ChatHandler:
                             if resp.status == 200:
                                 data = await resp.json(content_type=None)
                                 if isinstance(data, dict):
-                                    for key in ("response", "answer", "text", "content"):
+                                    for key in (
+                                        "response",
+                                        "answer",
+                                        "text",
+                                        "content",
+                                    ):
                                         val = data.get(key)
                                         if isinstance(val, str) and val.strip():
                                             return val.strip()
@@ -167,15 +182,41 @@ class _ChatHandler:
 
         return None
 
+    async def _generate_legacy(
+        self,
+        req: ChatCompletionRequest,
+        completion_id: str,
+        user_text: str,
+        prompt_tokens: int,
+    ) -> dict[str, Any]:
+        """Legacy handler - raises NotImplementedError as no legacy handler exists."""
+        raise NotImplementedError(
+            "Legacy handler not available. Set DENIS_PERSONA_UNIFIED=1 to use unified kernel."
+        )
+
     async def generate(self, req: ChatCompletionRequest) -> dict[str, Any]:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:16]}"
         user_text = self._extract_user_text(req.messages)
         prompt_tokens = max(1, len(user_text.split()))
 
+        # Canary switch: use legacy handler if DENIS_PERSONA_UNIFIED=0
+        if not _USE_UNIFIED_KERNEL:
+            try:
+                # Try to use legacy handler if available
+                return await self._generate_legacy(
+                    req, completion_id, user_text, prompt_tokens
+                )
+            except Exception as e:
+                # Log fallback and continue with unified kernel
+                print(
+                    f"WARN: Legacy handler failed ({e}), falling back to unified kernel"
+                )
+
         # Prompt injection guard
         risk, risk_reasons = self._classify_prompt_injection(user_text)
         try:
             from observability.metrics import gate_prompt_injection
+
             gate_prompt_injection.labels(risk=risk).inc()
         except Exception:
             pass
@@ -280,9 +321,7 @@ class _ChatHandler:
             }
         except Exception as exc:
             # No silent legacy fallback — surface the real error
-            answer = (
-                f"Denis inference failed: {type(exc).__name__}: {str(exc)[:200]}"
-            )
+            answer = f"Denis inference failed: {type(exc).__name__}: {str(exc)[:200]}"
             path = "inference_error"
             router_meta = {"error": str(exc)[:300]}
 
@@ -343,16 +382,21 @@ class DenisRuntime:
     def __init__(self):
         try:
             from feature_flags import load_feature_flags
+
             self.flags = load_feature_flags()
         except Exception:
-            self.flags = type("Flags", (), {
-                "denis_use_voice_pipeline": False,
-                "denis_use_memory_unified": False,
-                "denis_use_atlas": False,
-                "denis_use_inference_router": False,
-                "phase10_enable_prompt_injection_guard": False,
-                "phase10_max_output_tokens": 512,
-            })()
+            self.flags = type(
+                "Flags",
+                (),
+                {
+                    "denis_use_voice_pipeline": False,
+                    "denis_use_memory_unified": False,
+                    "denis_use_atlas": False,
+                    "denis_use_inference_router": False,
+                    "phase10_enable_prompt_injection_guard": False,
+                    "phase10_max_output_tokens": 512,
+                },
+            )()
 
         self.models = [{"id": "denis-cognitive", "object": "model"}]
         self.budget_manager = None
@@ -361,48 +405,49 @@ class DenisRuntime:
         """Generate response using available backends."""
         # Check for deterministic test mode - ONLY in non-production environments
         env = os.getenv("ENV", "production")  # Default to production for safety
-        
+
         is_contract_mode = (
-            req.model == "denis-contract-test" and
-            env != "production" and  # Never active in production
-            os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
+            req.model == "denis-contract-test"
+            and env != "production"  # Never active in production
+            and os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
         )
-        
+
         # Additional safety: never activate via headers/query params in production
         if env == "production":
             is_contract_mode = False
-            
+
         if is_contract_mode:
             # Return deterministic response for contract testing
             return self._generate_deterministic_response(req)
-        
+
         handler = _ChatHandler(self.flags)
         return await handler.generate(req)
 
     def _extract_user_text(self, messages) -> str:
         """Extract user text from messages for deterministic response."""
         for message in reversed(messages):
-            if hasattr(message, 'role') and hasattr(message, 'content'):
+            if hasattr(message, "role") and hasattr(message, "content"):
                 if message.role == "user" and message.content:
                     return str(message.content)
         return "test message"
 
-    def _generate_deterministic_response(self, req: ChatCompletionRequest) -> dict[str, Any]:
+    def _generate_deterministic_response(
+        self, req: ChatCompletionRequest
+    ) -> dict[str, Any]:
         """Generate deterministic response for contract testing."""
         completion_id = "chatcmpl-deterministic-test"
-        user_text = self._extract_user_text(req.messages) if req.messages else "test message"
+        user_text = (
+            self._extract_user_text(req.messages) if req.messages else "test message"
+        )
         prompt_tokens = max(1, len(user_text.split()))
-        
+
         # Deterministic content based on request
         if "tool" in user_text.lower():
             # Tool call scenario
             tool_call = {
                 "id": "call_deterministic_test",
-                "type": "function", 
-                "function": {
-                    "name": "test_tool",
-                    "arguments": '{"action": "test"}'
-                }
+                "type": "function",
+                "function": {"name": "test_tool", "arguments": '{"action": "test"}'},
             }
             content = None
             finish_reason = "tool_calls"
@@ -412,9 +457,9 @@ class DenisRuntime:
             content = "Deterministic test response for contract validation."
             finish_reason = "stop"
             tool_calls = None
-        
+
         completion_tokens = max(1, len((content or "").split()))
-        
+
         return {
             "id": completion_id,
             "object": "chat.completion",
@@ -449,7 +494,10 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
             return {"object": "list", "data": runtime.models}
         except Exception:
             # Fail-open degraded response
-            return {"object": "list", "data": [{"id": "denis-cognitive", "object": "model"}]}
+            return {
+                "object": "list",
+                "data": [{"id": "denis-cognitive", "object": "model"}],
+            }
 
     @router.post("/chat/completions")
     async def chat_completions(req: ChatCompletionRequest, request: Request):
@@ -478,7 +526,11 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
                             "finish_reason": "stop",
                         }
                     ],
-                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
                 },
             )
 

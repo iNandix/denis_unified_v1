@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-02-15T18:18:02.510275+00:00",
+  "metrics": {
+    "total": 69,
+    "intent_accuracy": 0.725,
+    "confidence_accuracy": 0.957,
+    "overall_accuracy": 0.71,
+    "target": 0.9
+  },
+  "by_intent": {
+    "run_tests_ci": {
+      "total": 10,
+      "correct": 9,
+      "accuracy": 0.9
+    },
+    "debug_repo": {
+      "total": 9,
+      "correct": 9,
+      "accuracy": 1.0
+    },
+    "unknown": {
+      "total": 9,
+      "correct": 9,
+      "accuracy": 1.0
+    },
+    "refactor_migration": {
+      "total": 8,
+      "correct": 6,
+      "accuracy": 0.75
+    },
+    "implement_feature": {
+      "total": 7,
+      "correct": 3,
+      "accuracy": 0.429
+    },
+    "ops_health_check": {
+      "total": 6,
+      "correct": 1,
+      "accuracy": 0.167
+    },
+    "explain_concept": {
+      "total": 5,
+      "correct": 2,
+      "accuracy": 0.4
+    },
+    "write_docs": {
+      "total": 5,
+      "correct": 3,
+      "accuracy": 0.6
+    },
+    "incident_triage": {
+      "total": 5,
+      "correct": 5,
+      "accuracy": 1.0
+    },
+    "toolchain_task": {
+      "total": 5,
+      "correct": 3,
+      "accuracy": 0.6
+    }
+  },
+  "failures_count": 20
+}

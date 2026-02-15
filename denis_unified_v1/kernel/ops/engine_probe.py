@@ -161,6 +161,8 @@ async def main():
         )
         results.append(result)
 
+    ok_count = sum(1 for r in results if r.get("ok"))
+
     if args.json:
         print(json.dumps(results, indent=2))
     else:
@@ -170,7 +172,6 @@ async def main():
         )
         print("-" * 85)
 
-        ok_count = 0
         for r in results:
             status = "OK" if r.get("ok") else "ERROR"
             if r.get("skipped"):
@@ -185,9 +186,7 @@ async def main():
                 f"{r['engine_id']:<22} {endpoint:<28} {r['provider_key']:<10} {latency:<10} {status:<12}"
             )
 
-            if r.get("ok"):
-                ok_count += 1
-            elif r.get("error"):
+            if r.get("error"):
                 print(f"  Error: {r['error']}")
 
         print()
