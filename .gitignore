@@ -135,3 +135,13 @@ yarn-error.log*
 docs/_build/
 *.pdf
 *.docx
+
+# ML Models and weights (never commit to Git)
+models/
+checkpoints/
+*.gguf
+*.bin
+*.safetensors
+*.pth
+*.h5
+*.onnx
