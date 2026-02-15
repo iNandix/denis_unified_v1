@@ -24,9 +24,36 @@ _engine_registry: dict[str, dict[str, Any]] = {}
 
 
 def _build_static_registry() -> dict[str, dict[str, Any]]:
-    """Build the static engine registry (canonical source)."""
+    """Build the static engine registry (canonical source).
+
+    Local-first: 6 engines across node1 and node2
+    Boosters: groq for when internet is available
+    """
     return {
-        # Local llama.cpp engines (node2)
+        # Local llama.cpp engines - node1 (more powerful)
+        "llamacpp_node1_1": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "llama-3.1-8b",
+            "endpoint": "http://10.10.10.1:8081",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.001,
+            "max_context": 8192,
+            "tags": ["local", "node1", "fast"],
+            "priority": 5,  # Best priority
+        },
+        "llamacpp_node1_2": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "qwen2.5-7b",
+            "endpoint": "http://10.10.10.1:8082",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.001,
+            "max_context": 8192,
+            "tags": ["local", "node1"],
+            "priority": 6,
+        },
+        # Local llama.cpp engines - node2 (4 engines)
         "llamacpp_node2_1": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
@@ -49,8 +76,29 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "tags": ["local", "node2"],
             "priority": 20,
         },
-
-        # Groq boosters (internet required)
+        "llamacpp_node2_3": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "phi-3-mini",
+            "endpoint": "http://10.10.10.2:8083",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.0005,
+            "max_context": 4096,
+            "tags": ["local", "node2", "small"],
+            "priority": 25,
+        },
+        "llamacpp_node2_4": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "tinyllama",
+            "endpoint": "http://10.10.10.2:8084",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.0001,
+            "max_context": 2048,
+            "tags": ["local", "node2", "tiny", "fast"],
+            "priority": 30,
+        },
+        # Groq boosters (internet required - fallback when online)
         "groq_1": {
             "provider_key": "groq",
             "provider": "groq",
@@ -60,7 +108,7 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "cost_factor": 0.05,
             "max_context": 128000,
             "tags": ["booster", "internet_required", "fast"],
-            "priority": 50,
+            "priority": 50,  # Only used when internet OK
         },
     }
 
@@ -108,8 +156,12 @@ def validate_engine_registry(registry: dict[str, dict[str, Any]]) -> None:
                 _err(f"{engine_id}: tags must include 'local' or 'internet_required'")
 
             if is_local and isinstance(endpoint, str):
-                if not (endpoint.startswith("http://") or endpoint.startswith("https://")):
-                    _err(f"{engine_id}: local endpoint must be http(s), got {endpoint!r}")
+                if not (
+                    endpoint.startswith("http://") or endpoint.startswith("https://")
+                ):
+                    _err(
+                        f"{engine_id}: local endpoint must be http(s), got {endpoint!r}"
+                    )
 
     if errors:
         raise ValueError("Invalid engine_registry:\n  - " + "\n  - ".join(errors))
