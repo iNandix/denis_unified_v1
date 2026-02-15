@@ -57,3 +57,6 @@ gate_prompt_injection = Counter()
 # Rate limiter (gates/rate_limiter.py)
 denis_gate_rate_limited_total = Counter()
 denis_gate_rate_limit_redis_errors = Counter()
+
+# Memory consolidation
+memory_consolidations = Counter()
