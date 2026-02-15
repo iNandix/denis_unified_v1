@@ -20,10 +20,12 @@ try:
     from denis_unified_v1.smx.client import SMXClient
     from denis_unified_v1.smx.nlu_client import NLUClient
     from denis_unified_v1.smx.orchestrator import SMXOrchestrator
+    from denis_unified_v1.orchestration.cognitive_router import CognitiveRouter
 except ImportError:
     SMXClient = None  # type: ignore[misc,assignment]
     NLUClient = None  # type: ignore[misc,assignment]
     SMXOrchestrator = None  # type: ignore[misc,assignment]
+    CognitiveRouter = None  # type: ignore[misc,assignment]
 
 from denis_unified_v1.kernel.decision_trace import DecisionTrace, TraceSpan
 from denis_unified_v1.kernel.scheduler import InferencePlan
@@ -212,14 +214,23 @@ class InferenceRouter:
         # Temporal alias for migration
         self.clients["legacy_core"] = self.clients["llamacpp"]
 
-        self.engine_registry = get_engine_registry()
+        # Deep-copy so test mutations don't leak back into the global singleton
+        self.engine_registry = {
+            eid: dict(e) for eid, e in get_engine_registry().items()
+        }
 
-        # Assign clients
+        # Assign clients (accept both "provider_key" and legacy "provider")
         for eid, e in self.engine_registry.items():
-            e["client"] = self.clients[e["provider_key"]]
+            pk = e.get("provider_key") or e.get("provider", "unknown")
+            e.setdefault("provider_key", pk)
+            if pk in self.clients:
+                e["client"] = self.clients[pk]
 
         # Validate
-        missing = [eid for eid, e in self.engine_registry.items() if e["provider_key"] not in self.clients]
+        missing = [
+            eid for eid, e in self.engine_registry.items()
+            if e.get("provider_key", e.get("provider", "unknown")) not in self.clients
+        ]
         if missing:
             raise RuntimeError(f"Unknown provider_key in engine_registry for engines: {missing}")
 
@@ -289,6 +300,13 @@ class InferenceRouter:
             for attempt_idx, engine_id in enumerate(engine_ids[:max_attempts]):
                 info = self._resolve_engine(engine_id)
                 if not info:
+                    # P3: plan referenced an engine_id the registry doesn't know.
+                    # This is a misconfiguration — record it, don't silently skip.
+                    skipped_engines.append({
+                        "engine_id": engine_id,
+                        "reason": "engine_not_found_in_registry",
+                        "misconfig": True,
+                    })
                     continue
 
                 internet_ok = get_internet_health().check() == "OK"
@@ -296,7 +314,7 @@ class InferenceRouter:
                     skipped_engines.append({"engine_id": engine_id, "reason": "no_internet"})
                     continue
 
-                provider = info["provider"]
+                provider_key = info["provider_key"]
                 client = info["client"]
                 model = info.get("model")
 
@@ -313,11 +331,11 @@ class InferenceRouter:
                 try:
                     result = await client.generate(messages=messages, timeout_sec=timeout_s, **params)
                     latency_ms = (time.perf_counter() - started) * 1000.0
-                    self.metrics.record_call(info.get("provider_key"), latency_ms=latency_ms, success=True)
-                    return self._format_result(result, provider_key=info.get("provider_key"), engine_id=engine_id, model=model, plan=inference_plan, latency_ms=latency_ms, skipped_engines=skipped_engines, internet_status_runtime=get_internet_health().check())
+                    self.metrics.record_call(provider_key, latency_ms=latency_ms, success=True)
+                    return self._format_result(result, provider_key=provider_key, engine_id=engine_id, model=model, plan=inference_plan, latency_ms=latency_ms, skipped_engines=skipped_engines, internet_status_runtime=get_internet_health().check(), attempt_number=attempt_idx + 1)
                 except Exception as exc:
                     latency_ms = (time.perf_counter() - started) * 1000.0
-                    self.metrics.record_call(info.get("provider_key"), latency_ms=latency_ms, success=False)
+                    self.metrics.record_call(provider_key, latency_ms=latency_ms, success=False)
                     # Continue to fallback
                     continue
 
@@ -459,9 +477,13 @@ class InferenceRouter:
             }
 
     def _resolve_engine(self, engine_id: str) -> dict[str, Any] | None:
-        return self.engine_registry.get(engine_id)
+        info = self.engine_registry.get(engine_id)
+        if info is not None:
+            # Normalize: ensure provider_key exists (tests may use "provider")
+            info.setdefault("provider_key", info.get("provider", "unknown"))
+        return info
 
-    def _format_result(self, result: dict[str, Any], provider_key: str, engine_id: str, model: str | None, plan: InferencePlan, latency_ms: float, skipped_engines: list[dict], internet_status_runtime: str) -> dict[str, Any]:
+    def _format_result(self, result: dict[str, Any], provider_key: str, engine_id: str, model: str | None, plan: InferencePlan, latency_ms: float, skipped_engines: list[dict], internet_status_runtime: str, attempt_number: int = 1) -> dict[str, Any]:
         output_tokens = int(result.get("output_tokens") or 0)
         input_tokens = int(result.get("input_tokens") or 0)
         cost_usd = self._estimate_cost_usd(provider_key, input_tokens, output_tokens)
@@ -474,8 +496,8 @@ class InferenceRouter:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cost_usd": round(cost_usd, 6),
-            "fallback_used": False,
-            "attempts": 1,
+            "fallback_used": attempt_number > 1,
+            "attempts": attempt_number,
             "inference_plan": plan,
             "skipped_engines": skipped_engines,
             "internet_status": internet_status_runtime,
@@ -515,6 +537,12 @@ class InferenceRouter:
 def build_inference_router() -> InferenceRouter:
     # Check if SMX local pipeline should be used
     if os.getenv("USE_SMX_LOCAL") == "true":
+        # Guard-rail: fail loud if SMX modules couldn't be imported
+        if any(cls is None for cls in (SMXClient, NLUClient, SMXOrchestrator, CognitiveRouter)):
+            raise RuntimeError(
+                "USE_SMX_LOCAL=true but SMX modules could not be imported. "
+                "Check denis_unified_v1/smx/ layout and imports."
+            )
         # Pipeline SMX: NLU → Cognitive Router → SMX motors
         smx_client = SMXClient()
         nlu_client = NLUClient()

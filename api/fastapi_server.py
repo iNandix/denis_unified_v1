@@ -64,16 +64,20 @@ def create_app() -> FastAPI:
     # Basic telemetry: metrics
     try:
         from prometheus_client import Counter
-        
+
         # Thread-safe global initialization
         global _metrics_initialized, _requests_total, _denies_total, _degraded_total
         with _metrics_lock:
             if not _metrics_initialized:
-                _requests_total = Counter('requests_total', 'Total requests', ['critical'])
-                _denies_total = Counter('denies_total', 'Total denies', ['policy'])
-                _degraded_total = Counter('degraded_total', 'Total degraded responses', ['reason'])
+                _requests_total = Counter(
+                    "requests_total", "Total requests", ["critical"]
+                )
+                _denies_total = Counter("denies_total", "Total denies", ["policy"])
+                _degraded_total = Counter(
+                    "degraded_total", "Total degraded responses", ["reason"]
+                )
                 _metrics_initialized = True
-        
+
         requests_total = _requests_total
         denies_total = _denies_total
         degraded_total = _degraded_total
@@ -88,7 +92,10 @@ def create_app() -> FastAPI:
         neo4j_pass = os.getenv("NEO4J_PASSWORD")
         if neo4j_uri and neo4j_user and neo4j_pass:
             from neo4j import GraphDatabase
-            neo4j_driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_pass))
+
+            neo4j_driver = GraphDatabase.driver(
+                neo4j_uri, auth=(neo4j_user, neo4j_pass)
+            )
             # Test connection
             with neo4j_driver.session() as session:
                 session.run("RETURN 1")
@@ -99,12 +106,12 @@ def create_app() -> FastAPI:
         """Check Denis identity and constitution. Fail-closed for critical actions."""
         # In contract test mode, allow all requests
         is_contract_mode = (
-            os.getenv("DENIS_CONTRACT_TEST_MODE") == "1" and
-            os.getenv("ENV") != "production"
+            os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
+            and os.getenv("ENV") != "production"
         )
         if is_contract_mode:
             return True
-            
+
         if not neo4j_driver:
             if is_critical:
                 return False  # Fail-closed: no graph, deny critical
@@ -122,7 +129,18 @@ def create_app() -> FastAPI:
                 RETURN iden.companion_mode AS mode, aa IS NOT NULL AS has_aa, cg IS NOT NULL AS has_cg, at IS NOT NULL AS has_at, hc IS NOT NULL AS has_hc
                 """)
                 record = result.single()
-                if not record or record["mode"] != True or not all([record["has_aa"], record["has_cg"], record["has_at"], record["has_hc"]]):
+                if (
+                    not record
+                    or record["mode"] != True
+                    or not all(
+                        [
+                            record["has_aa"],
+                            record["has_cg"],
+                            record["has_at"],
+                            record["has_hc"],
+                        ]
+                    )
+                ):
                     if is_critical:
                         return False
                     return True
@@ -139,7 +157,12 @@ def create_app() -> FastAPI:
         method = request.method
         # Critical: chat completions (potential code gen), any POST to sensitive paths, etc.
         # For now, classify based on path/method; expand as needed
-        critical_paths = ["/v1/chat/completions", "/v1/completions", "/registry", "/metacognitive"]
+        critical_paths = [
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/registry",
+            "/metacognitive",
+        ]
         if method == "POST" and any(p in path for p in critical_paths):
             return True
         # Add more logic if needed (e.g., check body for mutation keywords)
@@ -230,18 +253,20 @@ def create_app() -> FastAPI:
             logger.exception(f"Failed to include router from {router_factory.__name__}")
             # In test mode, fail fast if we can't include critical routers
             is_test_mode = (
-                os.getenv("DENIS_CONTRACT_TEST_MODE") == "1" and
-                os.getenv("ENV") != "production"
+                os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
+                and os.getenv("ENV") != "production"
             )
             if is_test_mode and router_factory.__name__ == "build_openai_router":
-                raise RuntimeError(f"Critical router {router_factory.__name__} failed to load in test mode: {e}")
+                raise RuntimeError(
+                    f"Critical router {router_factory.__name__} failed to load in test mode: {e}"
+                )
             return False
 
     # Determine if critical dependencies are ready (not in degraded mode)
     # In contract test mode, allow requests even with degraded dependencies
     is_contract_mode = (
-        os.getenv("DENIS_CONTRACT_TEST_MODE") == "1" and
-        os.getenv("ENV") != "production"
+        os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
+        and os.getenv("ENV") != "production"
     )
     critical_ready = (runtime_mode == "full") or is_contract_mode
 
@@ -266,32 +291,51 @@ def create_app() -> FastAPI:
     human_memory_manager = None
     context_manager = None
     try:
-        from denis_unified_v1.services.human_memory_manager import get_human_memory_manager
+        from denis_unified_v1.services.human_memory_manager import (
+            get_human_memory_manager,
+        )
+
         human_memory_manager = get_human_memory_manager()
     except Exception:
         pass
     try:
         from denis_unified_v1.services.context_manager import get_context_manager
+
         context_manager = get_context_manager()
     except Exception:
         pass
 
-    def inject_i2_human_memory(request: Request, user_id: str, group_id: str, intent: str) -> str:
+    def inject_i2_human_memory(
+        request: Request, user_id: str, group_id: str, intent: str
+    ) -> str:
         """I2: Inject human memory (narrative state + episodic)."""
         if not human_memory_manager:
             return ""
         narrative = human_memory_manager.get_narrative_state(user_id, group_id)
         followup_due = narrative.get("followup_due", [])
         # Query episodic for intent
-        query = {"user_id": user_id, "group_id": group_id, "query_text": intent, "entities": []}
+        query = {
+            "user_id": user_id,
+            "group_id": group_id,
+            "query_text": intent,
+            "entities": [],
+        }
         results = human_memory_manager._execute_query(query)
         episodic = results.get("episodes", [])[:1]  # Top 1
         summary = episodic[0]["summary"] if episodic else ""
         source_note = {}
         if episodic and "claim" in episodic[0]:
             claim = episodic[0]["claim"]
-            source_note = {"type": "claim", "asserted_by": claim.get("source_type", "unknown"), "verified": False}
-        ask_style = {"tone": "preocupado", "question_bias": "preguntar primero", "do_not_assume": True}
+            source_note = {
+                "type": "claim",
+                "asserted_by": claim.get("source_type", "unknown"),
+                "verified": False,
+            }
+        ask_style = {
+            "tone": "preocupado",
+            "question_bias": "preguntar primero",
+            "do_not_assume": True,
+        }
         return f"Narrative context: {narrative}. Relevant episode: {summary}. Source note: {source_note}. Ask style: {ask_style}. Followup due: {followup_due}."
 
     def inject_i4_human_style(response_content: str) -> str:
@@ -305,32 +349,51 @@ def create_app() -> FastAPI:
     human_memory_manager = None
     context_manager = None
     try:
-        from denis_unified_v1.services.human_memory_manager import get_human_memory_manager
+        from denis_unified_v1.services.human_memory_manager import (
+            get_human_memory_manager,
+        )
+
         human_memory_manager = get_human_memory_manager()
     except Exception:
         pass
     try:
         from denis_unified_v1.services.context_manager import get_context_manager
+
         context_manager = get_context_manager()
     except Exception:
         pass
 
-    def inject_i2_human_memory(request: Request, user_id: str, group_id: str, intent: str) -> str:
+    def inject_i2_human_memory(
+        request: Request, user_id: str, group_id: str, intent: str
+    ) -> str:
         """I2: Inject human memory (narrative state + episodic)."""
         if not human_memory_manager:
             return ""
         narrative = human_memory_manager.get_narrative_state(user_id, group_id)
         followup_due = narrative.get("followup_due", [])
         # Query episodic for intent
-        query = {"user_id": user_id, "group_id": group_id, "query_text": intent, "entities": []}
+        query = {
+            "user_id": user_id,
+            "group_id": group_id,
+            "query_text": intent,
+            "entities": [],
+        }
         results = human_memory_manager._execute_query(query)
         episodic = results.get("episodes", [])[:1]  # Top 1
         summary = episodic[0]["summary"] if episodic else ""
         source_note = {}
         if episodic and "claim" in episodic[0]:
             claim = episodic[0]["claim"]
-            source_note = {"type": "claim", "asserted_by": claim.get("source_type", "unknown"), "verified": False}
-        ask_style = {"tone": "preocupado", "question_bias": "preguntar primero", "do_not_assume": True}
+            source_note = {
+                "type": "claim",
+                "asserted_by": claim.get("source_type", "unknown"),
+                "verified": False,
+            }
+        ask_style = {
+            "tone": "preocupado",
+            "question_bias": "preguntar primero",
+            "do_not_assume": True,
+        }
         return f"Narrative context: {narrative}. Relevant episode: {summary}. Source note: {source_note}. Ask style: {ask_style}. Followup due: {followup_due}."
 
     def inject_i4_human_style(response_content: str) -> str:
@@ -388,7 +451,7 @@ def create_app() -> FastAPI:
             critical = is_critical_action(request)
             if critical and not critical_ready:
                 if denies_total:
-                    denies_total.labels(policy='runtime_deps').inc()
+                    denies_total.labels(policy="runtime_deps").inc()
                 return JSONResponse(
                     status_code=503,
                     content={
@@ -400,7 +463,7 @@ def create_app() -> FastAPI:
                 )
             if not identity_check(request, critical):
                 if denies_total:
-                    denies_total.labels(policy='identity_forbidden').inc()
+                    denies_total.labels(policy="identity_forbidden").inc()
                 return JSONResponse(
                     status_code=403,
                     content={
@@ -421,11 +484,18 @@ def create_app() -> FastAPI:
             response.headers["x-duration-ms"] = str(duration_ms)
 
             # Telemetry: check for degraded
-            if degraded_total and hasattr(response, 'headers') and response.headers.get('x-runtime-mode') == 'degraded':
-                degraded_total.labels(reason='DEPENDENCY_MISSING').inc()
+            if (
+                degraded_total
+                and hasattr(response, "headers")
+                and response.headers.get("x-runtime-mode") == "degraded"
+            ):
+                degraded_total.labels(reason="DEPENDENCY_MISSING").inc()
 
             # Logs
-            print(f"LOG: request_id={request_id}, critical={critical}, status={response.status_code}", flush=True)
+            print(
+                f"LOG: request_id={request_id}, critical={critical}, status={response.status_code}",
+                flush=True,
+            )
 
             return response
 
@@ -448,24 +518,24 @@ def create_app() -> FastAPI:
             "timestamp_utc": _utc_now(),
             "ready_critical": critical_ready,
             "ready_soft": True,
-            "feature_flags": _safe_json(flags),
+            "feature_flags": _safe_json(raw_flags),
             "components": {
                 "openai_compatible": runtime_mode == "full",
                 "query_interface": True,
                 "websocket_events": True,
-                "voice_pipeline": flags.get("denis_use_voice_pipeline", False)
-                if isinstance(flags, dict)
-                else getattr(flags, "denis_use_voice_pipeline", False),
-                "memory_unified": flags.get("denis_use_memory_unified", False)
-                if isinstance(flags, dict)
-                else getattr(flags, "denis_use_memory_unified", False),
-                "atlas_bridge": flags.get("denis_use_atlas", False)
-                if isinstance(flags, dict)
-                else getattr(flags, "denis_use_atlas", False),
+                "voice_pipeline": raw_flags.get("denis_use_voice_pipeline", False)
+                if isinstance(raw_flags, dict)
+                else getattr(raw_flags, "denis_use_voice_pipeline", False),
+                "memory_unified": raw_flags.get("denis_use_memory_unified", False)
+                if isinstance(raw_flags, dict)
+                else getattr(raw_flags, "denis_use_memory_unified", False),
+                "atlas_bridge": raw_flags.get("denis_use_atlas", False)
+                if isinstance(raw_flags, dict)
+                else getattr(raw_flags, "denis_use_atlas", False),
                 "cognitive_router": True,
-                "inference_router": flags.get("denis_use_inference_router", False)
-                if isinstance(flags, dict)
-                else getattr(flags, "denis_use_inference_router", False),
+                "inference_router": raw_flags.get("denis_use_inference_router", False)
+                if isinstance(raw_flags, dict)
+                else getattr(raw_flags, "denis_use_inference_router", False),
                 "agent_heart": True,
                 "metacognitive": True,
             },
@@ -474,7 +544,7 @@ def create_app() -> FastAPI:
     @app.get("/status")
     async def status():
         return {
-            "model": getattr(req, "model", "denis-cognitive"),
+            "model": "denis-cognitive",
             "choices": [
                 {
                     "index": 0,
@@ -536,9 +606,13 @@ def create_app() -> FastAPI:
                         "finish_reason": "stop",
                     }
                 ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
                 "diagnostics": {"degraded": True, "reason": "DEPENDENCY_MISSING"},
-            }
+            },
         )
 
     @fallback_router.post("/v1/chat/completions/stream")
@@ -589,9 +663,9 @@ def create_app() -> FastAPI:
     # Voice/Memory/Metagraph/Autopoiesis/Registry (gated + fail-open)
     try:
         if (
-            flags.get("denis_use_voice_pipeline", False)
-            if isinstance(flags, dict)
-            else flags.enabled("denis_use_voice_pipeline", False)
+            raw_flags.get("denis_use_voice_pipeline", False)
+            if isinstance(raw_flags, dict)
+            else getattr(raw_flags, "denis_use_voice_pipeline", False)
         ):
             from .voice_handler import build_voice_router
 
@@ -601,9 +675,9 @@ def create_app() -> FastAPI:
 
     try:
         if (
-            flags.get("denis_use_memory_unified", False)
-            if isinstance(flags, dict)
-            else flags.enabled("denis_use_memory_unified", False)
+            raw_flags.get("denis_use_memory_unified", False)
+            if isinstance(raw_flags, dict)
+            else getattr(raw_flags, "denis_use_memory_unified", False)
         ):
             from .memory_handler import build_memory_router
 
@@ -724,9 +798,10 @@ except Exception as e:
 
 # Global Prometheus metrics to prevent duplicate registration in tests
 import threading
+
 _metrics_initialized = False
 _metrics_lock = threading.Lock()
 
 _requests_total = None
-_denies_total = None  
+_denies_total = None
 _degraded_total = None

@@ -24,6 +24,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from denis_unified_v1.inference.provider_loader import discover_provider_models_cached
+from denis_unified_v1.kernel.engine_registry import get_engine_registry
 from denis_unified_v1.kernel.internet_health import get_internet_health
 
 logger = logging.getLogger(__name__)
@@ -99,24 +100,36 @@ class InferenceAssignment:
 
 @dataclass(frozen=True)
 class InferencePlan:
-    primary_engine_id: str                 # "groq_1" | "openrouter_free_xyz" | "llamacpp_node2_1"
+    primary_engine_id: str  # "groq_1" | "openrouter_free_xyz" | "llamacpp_node2_1"
     fallback_engine_ids: List[str] = field(default_factory=list)
 
     # "Expectation" (útil para auditoría y tests de integridad)
-    expected_model: Optional[str] = None   # "llama-3.1-8b-instant" (si quieres detectar drift)
+    expected_model: Optional[str] = (
+        None  # "llama-3.1-8b-instant" (si quieres detectar drift)
+    )
 
     # Runtime controls
-    params: Dict[str, Any] = field(default_factory=dict)      # {"temperature":0.7,"max_tokens":512}
-    timeouts_ms: Dict[str, int] = field(default_factory=dict) # {"connect_ms":200,"total_ms":5000}
+    params: Dict[str, Any] = field(
+        default_factory=dict
+    )  # {"temperature":0.7,"max_tokens":512}
+    timeouts_ms: Dict[str, int] = field(
+        default_factory=dict
+    )  # {"connect_ms":200,"total_ms":5000}
 
     # Budget / policy signals (scheduler authority)
-    budget: Dict[str, Any] = field(default_factory=dict)      # {"planned_tokens":512,"planned_cost":0.0004}
-    trace_tags: Dict[str, Any] = field(default_factory=dict)  # {"policy_mode": "local_first", "internet_status": "OK"}
+    budget: Dict[str, Any] = field(
+        default_factory=dict
+    )  # {"planned_tokens":512,"planned_cost":0.0004}
+    trace_tags: Dict[str, Any] = field(
+        default_factory=dict
+    )  # {"policy_mode": "local_first", "internet_status": "OK"}
 
-    attempt_policy: Dict[str, Any] = field(default_factory=lambda: {
-        "max_attempts": 1 + 3,            # primary + 3 fallbacks default
-        "retry_on": ["timeout", "5xx"],   # router only retries on these
-    })
+    attempt_policy: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "max_attempts": 1 + 3,  # primary + 3 fallbacks default
+            "retry_on": ["timeout", "5xx"],  # router only retries on these
+        }
+    )
 
 
 class ModelScheduler:
@@ -150,133 +163,49 @@ class ModelScheduler:
     def __init__(self):
         self._engines: Dict[str, InferenceEngine] = {}
         self._active_requests: Dict[str, InferenceAssignment] = {}
-        self._setup_default_engines()
+        self._setup_from_registry()
 
-    def _setup_default_engines(self):
-        """Setup the inference engines with dynamic catalog."""
+    def _setup_from_registry(self):
+        """Setup engines from engine_registry (canonical source)."""
+        registry = get_engine_registry()
+        provider_map = {
+            "llamacpp": Provider.LLAMA_CPP,
+            "groq": Provider.GROQ,
+            "openrouter": Provider.OPENROUTER,
+            "vllm": Provider.VLLM,
+        }
 
-        # Static local engines
-        static_engines = [
-            # Class A: Fast/Small (1050Ti small + Groq)
-            InferenceEngine(
-                id="llama_1050_1",
-                name="llama-3.2-1b",
-                provider=Provider.LLAMA_CPP,
-                model_class=ModelClass.A_TTFT,
-                endpoint="http://10.10.10.2:8081",
-                max_context=2048,
-                max_output=1024,
-                priority=15,
-                tags=["small", "fast", "node2", "local"],
-            ),
-            InferenceEngine(
-                id="llama_1050_2",
-                name="qwen-0.5b",
-                provider=Provider.LLAMA_CPP,
-                model_class=ModelClass.A_TTFT,
-                endpoint="http://10.10.10.2:8082",
-                max_context=2048,
-                max_output=1024,
-                priority=15,
-                tags=["small", "fast", "node2", "local"],
-            ),
-            InferenceEngine(
-                id="llama_1050_3",
-                name="phi-3-mini",
-                provider=Provider.LLAMA_CPP,
-                model_class=ModelClass.A_TTFT,
-                endpoint="http://10.10.10.2:8083",
-                max_context=4096,
-                max_output=1024,
-                priority=15,
-                tags=["small", "fast", "node2", "local"],
-            ),
-            InferenceEngine(
-                id="llama_1050_4",
-                name="tinyllama",
-                provider=Provider.LLAMA_CPP,
-                model_class=ModelClass.A_TTFT,
-                endpoint="http://10.10.10.2:8084",
-                max_context=2048,
-                max_output=512,
-                priority=20,
-                tags=["tiny", "fast", "node2", "local"],
-            ),
-            # Groq (low latency "hola" responses)
-            InferenceEngine(
-                id="groq_1",
-                name="llama-3.1-8b-instant",
-                provider=Provider.GROQ,
-                model_class=ModelClass.A_TTFT,
-                endpoint="groq://api.groq.com/openai/v1",
-                max_context=8192,
-                max_output=4096,
-                priority=5,  # Very fast
-                quota_remaining=100.0,  # $100 budget
-                cost_per_1k_tokens=0.0004,
-                tags=["cloud", "fast", "low_latency", "internet_required"],
-            ),
-            InferenceEngine(
-                id="groq_2",
-                name="mixtral-8x7b-32768",
-                provider=Provider.GROQ,
-                model_class=ModelClass.A_TTFT,
-                endpoint="groq://api.groq.com/openai/v1",
-                max_context=32768,
-                max_output=4096,
-                priority=5,
-                quota_remaining=100.0,
-                cost_per_1k_tokens=0.0007,
-                tags=["cloud", "fast", "large_context", "internet_required"],
-            ),
-            # Class B: General local (3080 GTX medianos)
-            InferenceEngine(
-                id="llama_3080_1",
-                name="llama-3.1-8b",
-                provider=Provider.LLAMA_CPP,
-                model_class=ModelClass.B_LOCAL,
-                endpoint="http://10.10.10.1:8081",
-                max_context=8192,
+        for engine_id, engine_info in registry.items():
+            provider = provider_map.get(
+                engine_info.get("provider_key", ""), Provider.LLAMA_CPP
+            )
+            model_class = (
+                ModelClass.B_LOCAL
+                if provider == Provider.LLAMA_CPP
+                else ModelClass.D_CLOUD
+            )
+
+            # Map provider_key to ModelClass
+            if "fast" in engine_info.get("tags", []) or provider == Provider.GROQ:
+                model_class = ModelClass.A_TTFT
+
+            engine = InferenceEngine(
+                id=engine_id,
+                name=engine_info.get("model", "unknown"),
+                provider=provider,
+                model_class=model_class,
+                endpoint=engine_info.get("endpoint", ""),
+                max_context=engine_info.get("max_context", 4096),
                 max_output=2048,
                 priority=10,
-                tags=["medium", "general", "node1", "local"],
-            ),
-            InferenceEngine(
-                id="llama_3080_2",
-                name="qwen-7b",
-                provider=Provider.LLAMA_CPP,
-                model_class=ModelClass.B_LOCAL,
-                endpoint="http://10.10.10.1:8082",
-                max_context=8192,
-                max_output=2048,
-                priority=10,
-                tags=["medium", "general", "node1", "local"],
-            ),
-        ]
+                cost_per_1k_tokens=engine_info.get("cost_factor", 0.001),
+                tags=engine_info.get("tags", []),
+            )
+            self._engines[engine_id] = engine
 
-        # Dynamic from harvester
-        dynamic_engines = []
-        try:
-            openrouter_models = discover_provider_models_cached("openrouter")
-            for m in openrouter_models[:5]:  # Limit to top 5 free
-                dynamic_engines.append(InferenceEngine(
-                    id=f"openrouter_{m.model_id.replace('/', '_')}",
-                    name=m.model_name,
-                    provider=Provider.OPENROUTER,
-                    model_class=ModelClass.D_CLOUD,
-                    endpoint="openrouter://api.openrouter.ai/v1",
-                    max_context=m.context_length,
-                    cost_per_1k_tokens=m.pricing.get("completion", 0.001),
-                    tags=["harvester", "free", "internet_required"],
-                ))
-        except Exception:
-            pass  # Degrade to static
-
-        all_engines = static_engines + dynamic_engines
-        for eng in all_engines:
-            self._engines[eng.id] = eng
-
-        logger.info(f"ModelScheduler initialized with {len(self._engines)} engines")
+        logger.info(
+            f"ModelScheduler initialized with {len(self._engines)} engines from registry"
+        )
 
     def get_engine(self, engine_id: str) -> Optional[InferenceEngine]:
         """Get engine by ID."""
@@ -342,8 +271,14 @@ class ModelScheduler:
         internet_ok = internet_status == "OK"
 
         # Classify engines
-        local_engines = [e for e in self._engines.values() if e.is_available and "local" in e.tags]
-        booster_engines = [e for e in self._engines.values() if e.is_available and "internet_required" in e.tags]
+        local_engines = [
+            e for e in self._engines.values() if e.is_available and "local" in e.tags
+        ]
+        booster_engines = [
+            e
+            for e in self._engines.values()
+            if e.is_available and "internet_required" in e.tags
+        ]
 
         # Local-first selection
         degraded = False
@@ -379,7 +314,9 @@ class ModelScheduler:
         )
 
         # Build InferencePlan
-        planned_tokens = min(request.payload.get("max_tokens", 512), primary.max_context - 100)
+        planned_tokens = min(
+            request.payload.get("max_tokens", 512), primary.max_context - 100
+        )
         planned_cost = (planned_tokens / 1000) * (primary.cost_per_1k_tokens or 0.0001)
 
         trace_tags = {
@@ -400,6 +337,15 @@ class ModelScheduler:
             fallback_engine_ids=[e.id for e in fallbacks],
             trace_tags=trace_tags,
         )
+
+        # P2 guard-rail: validate all engine_ids in plan exist in scheduler
+        all_plan_ids = [plan.primary_engine_id] + list(plan.fallback_engine_ids)
+        unknown = [eid for eid in all_plan_ids if eid not in self._engines]
+        if unknown:
+            raise ValueError(
+                f"Scheduler produced plan with unknown engine_id(s): {unknown}. "
+                f"Known engines: {list(self._engines.keys())}"
+            )
 
         logger.info(
             f"Assigned {primary.name} (local_first, degraded={degraded}) to {request.request_id}"

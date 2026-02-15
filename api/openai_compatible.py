@@ -248,55 +248,43 @@ class _ChatHandler:
         )
         inference_plan = scheduler.assign(inference_request)
 
-        # Use inference router with plan
+        # P4: Always use InferenceRouter (plan-first), never router_v2
+        from denis_unified_v1.inference.router import InferenceRouter
+
+        if self.inference_router is None:
+            self.inference_router = InferenceRouter()
+
         try:
-            from denis_unified_v1.inference.router_v2 import create_inference_router
-            self.inference_router = create_inference_router()
-        except Exception:
-            self.inference_router = None
-
-        if self.inference_router is not None:
-            try:
-                routed = await self.inference_router.route_chat(
-                    messages=[
-                        {"role": msg.role, "content": str(msg.content or "")}
-                        for msg in req.messages
-                    ],
-                    request_id=completion_id,
-                    inference_plan=inference_plan,
-                )
-                answer = str(routed.get("response") or "").strip()
-                if answer:
-                    path = f"inference_router:{routed.get('llm_used', 'unknown')}"
-                    router_meta = {
-                        "llm_used": routed.get("llm_used"),
-                        "latency_ms": routed.get("latency_ms"),
-                        "cost_usd": routed.get("cost_usd"),
-                        "fallback_used": routed.get("fallback_used"),
-                        "attempts": routed.get("attempts"),
-                        "model_selected": routed.get("model_selected"),
-                        "inference_plan": routed.get("inference_plan"),
-                    }
-                    if inference_plan:
-                        router_meta["inference_plan_applied"] = True
-            except Exception:
-                answer = ""
-                router_meta = {"error": "inference_router_exception"}
-        else:
-            answer = ""
-            router_meta = {"error": "no_inference_router"}
-
-        if not answer:
-            legacy = await self._try_legacy_chat(user_text)
-            if legacy:
-                answer = legacy
-                path = "legacy_8084"
-            else:
-                answer = (
-                    f"Denis (incremental API) recibió: '{user_text}'. "
-                    "Respuesta local porque el core legacy no devolvió contenido."
-                )
-                path = "local_fallback"
+            routed = await self.inference_router.route_chat(
+                messages=[
+                    {"role": msg.role, "content": str(msg.content or "")}
+                    for msg in req.messages
+                ],
+                request_id=completion_id,
+                inference_plan=inference_plan,
+            )
+            answer = str(routed.get("response") or "").strip()
+            path = f"inference_router:{routed.get('llm_used', 'unknown')}"
+            router_meta = {
+                "llm_used": routed.get("llm_used"),
+                "engine_id": routed.get("engine_id"),
+                "latency_ms": routed.get("latency_ms"),
+                "cost_usd": routed.get("cost_usd"),
+                "fallback_used": routed.get("fallback_used"),
+                "attempts": routed.get("attempts"),
+                "model_selected": routed.get("model_selected"),
+                "skipped_engines": routed.get("skipped_engines"),
+                "internet_status": routed.get("internet_status"),
+                "degraded": routed.get("degraded"),
+                "inference_plan_applied": inference_plan is not None,
+            }
+        except Exception as exc:
+            # No silent legacy fallback — surface the real error
+            answer = (
+                f"Denis inference failed: {type(exc).__name__}: {str(exc)[:200]}"
+            )
+            path = "inference_error"
+            router_meta = {"error": str(exc)[:300]}
 
         # Validación de salida
         validated_answer, validation_meta = self._validate_output(answer)

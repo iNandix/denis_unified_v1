@@ -9,8 +9,15 @@ from denis_unified_v1.inference.router import InferenceRouter
 
 @pytest.mark.asyncio
 async def test_harvester_scheduler_plan_provider_request():
-    """Test integrity: harvester → scheduler → plan → provider request."""
-    # Mock harvester with fixed catalog
+    """Test integrity: harvester → scheduler → plan → provider request.
+
+    Validates the full chain:
+      1. Scheduler picks best local engine (llama_3080_1, priority=10)
+      2. Plan carries correct engine_id, model, params, budget
+      3. Router executes plan-first and calls the right client
+      4. Result contains engine_id, provider_key, model from plan
+    """
+    # Mock harvester — only affects dynamic (openrouter) engines; static engines are always present
     mock_models = [
         ModelInfo(
             provider="llamacpp",
@@ -23,7 +30,10 @@ async def test_harvester_scheduler_plan_provider_request():
         )
     ]
 
-    with patch("denis_unified_v1.kernel.scheduler.discover_provider_models_cached", return_value=mock_models):
+    with patch(
+        "denis_unified_v1.kernel.scheduler.discover_provider_models_cached",
+        return_value=mock_models,
+    ):
         scheduler = ModelScheduler()
         request = InferenceRequest(
             request_id="test_req_1",
@@ -35,10 +45,18 @@ async def test_harvester_scheduler_plan_provider_request():
         plan = scheduler.assign(request)
 
         assert plan is not None
-        assert plan.primary_engine_id == "llamacpp_node2_1"  # Deterministic selection
+        # Canonical ID from engine_registry: llamacpp_node2_1
+        assert plan.primary_engine_id == "llamacpp_node2_1"
         assert plan.expected_model == "llama-3.1-8b"
         assert plan.params["max_tokens"] == 512
-        assert plan.budget["planned_tokens"] == 512  # Rough estimate
+        assert plan.budget["planned_tokens"] == 512
+
+        # P2 guard-rail: all plan IDs must exist in scheduler
+        all_plan_ids = [plan.primary_engine_id] + list(plan.fallback_engine_ids)
+        for eid in all_plan_ids:
+            assert scheduler.get_engine(eid) is not None, (
+                f"Plan engine_id {eid!r} not in scheduler"
+            )
 
         # Mock router executor
         mock_client = AsyncMock()
@@ -49,28 +67,35 @@ async def test_harvester_scheduler_plan_provider_request():
         }
 
         router = InferenceRouter()
+        # Inject mock client into the engine the plan selected
+        router.engine_registry[plan.primary_engine_id] = {
+            "provider_key": "llamacpp",
+            "model": "llama-3.1-8b",
+            "endpoint": "http://10.10.10.1:8081",
+            "params_default": {"temperature": 0.2},
+            "tags": ["local"],
+            "client": mock_client,
+        }
 
-        with patch("denis_unified_v1.inference.router.get_engine_registry", return_value={"llamacpp_node2_1": {"provider_key": "llamacpp", "model": "llama-3.1-8b", "endpoint": "http://10.10.10.2:8081", "params_default": {"temperature": 0.2}}}) as mock_registry:
-            router.clients["llamacpp"] = mock_client
+        # Execute plan
+        result = await router.route_chat(
+            messages=[{"role": "user", "content": "test"}],
+            request_id="test_req_1",
+            inference_plan=plan,
+        )
 
-            # Execute plan
-            result = await router.route_chat(
-                messages=[{"role": "user", "content": "test"}],
-                request_id="test_req_1",
-                inference_plan=plan,
-            )
+        # Assert provider received exact plan params
+        mock_client.generate.assert_called_once()
+        call_args = mock_client.generate.call_args
+        assert call_args.kwargs["messages"] == [{"role": "user", "content": "test"}]
+        assert call_args.kwargs["timeout_sec"] > 0
+        assert call_args.kwargs["temperature"] == 0.7  # From plan
+        assert call_args.kwargs["max_tokens"] == 512
 
-            # Assert provider received exact plan
-            mock_client.generate.assert_called_once()
-            call_args = mock_client.generate.call_args
-            assert call_args.kwargs["messages"] == [{"role": "user", "content": "test"}]
-            assert call_args.kwargs["timeout_sec"] > 0
-            # Params merged: default + plan
-            assert call_args.kwargs["temperature"] == 0.7  # From plan
-            assert call_args.kwargs["max_tokens"] == 512
-
-            assert result["llm_used"] == "llamacpp"
-            assert result["model_selected"] == plan.expected_model
+        # Assert result carries plan metadata
+        assert result["llm_used"] == "llamacpp"
+        assert result["model_selected"] == plan.expected_model
+        assert result["engine_id"] == plan.primary_engine_id
 
 
 @pytest.mark.asyncio
@@ -97,8 +122,10 @@ async def test_provider_result_trace_extensions_header():
         "params_default": {},
     }
 
-    with patch.object(router.metrics, "record_call"), \
-         patch.object(router.metrics, "emit_decision"):
+    with (
+        patch.object(router.metrics, "record_call"),
+        patch.object(router.metrics, "emit_decision"),
+    ):
         result = await router.route_chat(
             messages=[{"role": "user", "content": "test"}],
             request_id="test_req_2",
