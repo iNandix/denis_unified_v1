@@ -24,12 +24,12 @@ class InternetHealth:
     """
 
     def __init__(self, ttl_s: int = 30):
-        self._status: InternetStatus = "UNKNOWN"
+        self._status: str = "UNKNOWN"
         self._last_check_ts: float = 0
         self._ttl = ttl_s
         self._lock = threading.Lock()
 
-    def check(self) -> InternetStatus:
+    def check(self) -> str:
         """Return internet status (cached for ttl_seconds).
 
         Priority:
@@ -40,13 +40,13 @@ class InternetHealth:
         # Env override takes priority
         env_status = os.getenv("DENIS_INTERNET_STATUS", "").upper()
         if env_status in ("OK", "DOWN", "UNKNOWN"):
-            return InternetStatus(env_status)
+            return env_status
 
         # Use cache if fresh
         now = time.time()
         if now - self._last_check_ts < self._ttl:
             status = self._status if self._status != "UNKNOWN" else "DOWN"
-            return InternetStatus(status)
+            return status
 
         # Check internet
         with self._lock:
@@ -59,7 +59,7 @@ class InternetHealth:
 
         # Treat UNKNOWN as DOWN for safety
         status = self._status if self._status != "UNKNOWN" else "DOWN"
-        return InternetStatus(status)
+        return status
 
     def is_internet_ok(self) -> bool:
         """Convenience method: True if internet is confirmed OK."""
