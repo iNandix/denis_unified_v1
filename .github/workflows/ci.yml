@@ -1,0 +1,54 @@
+name: CI (Unit Tests)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml aiohttp
+
+      - name: Run internet gate tests
+        run: |
+          PYTHONPATH=. python scripts/run_internet_tests.py
+
+      - name: Run scheduler tests
+        run: |
+          PYTHONPATH=. python -c "
+from denis_unified_v1.kernel.scheduler import ModelScheduler, InferenceRequest
+from denis_unified_v1.kernel.engine_registry import get_engine_registry, reset_registry
+reset_registry()
+s = ModelScheduler()
+req = InferenceRequest(request_id='t', session_id='s', route_type='fast_talk', task_type='chat', payload={'max_tokens': 10})
+plan = s.assign(req)
+assert plan is not None
+assert plan.primary_engine_id.startswith('llamacpp')
+print('Scheduler test PASSED')
+"
+
+      - name: Run registry tests
+        run: |
+          PYTHONPATH=. python -c "
+from denis_unified_v1.kernel.engine_registry import get_engine_registry, resolve_engine
+registry = get_engine_registry()
+assert 'llamacpp_node2_1' in registry
+assert resolve_engine('llamacpp_node2_1') is not None
+print('Registry test PASSED')
+"

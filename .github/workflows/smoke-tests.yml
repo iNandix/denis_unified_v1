@@ -1,0 +1,45 @@
+name: Smoke Gate (strict)
+
+on:
+  pull_request:
+    branches: [ main, dev ]
+  push:
+    branches: [ main, dev ]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: Run strict smoke gate
+        env:
+          PYTHONPATH: '.'
+          DISABLE_OBSERVABILITY: '1'
+          DENIS_API_BEARER_TOKEN: ''
+        run: |
+          mkdir -p artifacts
+          python3 scripts/meta_smoke_all.py --strict-100 --out-json artifacts/smoke_all.json
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-artifacts
+          path: |
+            artifacts/**
+            phase10_gate_smoke.json

@@ -1,0 +1,73 @@
+# Integration Tests CI Configuration
+# Run with real dependencies to validate contracts
+
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest pytest-mock
+
+    - name: Run OpenAI Contract Tests
+      run: |
+        export DENIS_TEST_MODE=0
+        export DENIS_CONTRACT_TEST_MODE=1
+        python -m pytest tests/test_openai_contract.py -v --tb=short
+
+    - name: Run Internal Contract Tests
+      run: |
+        export DENIS_TEST_MODE=0
+        python -m pytest tests/test_internal_contracts.py -v --tb=short -m "contract"
+
+    - name: Run Integration Tests
+      run: |
+        export DENIS_TEST_MODE=0
+        # Enable real services if available
+        export NEO4J_URI=${{ secrets.NEO4J_URI }}
+        export NEO4J_USER=${{ secrets.NEO4J_USER }}
+        export NEO4J_PASSWORD=${{ secrets.NEO4J_PASSWORD }}
+        python -m pytest tests/ -v --tb=short -m "integration" --maxfail=5
+
+    - name: Validate Golden Fixtures
+      run: |
+        # Check that golden fixtures exist and are valid JSON
+        python -c "
+        import json
+        import os
+
+        fixtures = [
+            'tests/fixtures/openai_chat_completions_golden.json'
+        ]
+
+        for fixture in fixtures:
+            if os.path.exists(fixture):
+                with open(fixture) as f:
+                    data = json.load(f)
+                print(f'✓ {fixture} is valid JSON')
+            else:
+                print(f'✗ {fixture} missing')
+                exit(1)
+        "
+
+    - name: Check Trace Persistence
+      run: |
+        # Verify traces are being written (if trace sink is file-based)
+        ls -la traces*.jsonl 2>/dev/null || echo "No trace files found (expected in some configurations)"
