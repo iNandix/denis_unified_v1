@@ -102,6 +102,12 @@ smokeall.json
 *.temp
 .cache/
 .tmp/
+traces/
+.queue/
+.fusion_tmp/
+uvicorn.log
+*The*
+*--out-json*
 
 # Database files
 *.db

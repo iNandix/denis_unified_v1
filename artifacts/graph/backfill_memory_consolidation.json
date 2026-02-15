@@ -1,9 +1,0 @@
-{
-  "ok": true,
-  "status": "skippeddependency",
-  "reason": "Neo4j not available for memory backfill",
-  "timestamp_utc": "2026-02-13T20:29:30.841867+00:00",
-  "backfill_results": {},
-  "memory_stats": null,
-  "audit_post_backfill": null
-}
