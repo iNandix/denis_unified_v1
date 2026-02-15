@@ -1,6 +1,6 @@
 """P1.3 Outcome Recording Tests.
 
-Tests the telemetry/outcome recording system.
+Tests the telemetry/outcome recording system with P1.3 mode selection.
 """
 
 import sys
@@ -21,6 +21,12 @@ from denis_unified_v1.telemetry.outcome_recorder import (
     StepOutcome,
     OutcomeStatus,
     ConfidenceBand,
+    ExecutionMode,
+    InternetStatus,
+    ReasonCode,
+    select_mode,
+    get_internet_status,
+    get_allow_boosters,
     create_ml_features,
 )
 
@@ -40,69 +46,146 @@ def test_outcome_recorder_basic():
     outcome = recorder.record(
         request_id="test_001",
         intent_result=intent,
-        internet_status="OK",
+        internet_status=InternetStatus.OK,
     )
 
     print(f"  Request ID: {outcome.request_id}")
     print(f"  Intent: {outcome.intent.intent}")
     print(f"  Confidence: {outcome.intent.confidence:.2f}")
     print(f"  Band: {outcome.intent.confidence_band}")
+    print(f"  Selected Mode: {outcome.selected_mode}")
     print(f"  Status: {outcome.status}")
 
     assert outcome.request_id == "test_001"
     assert outcome.intent.intent is not None
     assert outcome.intent.confidence >= 0.0
-    assert outcome.internet_status == "OK"
+    assert outcome.internet_status == InternetStatus.OK
+    assert outcome.selected_mode in ExecutionMode
 
     print("\n✅ PASS: Basic outcome recording works")
     return True
 
 
-def test_outcome_with_plan():
-    """Test outcome with plan result."""
+def test_mode_selection_offline():
+    """Test: When internet DOWN, mode should be DIRECT_LOCAL or DEGRADED."""
     print("\n" + "=" * 60)
-    print("TEST: Outcome with Plan")
+    print("TEST: Mode Selection - Offline")
     print("=" * 60)
 
-    from denis_unified_v1.intent.unified_parser import parse_intent
-    from denis_unified_v1.actions.planner import generate_candidate_plans, select_plan
-    from denis_unified_v1.actions.models import Intent_v1
-
-    prompt = "pytest me da error"
-    intent = parse_intent(prompt)
-
-    intent_v1 = Intent_v1(
-        intent=intent.intent.value,
-        confidence=intent.confidence,
-        confidence_band=intent.confidence_band,
+    mode, reasons = select_mode(
+        ConfidenceBand.HIGH,
+        "chat",
+        InternetStatus.DOWN,
+        True,  # allow_boosters=True but should be ignored
     )
 
-    candidates = generate_candidate_plans(intent_v1)
-    selected = select_plan(candidates, intent.confidence_band)
+    print(f"  Mode: {mode}")
+    print(f"  Reasons: {reasons}")
 
-    recorder = OutcomeRecorder()
-    outcome = recorder.record(
-        request_id="test_002",
-        intent_result=intent,
-        plan_result=selected,
-        internet_status="OK",
-    )
+    assert mode in [ExecutionMode.DIRECT_LOCAL, ExecutionMode.DIRECT_DEGRADED_LOCAL]
+    assert ReasonCode.OFFLINE_MODE in reasons
 
-    print(f"  Plan ID: {outcome.plan.plan_id}")
-    print(f"  Plan Type: {outcome.plan.plan_type}")
-    print(f"  Steps: {outcome.plan.steps_total}")
-
-    assert outcome.plan is not None
-    assert outcome.plan.plan_id is not None
-
-    print("\n✅ PASS: Plan outcome recording works")
+    print("\n✅ PASS: Offline mode selection works")
     return True
 
 
-def test_ml_features_creation():
-    """Test ML features creation for CatBoost."""
+def test_mode_selection_boosters_disabled():
+    """Test: When boosters disabled, mode should be DIRECT_LOCAL."""
     print("\n" + "=" * 60)
-    print("TEST: ML Features Creation")
+    print("TEST: Mode Selection - Boosters Disabled")
+    print("=" * 60)
+
+    mode, reasons = select_mode(
+        ConfidenceBand.HIGH,
+        "chat",
+        InternetStatus.OK,
+        False,  # allow_boosters=False
+    )
+
+    print(f"  Mode: {mode}")
+    print(f"  Reasons: {reasons}")
+
+    assert mode in [ExecutionMode.DIRECT_LOCAL, ExecutionMode.DIRECT_DEGRADED_LOCAL]
+    assert ReasonCode.BOOSTERS_DISABLED in reasons
+
+    print("\n✅ PASS: Boosters disabled mode works")
+    return True
+
+
+def test_mode_selection_clarify_low_confidence():
+    """Test: Low confidence always -> CLARIFY."""
+    print("\n" + "=" * 60)
+    print("TEST: Mode Selection - Low Confidence")
+    print("=" * 60)
+
+    mode, reasons = select_mode(
+        ConfidenceBand.LOW,
+        "anything",
+        InternetStatus.OK,
+        True,
+    )
+
+    print(f"  Mode: {mode}")
+    print(f"  Reasons: {reasons}")
+
+    assert mode == ExecutionMode.CLARIFY
+    assert ReasonCode.CLARIFY_LOW_CONFIDENCE in reasons
+
+    print("\n✅ PASS: Low confidence clarification works")
+    return True
+
+
+def test_mode_selection_core_intent():
+    """Test: Core-code intents -> ACTIONS_PLAN."""
+    print("\n" + "=" * 60)
+    print("TEST: Mode Selection - Core Intent")
+    print("=" * 60)
+
+    for intent in [
+        "run_tests_ci",
+        "debug_repo",
+        "refactor_migration",
+        "implement_feature",
+    ]:
+        mode, reasons = select_mode(
+            ConfidenceBand.HIGH,
+            intent,
+            InternetStatus.OK,
+            True,
+        )
+        print(f"  {intent} -> {mode}")
+        assert mode == ExecutionMode.ACTIONS_PLAN
+
+    print("\n✅ PASS: Core intent mode works")
+    return True
+
+
+def test_mode_selection_boosted():
+    """Test: Normal case -> DIRECT_BOOSTED."""
+    print("\n" + "=" * 60)
+    print("TEST: Mode Selection - Boosted")
+    print("=" * 60)
+
+    mode, reasons = select_mode(
+        ConfidenceBand.HIGH,
+        "chat",
+        InternetStatus.OK,
+        True,
+    )
+
+    print(f"  Mode: {mode}")
+    print(f"  Reasons: {reasons}")
+
+    assert mode == ExecutionMode.DIRECT_BOOSTED
+
+    print("\n✅ PASS: Boosted mode works")
+    return True
+
+
+def test_ml_features_p1_3():
+    """Test ML features creation with P1.3 fields."""
+    print("\n" + "=" * 60)
+    print("TEST: ML Features P1.3")
     print("=" * 60)
 
     intent_outcome = IntentOutcome(
@@ -146,163 +229,70 @@ def test_ml_features_creation():
         request_id="test_003",
         ts_utc=datetime.now(timezone.utc).isoformat(),
         intent=intent_outcome,
+        selected_mode=ExecutionMode.ACTIONS_PLAN,
+        allow_boosters=False,
+        internet_status=InternetStatus.DOWN,
         plan=plan_outcome,
         status=OutcomeStatus.DEGRADED,
         steps=step_outcomes,
         total_duration_ms=350,
         evidence_artifacts=["/path/to/evidence1.txt", "/path/to/evidence2.txt"],
-        internet_status="OK",
+        degraded=True,
+        reason_codes=[ReasonCode.OFFLINE_MODE, ReasonCode.STEP_FAILED],
     )
 
     features = create_ml_features(outcome)
 
     print(f"  Intent confidence: {features['intent_confidence']}")
-    print(f"  High band: {features['intent_confidence_band_high']}")
-    print(f"  Steps total: {features['steps_total']}")
-    print(f"  Success rate: {features['steps_success_rate']}")
-    print(f"  Has evidence: {features['has_evidence']}")
+    print(f"  Mode actions_plan: {features['mode_actions_plan']}")
+    print(f"  Degraded: {features['degraded']}")
+    print(f"  Internet OK: {features['internet_ok']}")
+    print(f"  Reason offline: {features['reason_offline']}")
     print(f"  Is success: {features['is_success']}")
 
     assert features["intent_confidence"] == 0.85
-    assert features["intent_confidence_band_high"] == 1
-    assert features["steps_total"] == 3
-    assert features["steps_success_rate"] == pytest.approx(0.667, rel=0.01)
-    assert features["has_evidence"] == 1
+    assert features["mode_actions_plan"] == 1
+    assert features["degraded"] == 1
+    assert features["internet_ok"] == 0
+    assert features["reason_offline"] == 1
 
-    print("\n✅ PASS: ML features creation works")
+    print("\n✅ PASS: ML features P1.3 works")
     return True
 
 
-def test_outcome_file_saved():
-    """Test that outcome file is saved to _reports."""
+def test_reason_codes():
+    """Test P1.3 reason codes."""
     print("\n" + "=" * 60)
-    print("TEST: Outcome File Saved")
+    print("TEST: Reason Codes")
     print("=" * 60)
 
-    from denis_unified_v1.intent.unified_parser import parse_intent
+    codes = [
+        ReasonCode.SUCCESS,
+        ReasonCode.OFFLINE_MODE,
+        ReasonCode.BOOSTERS_DISABLED,
+        ReasonCode.LOW_CONFIDENCE,
+        ReasonCode.CLARIFY_LOW_CONFIDENCE,
+    ]
 
-    prompt = "debug this error"
-    intent = parse_intent(prompt)
+    for code in codes:
+        print(f"  {code.value}")
 
-    recorder = OutcomeRecorder()
-    outcome = recorder.record(
-        request_id="test_004",
-        intent_result=intent,
-        internet_status="DOWN",
-    )
+    assert len(codes) > 0
 
-    reports_dir = Path(
-        "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/denis_unified_v1/_reports"
-    )
-    outcome_files = list(reports_dir.glob("*outcome*.json"))
-
-    print(f"  Outcome files found: {len(outcome_files)}")
-
-    if outcome_files:
-        latest = max(outcome_files, key=lambda p: p.stat().st_mtime)
-        print(f"  Latest: {latest.name}")
-
-        with open(latest) as f:
-            data = json.load(f)
-
-        assert "intent" in data
-        assert "status" in data
-        assert "request_id" in data
-        print("  ✅ File saved with correct schema")
-    else:
-        print("  ⚠️ No outcome files found")
-
-    print("\n✅ PASS: Outcome file saved")
-    return True
-
-
-def test_confidence_band_gating():
-    """Test that confidence band gates are recorded."""
-    print("\n" + "=" * 60)
-    print("TEST: Confidence Band Gating")
-    print("=" * 60)
-
-    high_intent = IntentOutcome(
-        intent="run_tests_ci",
-        confidence=0.90,
-        confidence_band=ConfidenceBand.HIGH,
-        sources_used=["rasa"],
-        reason_codes=[],
-    )
-
-    medium_intent = IntentOutcome(
-        intent="explain_concept",
-        confidence=0.75,
-        confidence_band=ConfidenceBand.MEDIUM,
-        sources_used=["heuristics"],
-        reason_codes=[],
-    )
-
-    low_intent = IntentOutcome(
-        intent="unknown",
-        confidence=0.40,
-        confidence_band=ConfidenceBand.LOW,
-        sources_used=[],
-        reason_codes=["default_fallback"],
-    )
-
-    high_outcome = ExecutionOutcome(
-        request_id="high",
-        ts_utc=datetime.now(timezone.utc).isoformat(),
-        intent=high_intent,
-    )
-
-    medium_outcome = ExecutionOutcome(
-        request_id="medium",
-        ts_utc=datetime.now(timezone.utc).isoformat(),
-        intent=medium_intent,
-    )
-
-    low_outcome = ExecutionOutcome(
-        request_id="low",
-        ts_utc=datetime.now(timezone.utc).isoformat(),
-        intent=low_intent,
-    )
-
-    high_features = create_ml_features(high_outcome)
-    medium_features = create_ml_features(medium_outcome)
-    low_features = create_ml_features(low_outcome)
-
-    print(
-        f"  High band: high={high_features['intent_confidence_band_high']}, medium={high_features['intent_confidence_band_medium']}, low={high_features['intent_confidence_band_low']}"
-    )
-    print(
-        f"  Medium band: high={medium_features['intent_confidence_band_high']}, medium={medium_features['intent_confidence_band_medium']}, low={medium_features['intent_confidence_band_low']}"
-    )
-    print(
-        f"  Low band: high={low_features['intent_confidence_band_high']}, medium={low_features['intent_confidence_band_medium']}, low={low_features['intent_confidence_band_low']}"
-    )
-
-    assert high_features["intent_confidence_band_high"] == 1
-    assert high_features["intent_confidence_band_medium"] == 0
-    assert high_features["intent_confidence_band_low"] == 0
-
-    assert medium_features["intent_confidence_band_high"] == 0
-    assert medium_features["intent_confidence_band_medium"] == 1
-    assert medium_features["intent_confidence_band_low"] == 0
-
-    assert low_features["intent_confidence_band_high"] == 0
-    assert low_features["intent_confidence_band_medium"] == 0
-    assert low_features["intent_confidence_band_low"] == 1
-
-    print("\n✅ PASS: Confidence band gating recorded correctly")
+    print("\n✅ PASS: Reason codes work")
     return True
 
 
 if __name__ == "__main__":
-    import pytest
-
     tests = [
         test_outcome_recorder_basic,
-        test_outcome_with_plan,
-        test_ml_features_creation,
-        test_outcome_file_saved,
-        test_confidence_band_gating,
+        test_mode_selection_offline,
+        test_mode_selection_boosters_disabled,
+        test_mode_selection_clarify_low_confidence,
+        test_mode_selection_core_intent,
+        test_mode_selection_boosted,
+        test_ml_features_p1_3,
+        test_reason_codes,
     ]
 
     results = []

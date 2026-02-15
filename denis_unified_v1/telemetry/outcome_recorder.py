@@ -5,13 +5,15 @@ Records execution outcomes for ML training:
 - Evidence paths
 - Confidence bands
 - Execution time
+- Mode selection (clarify/actions_plan/direct_local/direct_boosted)
+- Reason codes for degradation analysis
 - All stored in _reports for CatBoost
 """
 
 from __future__ import annotations
 
 import json
-import uuid
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -31,6 +33,54 @@ class ConfidenceBand(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+class ExecutionMode(str, Enum):
+    """P1.3: Execution modes (deterministic selection)."""
+
+    CLARIFY = "clarify"  # Low confidence - ask 1 question or 2 plans
+    ACTIONS_PLAN = "actions_plan"  # Core-code intents (tests, debug, refactor, etc.)
+    DIRECT_LOCAL = "direct_local"  # Chat general offline or boosters off
+    DIRECT_BOOSTED = "direct_boosted"  # Only if allow_boosters=true AND internet OK
+    DIRECT_DEGRADED_LOCAL = (
+        "direct_degraded_local"  # Chat intent but no booster available
+    )
+
+
+# P1.3 Stable Reason Codes for CatBoost
+class ReasonCode(str, Enum):
+    """Fixed set of reason codes for ML training."""
+
+    # Success
+    SUCCESS = "success"
+
+    # Degradation reasons
+    OFFLINE_MODE = "offline_mode"
+    BOOSTERS_DISABLED = "boosters_disabled"
+    BOOSTERS_UNAVAILABLE = "boosters_unavailable"
+    LOW_CONFIDENCE = "low_confidence"
+    LOCAL_RESPONSE_USED = "local_response_template_used"
+
+    # Failure reasons
+    STEP_FAILED = "step_failed"
+    PLAN_ABORTED = "plan_aborted"
+    INTENT_CONFLICT = "intent_conflict"
+    NO_EVIDENCE = "no_evidence"
+    TIMEOUT = "timeout"
+
+    # Clarification
+    CLARIFY_LOW_CONFIDENCE = "clarify_low_confidence"
+    CLARIFY_MISSING_CONTEXT = "clarify_missing_context"
+
+    # Reentry
+    REENTRY_ITERATION = "reentry_iteration"
+    REENTRY_NEW_EVIDENCE = "reentry_new_evidence"
+
+
+class InternetStatus(str, Enum):
+    OK = "OK"
+    DOWN = "DOWN"
+    UNKNOWN = "UNKNOWN"
 
 
 @dataclass
@@ -67,6 +117,17 @@ class IntentOutcome:
     sources_used: List[str] = field(default_factory=list)
     reason_codes: List[str] = field(default_factory=list)
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "intent": self.intent,
+            "confidence": self.confidence,
+            "confidence_band": self.confidence_band.value
+            if hasattr(self.confidence_band, "value")
+            else str(self.confidence_band),
+            "sources_used": self.sources_used,
+            "reason_codes": self.reason_codes,
+        }
+
 
 @dataclass
 class PlanOutcome:
@@ -90,13 +151,18 @@ class PlanOutcome:
 
 @dataclass
 class ExecutionOutcome:
-    """Full execution outcome for ML training."""
+    """Full execution outcome for ML training (P1.3 format)."""
 
     request_id: str
     ts_utc: str
 
     # Intent
     intent: IntentOutcome
+
+    # Mode selection (P1.3)
+    selected_mode: ExecutionMode = ExecutionMode.DIRECT_LOCAL
+    allow_boosters: bool = False
+    internet_status: InternetStatus = InternetStatus.UNKNOWN
 
     # Planning
     plan: Optional[PlanOutcome] = None
@@ -110,28 +176,27 @@ class ExecutionOutcome:
     evidence_artifacts: List[str] = field(default_factory=list)
 
     # Context
-    internet_status: str = "unknown"
     engine_used: Optional[str] = None
 
-    # Meta
-    degraded_reason: Optional[str] = None
+    # Degradation (P1.3)
+    degraded: bool = False
+    reason_codes: List[str] = field(default_factory=list)
     reentry_count: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "request_id": self.request_id,
             "ts_utc": self.ts_utc,
-            "intent": {
-                "intent": self.intent.intent.value
-                if hasattr(self.intent.intent, "value")
-                else str(self.intent.intent),
-                "confidence": self.intent.confidence,
-                "confidence_band": self.intent.confidence_band.value
-                if hasattr(self.intent.confidence_band, "value")
-                else str(self.intent.confidence_band),
-                "sources_used": self.intent.sources_used,
-                "reason_codes": self.intent.reason_codes,
-            },
+            "intent": self.intent.to_dict(),
+            # P1.3 fields
+            "selected_mode": self.selected_mode.value
+            if hasattr(self.selected_mode, "value")
+            else str(self.selected_mode),
+            "allow_boosters": self.allow_boosters,
+            "internet_status": self.internet_status.value
+            if hasattr(self.internet_status, "value")
+            else str(self.internet_status),
+            # Execution
             "plan": self.plan.to_dict() if self.plan else None,
             "status": self.status.value
             if hasattr(self.status, "value")
@@ -139,9 +204,10 @@ class ExecutionOutcome:
             "steps": [s.to_dict() for s in self.steps],
             "total_duration_ms": self.total_duration_ms,
             "evidence_artifacts": self.evidence_artifacts,
-            "internet_status": self.internet_status,
             "engine_used": self.engine_used,
-            "degraded_reason": self.degraded_reason,
+            # Degradation
+            "degraded": self.degraded,
+            "reason_codes": self.reason_codes,
             "reentry_count": self.reentry_count,
         }
 
@@ -155,6 +221,80 @@ class ExecutionOutcome:
             return 0.0
         completed = sum(1 for s in self.steps if s.status == OutcomeStatus.SUCCESS)
         return completed / len(self.steps)
+
+
+def get_internet_status() -> InternetStatus:
+    """Get current internet status from environment."""
+    status = os.getenv("DENIS_INTERNET_STATUS", "UNKNOWN")
+    if status not in ["OK", "DOWN", "UNKNOWN"]:
+        status = "UNKNOWN"
+    return InternetStatus(status)
+
+
+def get_allow_boosters() -> bool:
+    """Determine if boosters are allowed based on policy."""
+    allow = os.getenv("DENIS_ALLOW_BOOSTERS", "0") == "1"
+    internet = get_internet_status()
+
+    # If internet is DOWN or UNKNOWN (treated as DOWN), no boosters
+    if internet != InternetStatus.OK:
+        return False
+
+    return allow
+
+
+def select_mode(
+    confidence_band: ConfidenceBand,
+    intent: str,
+    internet_status: InternetStatus,
+    allow_boosters: bool,
+) -> tuple[ExecutionMode, List[ReasonCode]]:
+    """P1.3: Deterministic mode selection based on policy.
+
+    Rules:
+    1. Low confidence -> CLARIFY (ask 1 question or 2 plans)
+    2. Core-code intents -> ACTIONS_PLAN
+    3. If internet != OK -> DIRECT_LOCAL (never DIRECT_BOOSTED)
+    4. If allow_boosters=false -> DIRECT_LOCAL
+    5. Otherwise -> DIRECT_BOOSTED
+
+    Returns (mode, reason_codes)
+    """
+    reason_codes: List[ReasonCode] = []
+    degraded = False
+
+    # Rule 1: Low confidence -> clarify
+    if confidence_band == ConfidenceBand.LOW:
+        return ExecutionMode.CLARIFY, [ReasonCode.CLARIFY_LOW_CONFIDENCE]
+
+    # Core-code intents always use actions_plan
+    core_intents = {
+        "run_tests_ci",
+        "debug_repo",
+        "refactor_migration",
+        "implement_feature",
+        "ops_health_check",
+        "plan_rollout",
+        "incident_triage",
+    }
+
+    if intent in core_intents:
+        return ExecutionMode.ACTIONS_PLAN, []
+
+    # Rule 3: If internet not OK -> local (degraded if it was chat intent)
+    if internet_status != InternetStatus.OK:
+        if intent in {"chat", "general", "unknown"}:
+            return ExecutionMode.DIRECT_DEGRADED_LOCAL, [ReasonCode.OFFLINE_MODE]
+        return ExecutionMode.DIRECT_LOCAL, [ReasonCode.OFFLINE_MODE]
+
+    # Rule 4: Boosters disabled -> local
+    if not allow_boosters:
+        if intent in {"chat", "general", "unknown"}:
+            return ExecutionMode.DIRECT_DEGRADED_LOCAL, [ReasonCode.BOOSTERS_DISABLED]
+        return ExecutionMode.DIRECT_LOCAL, [ReasonCode.BOOSTERS_DISABLED]
+
+    # Rule 5: Normal case - boosted
+    return ExecutionMode.DIRECT_BOOSTED, []
 
 
 class OutcomeRecorder:
@@ -171,14 +311,24 @@ class OutcomeRecorder:
         intent_result: Any,
         plan_result: Any = None,
         execution_result: Any = None,
-        internet_status: str = "unknown",
+        internet_status: Optional[InternetStatus] = None,
+        selected_mode: Optional[ExecutionMode] = None,
+        allow_boosters: Optional[bool] = None,
+        degraded: bool = False,
+        reason_codes: Optional[List[ReasonCode]] = None,
     ) -> ExecutionOutcome:
-        """Record a complete execution outcome."""
+        """Record a complete execution outcome with P1.3 fields."""
 
         ts = datetime.now(timezone.utc).isoformat()
 
+        # Get intent info
+        intent_val = getattr(intent_result, "intent", "unknown")
+        # Handle IntentType enum
+        if hasattr(intent_val, "value"):
+            intent_val = intent_val.value
+
         intent_outcome = IntentOutcome(
-            intent=getattr(intent_result, "intent", "unknown"),
+            intent=intent_val,
             confidence=getattr(intent_result, "confidence", 0.0),
             confidence_band=ConfidenceBand(
                 getattr(intent_result, "confidence_band", "low")
@@ -190,6 +340,37 @@ class OutcomeRecorder:
             ],
         )
 
+        # Auto-select mode if not provided
+        if selected_mode is None:
+            confidence = getattr(intent_result, "confidence_band", "low")
+            intent_str = getattr(intent_result, "intent", "unknown")
+            if hasattr(intent_str, "value"):
+                intent_str = intent_str.value
+
+            internet = internet_status or get_internet_status()
+            boosters = (
+                allow_boosters if allow_boosters is not None else get_allow_boosters()
+            )
+
+            selected_mode, auto_reasons = select_mode(
+                ConfidenceBand(confidence),
+                intent_str,
+                internet,
+                boosters,
+            )
+            if auto_reasons:
+                reason_codes = reason_codes or []
+                reason_codes.extend(auto_reasons)
+                degraded = True
+
+        # Get internet status
+        if internet_status is None:
+            internet_status = get_internet_status()
+
+        if allow_boosters is None:
+            allow_boosters = get_allow_boosters()
+
+        # Plan outcome
         plan_outcome = None
         if plan_result:
             steps = getattr(plan_result, "steps", [])
@@ -203,22 +384,29 @@ class OutcomeRecorder:
                 steps_failed=0,
             )
 
+        # Execution status
         status = OutcomeStatus.SUCCESS
         step_outcomes = []
         evidence = []
 
         if execution_result:
-            status = OutcomeStatus(getattr(execution_result, "status", "pending"))
+            status_val = getattr(execution_result, "status", "pending")
+            if hasattr(status_val, "value"):
+                status = OutcomeStatus(status_val.value)
+            else:
+                status = OutcomeStatus(status_val)
 
             for sr in getattr(execution_result, "step_results", []):
+                step_status = getattr(sr, "status", "pending")
+                if hasattr(step_status, "value"):
+                    step_status = OutcomeStatus(step_status.value)
+                else:
+                    step_status = OutcomeStatus(step_status)
+
                 step_outcomes.append(
                     StepOutcome(
                         step_id=getattr(sr, "step_id", "unknown"),
-                        status=OutcomeStatus(
-                            getattr(sr, "status", "pending").value
-                            if hasattr(getattr(sr, "status", None), "value")
-                            else "pending"
-                        ),
+                        status=step_status,
                         duration_ms=getattr(sr, "duration_ms", 0),
                         evidence_paths=getattr(sr, "evidence_paths", []),
                         error=getattr(sr, "error", None),
@@ -233,6 +421,9 @@ class OutcomeRecorder:
             request_id=request_id,
             ts_utc=ts,
             intent=intent_outcome,
+            selected_mode=selected_mode,
+            allow_boosters=allow_boosters,
+            internet_status=internet_status,
             plan=plan_outcome,
             status=status,
             steps=step_outcomes,
@@ -240,11 +431,13 @@ class OutcomeRecorder:
             if execution_result
             else 0,
             evidence_artifacts=evidence,
-            internet_status=internet_status,
             engine_used=getattr(execution_result, "plan_id", None)
             if execution_result
             else None,
-            degraded_reason=getattr(execution_result, "degraded_reason", None),
+            degraded=degraded,
+            reason_codes=[
+                r.value if hasattr(r, "value") else str(r) for r in (reason_codes or [])
+            ],
             reentry_count=getattr(execution_result, "iterations", 1)
             if execution_result
             else 1,
@@ -267,9 +460,18 @@ class OutcomeRecorder:
 
 
 def create_ml_features(outcome: ExecutionOutcome) -> Dict[str, Any]:
-    """Create ML-ready features from outcome for CatBoost."""
+    """Create ML-ready features from outcome for CatBoost (P1.3)."""
+
+    # Mode features
+    mode = outcome.selected_mode
+    is_clarify = mode == ExecutionMode.CLARIFY
+    is_actions_plan = mode == ExecutionMode.ACTIONS_PLAN
+    is_direct_local = mode == ExecutionMode.DIRECT_LOCAL
+    is_direct_boosted = mode == ExecutionMode.DIRECT_BOOSTED
+    is_degraded = mode == ExecutionMode.DIRECT_DEGRADED_LOCAL
 
     features = {
+        # Intent features
         "intent_confidence": outcome.intent.confidence,
         "intent_confidence_band_high": int(
             outcome.intent.confidence_band == ConfidenceBand.HIGH
@@ -280,15 +482,35 @@ def create_ml_features(outcome: ExecutionOutcome) -> Dict[str, Any]:
         "intent_confidence_band_low": int(
             outcome.intent.confidence_band == ConfidenceBand.LOW
         ),
+        # Mode selection (P1.3)
+        "mode_clarify": int(is_clarify),
+        "mode_actions_plan": int(is_actions_plan),
+        "mode_direct_local": int(is_direct_local),
+        "mode_direct_boosted": int(is_direct_boosted),
+        "mode_degraded": int(is_degraded),
+        # Plan features
         "plan_type_mutating": int(outcome.plan.plan_type == "mutating")
         if outcome.plan
         else 0,
         "steps_total": len(outcome.steps),
         "steps_success_rate": outcome.success_rate,
+        # Execution
         "total_duration_ms": outcome.total_duration_ms,
         "has_evidence": int(len(outcome.evidence_artifacts) > 0),
-        "internet_ok": int(outcome.internet_status == "OK"),
+        # Context (P1.3)
+        "internet_ok": int(outcome.internet_status == InternetStatus.OK),
+        "allow_boosters": int(outcome.allow_boosters),
+        "degraded": int(outcome.degraded),
         "reentry_count": outcome.reentry_count,
+        # Reason codes (P1.3)
+        "reason_offline": int(ReasonCode.OFFLINE_MODE.value in outcome.reason_codes),
+        "reason_boosters_disabled": int(
+            ReasonCode.BOOSTERS_DISABLED.value in outcome.reason_codes
+        ),
+        "reason_low_confidence": int(
+            ReasonCode.LOW_CONFIDENCE.value in outcome.reason_codes
+        ),
+        # Target
         "is_success": int(outcome.is_success),
     }
 
