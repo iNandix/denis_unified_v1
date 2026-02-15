@@ -37,6 +37,7 @@ from denis_unified_v1.telemetry.outcome_recorder import (
 )
 from denis_unified_v1.cognition.local_responder import create_local_responder
 from denis_unified_v1.cognition.executor import Executor, Evaluator, ReentryController, save_toolchain_log
+from denis_unified_v1.cognition.tools import build_tool_registry
 from denis_unified_v1.kernel.ops.engine_probe import run_engine_probe
 from denis_unified_v1.catalog.tool_catalog import get_tool_catalog, CatalogContext
 
@@ -56,7 +57,7 @@ router = InferenceRouter()
 scheduler = get_model_scheduler()
 outcome_recorder = OutcomeRecorder()
 local_responder = create_local_responder()
-executor = Executor()
+executor = Executor(tool_registry=build_tool_registry())
 evaluator = Evaluator()
 reentry_controller = ReentryController()
 
