@@ -11,6 +11,7 @@ from .proposal_normalizer import NormalizedProposal, normalize_proposal_markdown
 from .providers import ProviderStatus
 from .session_store import SessionStore
 from .auto_dispatch import run_auto_dispatch
+from .sprint_manager import SprintManager, SprintRequest, SprintResult, get_sprint_manager
 
 __all__ = [
     "ProviderRequest",
@@ -26,4 +27,9 @@ __all__ = [
     "normalize_proposal_markdown",
     "run_auto_dispatch",
     "load_sprint_config",
+    # Sprint Manager API for DENIS Agent
+    "SprintManager",
+    "SprintRequest",
+    "SprintResult",
+    "get_sprint_manager",
 ]

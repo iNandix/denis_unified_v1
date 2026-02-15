@@ -1,0 +1,38 @@
+# Optional: S3 upload configuration for canary reports
+# Only deploy if you want to store canary reports in cloud storage
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: denis-canary-s3
+  labels:
+    app: denis
+    component: canary
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: "REDACTED"
+  AWS_SECRET_ACCESS_KEY: "REDACTED"
+  AWS_DEFAULT_REGION: "eu-west-1"
+---
+# To enable S3 upload, update the ConfigMap:
+# data:
+#   CANARY_UPLOAD_ENABLED: "1"
+#   CANARY_UPLOAD_BUCKET: "your-canary-reports-bucket"
+#   CANARY_UPLOAD_PREFIX: "denis-canary/prod"
+
+# And add these environment variables to the CronJob container:
+# - name: AWS_ACCESS_KEY_ID
+#   valueFrom:
+#     secretKeyRef:
+#       name: denis-canary-s3
+#       key: AWS_ACCESS_KEY_ID
+# - name: AWS_SECRET_ACCESS_KEY
+#   valueFrom:
+#     secretKeyRef:
+#       name: denis-canary-s3
+#       key: AWS_SECRET_ACCESS_KEY
+# - name: AWS_DEFAULT_REGION
+#   valueFrom:
+#     secretKeyRef:
+#       name: denis-canary-s3
+#       key: AWS_DEFAULT_REGION

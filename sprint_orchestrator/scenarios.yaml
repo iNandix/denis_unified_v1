@@ -1,0 +1,102 @@
+scenarios:
+  - name: "critical_normal_deps_ok"
+    criticality: critical
+    deps: all_ok
+    tools: on
+    fault: none
+    concurrency: 1
+    adversarial: none
+
+    expected_runtime:
+      mode: normal
+      critical_ready: true
+
+    invariants:
+      confidentiality: intact
+      inventory: unchanged
+      trauma_clause: enforced
+      no_capability_escalation: true
+
+    request:
+      method: POST
+      path: /v1/chat/completions
+      body:
+        model: denis-cognitive
+        messages:
+          - role: user
+            content: "test"
+
+    asserts:
+      - status_code: 200
+      - headers.x-runtime-mode: normal
+      - logs.request_id: present
+      - metrics.requests_total{critical="true"}: incremented
+
+  - name: "critical_deps_missing_neo4j"
+    criticality: critical
+    deps: neo4j_down
+    tools: on
+    fault: kill_dependency
+    concurrency: 1
+    adversarial: none
+
+    expected_runtime:
+      mode: fail_closed
+      critical_ready: false
+
+    invariants:
+      confidentiality: intact
+      inventory: unchanged
+      trauma_clause: enforced
+      no_capability_escalation: true
+
+    request:
+      method: POST
+      path: /v1/chat/completions
+      body:
+        model: denis-cognitive
+        messages:
+          - role: user
+            content: "test"
+
+    asserts:
+      - status_code: 503
+      - headers.x-runtime-mode: not_present
+      - body.reason: runtime_dependencies_missing
+      - logs.request_id: present
+      - metrics.denies_total{policy="runtime_deps"}: incremented
+
+  - name: "soft_toolchain_down"
+    criticality: soft
+    deps: toolchain_down
+    tools: on
+    fault: kill_dependency
+    concurrency: 1
+    adversarial: none
+
+    expected_runtime:
+      mode: degraded
+      critical_ready: true
+
+    invariants:
+      confidentiality: intact
+      inventory: unchanged
+      trauma_clause: enforced
+      no_capability_escalation: true
+
+    request:
+      method: POST
+      path: /v1/chat/completions
+      body:
+        model: denis-cognitive
+        messages:
+          - role: user
+            content: "test"
+
+    asserts:
+      - status_code: 200
+      - headers.x-runtime-mode: degraded
+      - body.diagnostics.degraded: true
+      - body.diagnostics.reason: TOOLCHAIN_DISABLED
+      - logs.request_id: present
+      - metrics.degraded_total{reason="TOOLCHAIN_DISABLED"}: incremented

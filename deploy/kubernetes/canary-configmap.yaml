@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: denis-canary-config
+  labels:
+    app: denis
+    component: canary
+data:
+  CANARY_SCHEDULE_INTERVAL_S: "300"
+  CANARY_TIMEOUT_S: "20"
+
+  # Latency SLOs
+  CANARY_P95_SLO_MS: "5000"
+  CANARY_P99_SLO_MS: "10000"
+
+  # Errors / contract
+  CANARY_MAX_5XX_RATE_PERCENT: "1.0"
+  CANARY_CONTRACT_MAX_FAILURES: "0"
+
+  # Budget drift
+  CANARY_MAX_ABS_BUDGET_DRIFT: "1000"
+  CANARY_MAX_RATIO_BUDGET_DRIFT: "2.0"
+
+  # Evidence / strict verify
+  CANARY_STRICT_VERIFY_COMPLIANCE_RATE: "1.0"
+  CANARY_EVIDENCE_AVAILABILITY_MIN_RATE: "0.8"
+
+  # Canary behavior
+  CANARY_FAIL_ON: "hard_fail"
+  CANARY_OUTPUT_PATH: "/tmp/canary_report.json"
+
+  # Optional upload (disabled by default)
+  CANARY_UPLOAD_ENABLED: "0"
+  CANARY_UPLOAD_PROVIDER: "s3"     # s3|gcs|azure (only used if enabled)
+  CANARY_UPLOAD_BUCKET: ""
+  CANARY_UPLOAD_PREFIX: "denis-canary"

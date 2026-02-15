@@ -182,7 +182,7 @@ def load_provider_statuses(config: SprintOrchestratorConfig) -> list[ProviderSta
 
     statuses.append(
         ProviderStatus(
-            provider="legacy_core",
+            provider="llamacpp",
             mode="local",
             request_format="openai_chat",
             configured=True,
@@ -416,10 +416,10 @@ def ordered_configured_provider_ids(
     primary = (config.primary_provider or "").strip()
     if (
         config.pin_legacy_first
-        and (not primary or primary == "legacy_core")
-        and "legacy_core" in ordered
+        and (not primary or primary == "llamacpp")
+        and "llamacpp" in ordered
     ):
-        ordered = ["legacy_core"] + [item for item in ordered if item != "legacy_core"]
+        ordered = ["llamacpp"] + [item for item in ordered if item != "llamacpp"]
     elif primary and primary in ordered:
         ordered = [primary] + [item for item in ordered if item != primary]
     return ordered

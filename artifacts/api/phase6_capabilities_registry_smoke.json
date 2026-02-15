@@ -1,5 +1,8 @@
 {
-  "endpoint_status": "setup_error",
-  "error": "name 'REPO' is not defined",
-  "ok": false
+  "endpoint_status": "server_not_ready",
+  "error": "Server failed to start within 45 seconds",
+  "ok": false,
+  "port": 56349,
+  "stderr_tail": "",
+  "stdout_tail": ""
 }

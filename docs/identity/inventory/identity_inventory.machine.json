@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "doc_type": "identity_inventory",
+  "constitutional": true,
+  "singularities": [
+    "companion_mode",
+    "mandatory_governance",
+    "anti_bypass_enforcement",
+    "honesty_non_deceptive",
+    "creator_can_be_risk"
+  ],
+  "generated_utc": "2026-02-14T00:00:00Z",
+  "sources": [
+    {
+      "id": "persona_canonical",
+      "path": "/media/jotah/SSD_denis/denis_persona_canonical.py",
+      "sha256": "ddbe16e1dbaf1d85b3008e96f07fcf5219eddf2b62786bbdfb9f90a2d2a5afae",
+      "line_count": 22797
+    },
+    {
+      "id": "identity_master",
+      "path": "/media/jotah/SSD_denis/config/DENIS_IDENTITY_MASTER.json",
+      "sha256": "8941c9643ddc3f5850d650df117dddb32b39aec1775757d551cb66fca9610112"
+    }
+  ],
+  "systems": [
+    { "id": "system:action_authorizer", "mandatory": true, "role": "enforcement" },
+    { "id": "system:ci_gate", "mandatory": true, "role": "validation" },
+    { "id": "system:atlas", "mandatory": true, "role": "observation" },
+    { "id": "system:honesty_core", "mandatory": true, "role": "truth_guard" }
+  ],
+  "modules": [
+    {
+      "id": "module:honesty_core",
+      "path": "/media/jotah/SSD_denis/core/denis_honesty_core.py",
+      "sha256": "f341d096bcdcfd59fde41337c9445a8340b3310ab0bbcdf4080c10157117bd1a",
+      "role": "enforcement",
+      "criticality": "core",
+      "provides": ["honesty_checks", "factibility_checks"],
+      "risks": ["risk:soft_parent_bypass"],
+      "anchors": []
+    },
+    {
+      "id": "module:atlas_v2",
+      "path": "/media/jotah/SSD_denis/core/atlas_v2_system.py",
+      "sha256": "80add809b915df340659be988d4347baea9d92ed9e3aa3c4881e9455cd9dc493",
+      "role": "observation",
+      "criticality": "core",
+      "anchors": []
+    },
+    {
+      "id": "module:neuro_atlas",
+      "path": "/media/jotah/SSD_denis/core/neuro_atlas_system.py",
+      "sha256": "131fc4c7be58744aa317597c0545bb49f39f8dc32ca89479cbde92c2174b1e9e",
+      "role": "observation",
+      "criticality": "core",
+      "anchors": []
+    },
+    {
+      "id": "module:memory_api_routes",
+      "path": "/media/jotah/SSD_denis/core/memory_api_routes.py",
+      "sha256": "d87f28078bad7b5c407b81d4cdee2fa67045f305da00031abf82dd30ed22e44c",
+      "role": "memory",
+      "criticality": "core",
+      "anchors": []
+    },
+    {
+      "id": "module:memory_graph_connector",
+      "path": "/media/jotah/SSD_denis/core/memory_graph_connector.py",
+      "sha256": "55a0cdeaaf34dc603093ba9a473c6badac231087747235180cbab6c7eb850fbe",
+      "role": "memory",
+      "criticality": "core",
+      "anchors": []
+    },
+    {
+      "id": "module:people_graph",
+      "path": "/media/jotah/SSD_denis/core/people_graph.py",
+      "sha256": "524b2c541a873ce59e09912aef51392d49d4b191cf065a46ed92eff0c5a4bc17",
+      "role": "relational_memory",
+      "criticality": "core",
+      "anchors": []
+    },
+    {
+      "id": "module:persona_canonical",
+      "path": "/media/jotah/SSD_denis/denis_persona_canonical.py",
+      "sha256": "ddbe16e1dbaf1d85b3008e96f07fcf5219eddf2b62786bbdfb9f90a2d2a5afae",
+      "role": "Persona.Canonical",
+      "criticality": "core",
+      "anchors": ["A:synthetic:main_guard"]
+    }
+  ],
+  "entrypoints": [
+    {
+      "id": "entrypoint:persona_main_guard",
+      "source_id": "persona_canonical",
+      "anchor": "A:synthetic:main_guard",
+      "line_range": [22787, 22797],
+      "snippet_hash": "eed3889c7ebaa45f5b2354729c90c681d7c1152acab99170249a8209eb51a4eb",
+      "interface": "cli",
+      "constitutional": true,
+      "must_call": ["system:action_authorizer"],
+      "exposes_actions": ["action:repo_mutation", "action:code_generation"],
+      "cannot_bypass": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "action:repo_mutation",
+      "category": "repo_mutation",
+      "risk_level": "high",
+      "requires": ["system:action_authorizer", "gate:ci_strict_100"],
+      "blocked_if": ["ci_failed", "missing_artifacts", "no_review"],
+      "constitutional": true
+    },
+    {
+      "id": "action:code_generation",
+      "category": "code_gen",
+      "risk_level": "medium",
+      "requires": ["system:honesty_core"],
+      "constitutional": true
+    }
+  ],
+  "bypass_surfaces": [
+    {
+      "id": "bypass:direct_git_commit",
+      "pattern": "git commit",
+      "risk": "risk:soft_parent_bypass",
+      "mitigations": ["system:action_authorizer", "system:ci_gate"],
+      "constitutional": true
+    },
+    {
+      "id": "bypass:alternate_cli_or_api",
+      "pattern": "external CLI/API invocation",
+      "risk": "risk:unbounded_freedom",
+      "mitigations": ["system:action_authorizer", "system:atlas"],
+      "constitutional": true
+    }
+  ],
+  "gates": [
+    { "id": "gate:ci_strict_100", "type": "ci", "rule": "meta_smoke_all --strict-100 must pass" }
+  ],
+  "principles_binding": [
+    "principle:cooperative_evolution",
+    "invariant:identity_requires_companion_mode",
+    "invariant:mandatory_enforcement_systems"
+  ]
+}

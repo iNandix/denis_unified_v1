@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "pack_type": {
+      "type": "string",
+      "enum": [
+        "ide"
+      ]
+    },
+    "task_spec": {
+      "type": "string",
+      "description": "Task specification from intent."
+    },
+    "repo_norms": {
+      "type": "string",
+      "description": "Specific repo rules or empty."
+    },
+    "locality": {
+      "type": "string",
+      "description": "Content near focus files."
+    },
+    "dependency_slice": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "callers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "symbol",
+                  "file"
+                ],
+                "properties": {
+                  "symbol": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "lines": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "key_contract": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            },
+            "lifecycle": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            },
+            "side_effects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "tests_build": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tests_found"
+          ],
+          "properties": {
+            "tests_found": {
+              "type": "boolean"
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "suggested_next": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Exact tests or empty."
+    },
+    "memory_highlights": {
+      "type": "string",
+      "description": "Past decisions."
+    },
+    "workspace_focus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file"
+      ],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        }
+      }
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^.+:\\d+-\\d+$"
+      }
+    },
+    "token_estimate": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20000
+    },
+    "rationale": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pack_type",
+    "task_spec",
+    "locality",
+    "dependency_slice",
+    "token_estimate",
+    "rationale"
+  ]
+}

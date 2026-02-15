@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://denis.ai/schemas/context_pack_human.schema.json",
+  "title": "Denis Human Context Pack",
+  "description": "Schema for human context packs. Version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version for migration purposes"
+    },
+    "pack_type": {
+      "type": "string",
+      "enum": [
+        "human"
+      ],
+      "description": "Discriminator for humanlike context packs."
+    },
+    "narrative_context": {
+      "type": "object",
+      "description": "Small, fast narrative state for continuity without dumping chat history.",
+      "properties": {
+        "active_threads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10
+        },
+        "last_people_mentions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10
+        },
+        "last_episode_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10
+        },
+        "mood": {
+          "type": "string",
+          "description": "Optional narrative mood tag (e.g., preocupado, alegre, neutral)."
+        },
+        "urgency": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "description": "Optional urgency tag for the current narrative state."
+        }
+      }
+    },
+    "episode_ref": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "description": "Primary relevant episode for this turn, used to answer 'te acuerdas de...'.",
+      "properties": {
+        "episode_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved",
+            "unknown"
+          ]
+        },
+        "start_ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Visibility scope, e.g. user:<id> or group:<id>."
+        }
+      }
+    },
+    "topic_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Main topic or subject of the conversation.",
+      "properties": {
+        "topic": {
+          "type": "string"
+        },
+        "people": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10
+        },
+        "pets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10
+        },
+        "group_id": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "topic"
+      ]
+    },
+    "source_note": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Attribution and verification status to prevent false memories.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "fact",
+            "claim",
+            "inference",
+            "system"
+          ]
+        },
+        "asserted_by": {
+          "type": "string",
+          "description": "Who asserted this (e.g., Alex, user, system)."
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether this info is verified."
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "References to supporting artifacts/claims/episodes."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "type",
+        "asserted_by",
+        "verified"
+      ]
+    },
+    "ask_style": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Guidance for humanlike delivery and follow-ups.",
+      "properties": {
+        "tone": {
+          "type": "string",
+          "description": "e.g., preocupado, neutral, alegre"
+        },
+        "question_bias": {
+          "type": "string",
+          "enum": [
+            "preguntar_primero",
+            "explicar_primero",
+            "balanceado"
+          ],
+          "description": "Whether to ask before explaining."
+        },
+        "do_not_assume": {
+          "type": "boolean",
+          "description": "If true, avoid assuming missing details."
+        },
+        "use_attribution_language": {
+          "type": "boolean",
+          "description": "If true, prefer phrases like 'según Alex...' when source_note is a claim."
+        }
+      },
+      "required": [
+        "do_not_assume"
+      ]
+    },
+    "followup_due": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "type": "string"
+          },
+          "due_ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "episode_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt",
+          "priority"
+        ]
+      },
+      "maxItems": 20,
+      "description": "Structured follow-ups to keep continuity ('¿está bien?') without being robotic."
+    },
+    "token_estimate": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "Estimated token footprint of this pack."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Why these items were selected."
+    }
+  },
+  "required": [
+    "schema_version",
+    "pack_type",
+    "narrative_context",
+    "source_note",
+    "ask_style",
+    "token_estimate",
+    "rationale"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "topic_ref"
+      ]
+    },
+    {
+      "required": [
+        "episode_ref"
+      ],
+      "properties": {
+        "episode_ref": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "required": [
+        "followup_due"
+      ],
+      "properties": {
+        "followup_due": {
+          "type": "array",
+          "minItems": 1
+        }
+      }
+    }
+  ]
+}

@@ -257,10 +257,13 @@ def main():
             "overall_success": False,
         }
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with out_path.open("w") as f:
-            json.dump(artifact, f, indent=2)
-        print(f"Artifact: {out_path}")
+        tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+        with tmp_path.open("w") as f:
+            json.dump(artifact, f, indent=2, ensure_ascii=False)
+        tmp_path.replace(out_path)
+        print(f"Artifact written to: {out_path}")
         sys.exit(1)
+
     print("Compile check PASSED")
 
     artifact = {

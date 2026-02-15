@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: denis-contract-canary
+  labels:
+    app: denis
+    component: canary
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: denis
+            component: canary
+        spec:
+          restartPolicy: Never
+          serviceAccountName: denis-canary-sa
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: canary
+              image: your-registry/denis-canary:latest
+              imagePullPolicy: IfNotPresent
+
+              envFrom:
+                - configMapRef:
+                    name: denis-canary-config
+
+              env:
+                # Target your production Denis endpoint (cluster-internal or external)
+                - name: CANARY_TARGET_URL
+                  value: "https://your-prod-endpoint.com"
+
+                # Optional: If you want to include a stable identifier in logs
+                - name: CANARY_ENV
+                  value: "production"
+
+                # Optional: enable upload by setting CANARY_UPLOAD_ENABLED=1 and filling bucket/prefix
+                # Credentials come from Secret if you enable upload (see below).
+
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+
+              command: ["/bin/sh", "-lc"]
+              args:
+                - |
+                  set -euo pipefail
+                  echo "[denis-canary] starting canary run target=${CANARY_TARGET_URL} env=${CANARY_ENV}"
+                  python scripts/contract_canary.py \
+                    --fail-on="${CANARY_FAIL_ON}" \
+                    --output="${CANARY_OUTPUT_PATH}"
+
+                  echo "[denis-canary] report:"
+                  cat "${CANARY_OUTPUT_PATH}"
+
+                  if [ "${CANARY_UPLOAD_ENABLED}" = "1" ]; then
+                    echo "[denis-canary] upload enabled provider=${CANARY_UPLOAD_PROVIDER}"
+                    python scripts/upload_canary_report.py \
+                      --provider "${CANARY_UPLOAD_PROVIDER}" \
+                      --bucket "${CANARY_UPLOAD_BUCKET}" \
+                      --prefix "${CANARY_UPLOAD_PREFIX}" \
+                      --file "${CANARY_OUTPUT_PATH}"
+                  else
+                    echo "[denis-canary] upload disabled"
+                  fi

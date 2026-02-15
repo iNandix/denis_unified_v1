@@ -16,10 +16,23 @@ try:
 except Exception:  # pragma: no cover
     redis = None
 
-from denis_unified_v1.smx.client import SMXClient
-from denis_unified_v1.smx.nlu_client import NLUClient
-from denis_unified_v1.smx.orchestrator.phase2 import SMXOrchestrator
-from denis_unified_v1.orchestration.cognitive_router import CognitiveRouter
+try:
+    from denis_unified_v1.smx.client import SMXClient
+    from denis_unified_v1.smx.nlu_client import NLUClient
+    from denis_unified_v1.smx.orchestrator import SMXOrchestrator
+except ImportError:
+    SMXClient = None  # type: ignore[misc,assignment]
+    NLUClient = None  # type: ignore[misc,assignment]
+    SMXOrchestrator = None  # type: ignore[misc,assignment]
+
+from denis_unified_v1.kernel.decision_trace import DecisionTrace, TraceSpan
+from denis_unified_v1.kernel.scheduler import InferencePlan
+from denis_unified_v1.kernel.engine_registry import get_engine_registry
+from denis_unified_v1.kernel.internet_health import get_internet_health
+from denis_unified_v1.inference.legacy_core_client import LegacyCoreClient
+from denis_unified_v1.inference.vllm_client import VLLMClient
+from denis_unified_v1.inference.groq_client import GroqClient
+from denis_unified_v1.inference.openrouter_client import OpenRouterClient
 
 
 def _utc_now() -> str:
@@ -80,8 +93,7 @@ class RedisMetricsStore:
             "vllm": 150.0,
             "groq": 250.0,
             "openrouter": 450.0,
-            "claude": 700.0,
-            "legacy_core": 180.0,
+            "llamacpp": 180.0,
         }
         latency = defaults.get(provider, 500.0)
         error_rate = 0.0
@@ -183,7 +195,7 @@ class InferenceRouter:
             if provider_order
             else os.getenv(
                 "DENIS_INFERENCE_PROVIDER_ORDER",
-                "legacy_core,vllm,groq,openrouter,claude",
+                "llamacpp,vllm,groq,openrouter",
             )
         )
         self.provider_order = [
@@ -191,12 +203,25 @@ class InferenceRouter:
         ]
         self.max_fallback_attempts = int(os.getenv("DENIS_ROUTER_MAX_ATTEMPTS", "3"))
         self.clients: dict[str, ProviderClient] = {
-            "legacy_core": LegacyCoreClient(),
+            "llamacpp": LegacyCoreClient(),
             "vllm": VLLMClient(),
             "groq": GroqClient(),
             "openrouter": OpenRouterClient(),
-            "claude": ClaudeClient(),
         }
+
+        # Temporal alias for migration
+        self.clients["legacy_core"] = self.clients["llamacpp"]
+
+        self.engine_registry = get_engine_registry()
+
+        # Assign clients
+        for eid, e in self.engine_registry.items():
+            e["client"] = self.clients[e["provider_key"]]
+
+        # Validate
+        missing = [eid for eid, e in self.engine_registry.items() if e["provider_key"] not in self.clients]
+        if missing:
+            raise RuntimeError(f"Unknown provider_key in engine_registry for engines: {missing}")
 
     def get_status(self) -> dict[str, Any]:
         providers: list[dict[str, Any]] = []
@@ -251,151 +276,241 @@ class InferenceRouter:
         messages: list[dict[str, str]],
         *,
         request_id: str,
+        inference_plan: InferencePlan | None = None,
         latency_budget_ms: int | None = None,
         cost_limit_usd: float | None = None,
     ) -> dict[str, Any]:
-        user_text = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                user_text = str(msg.get("content") or "")
-                break
-        profile = _analyze_query(user_text)
+        skipped_engines = []
+        if inference_plan:
+            # Plan-first: execute without re-analysis
+            engine_ids = [inference_plan.primary_engine_id] + list(inference_plan.fallback_engine_ids)
+            max_attempts = inference_plan.attempt_policy.get("max_attempts", len(engine_ids))
 
-        scored: list[tuple[str, float, ProviderMetrics]] = []
-        for provider in self.provider_order:
-            client = self.clients.get(provider)
-            if client is None:
-                continue
-            if not client.is_available() and provider != "legacy_core":
-                continue
-            score, metrics = self._score_provider(
-                provider,
-                client,
-                profile,
-                latency_budget_ms,
-            )
-            scored.append((provider, score, metrics))
-        scored.sort(key=lambda item: (-item[1], item[0]))
+            for attempt_idx, engine_id in enumerate(engine_ids[:max_attempts]):
+                info = self._resolve_engine(engine_id)
+                if not info:
+                    continue
 
-        attempts = 0
-        errors: list[dict[str, Any]] = []
-        for provider, score, metrics in scored:
-            if attempts >= self.max_fallback_attempts:
-                break
-            attempts += 1
-            client = self.clients[provider]
-            timeout_sec = (
-                max(0.6, latency_budget_ms / 1000.0)
-                if latency_budget_ms is not None
-                else float(os.getenv("DENIS_ROUTER_DEFAULT_TIMEOUT_SEC", "4.5"))
-            )
-            started = time.perf_counter()
-            try:
-                result = await client.generate(messages=messages, timeout_sec=timeout_sec)
-                latency_ms = (time.perf_counter() - started) * 1000.0
-                self.metrics.record_call(provider, latency_ms=latency_ms, success=True)
-                payload = {
-                    "request_id": request_id,
-                    "llm_used": provider,
-                    "score": round(score, 8),
-                    "latency_ms": int(latency_ms),
-                    "attempts": attempts,
-                    "fallback_used": attempts > 1,
-                    "timestamp_utc": _utc_now(),
-                    "ranking": [
-                        {
-                            "provider": p,
-                            "score": round(s, 8),
-                            "latency_p95_ms": m.latency_p95_ms,
-                            "error_rate_1h": m.error_rate_1h,
-                            "availability": m.availability,
-                        }
-                        for p, s, m in scored
-                    ],
-                }
-                self.metrics.emit_decision(request_id, payload)
-                output_tokens = int(result.get("output_tokens") or 0)
-                input_tokens = int(result.get("input_tokens") or max(1, len(user_text.split())))
-                cost_usd = self._estimate_cost_usd(
-                    provider=provider,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
+                internet_ok = get_internet_health().check() == "OK"
+                if "internet_required" in info.get("tags", []) and not internet_ok:
+                    skipped_engines.append({"engine_id": engine_id, "reason": "no_internet"})
+                    continue
+
+                provider = info["provider"]
+                client = info["client"]
+                model = info.get("model")
+
+                # Optional drift check
+                if inference_plan.expected_model and model and model != inference_plan.expected_model:
+                    # Trace warning (no fail)
+                    pass
+
+                params = {**info.get("params_default", {}), **inference_plan.params}
+                timeout_s = inference_plan.timeouts_ms.get("total_ms", 5000) / 1000.0
+
+                # Execute
+                started = time.perf_counter()
+                try:
+                    result = await client.generate(messages=messages, timeout_sec=timeout_s, **params)
+                    latency_ms = (time.perf_counter() - started) * 1000.0
+                    self.metrics.record_call(info.get("provider_key"), latency_ms=latency_ms, success=True)
+                    return self._format_result(result, provider_key=info.get("provider_key"), engine_id=engine_id, model=model, plan=inference_plan, latency_ms=latency_ms, skipped_engines=skipped_engines, internet_status_runtime=get_internet_health().check())
+                except Exception as exc:
+                    latency_ms = (time.perf_counter() - started) * 1000.0
+                    self.metrics.record_call(info.get("provider_key"), latency_ms=latency_ms, success=False)
+                    # Continue to fallback
+                    continue
+
+            # Degraded fallback
+            return self._degraded_fallback(plan=inference_plan, skipped_engines=skipped_engines, internet_status_runtime=get_internet_health().check())
+        else:
+            # Legacy heuristic (mark trace ASSUMPTION_MADE)
+            user_text = ""
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    user_text = str(msg.get("content") or "")
+                    break
+            profile = _analyze_query(user_text)
+
+            self.metrics.emit_decision(request_id, {"mode": "legacy_heuristic", "assumption": "derived_from_query_profile"})
+
+            # Existing logic
+            scored: list[tuple[str, float, ProviderMetrics]] = []
+            for provider in self.provider_order:
+                client = self.clients.get(provider)
+                if client is None:
+                    continue
+                if not client.is_available() and provider != "legacy_core":
+                    continue
+                score, metrics = self._score_provider(
+                    provider,
+                    client,
+                    profile,
+                    latency_budget_ms,
                 )
-                if cost_limit_usd is not None and cost_usd > cost_limit_usd:
-                    raise RuntimeError(
-                        f"cost_limit_exceeded provider={provider} cost={cost_usd:.6f} limit={cost_limit_usd:.6f}"
-                    )
-                return {
-                    "response": str(result.get("response") or "").strip(),
-                    "llm_used": provider,
-                    "latency_ms": int(latency_ms),
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "cost_usd": round(cost_usd, 6),
-                    "fallback_used": attempts > 1,
-                    "attempts": attempts,
-                    "ranking": payload["ranking"],
-                }
-            except Exception as exc:
-                latency_ms = (time.perf_counter() - started) * 1000.0
-                self.metrics.record_call(provider, latency_ms=latency_ms, success=False)
-                errors.append(
-                    {
-                        "provider": provider,
-                        "error": str(exc)[:300],
+                scored.append((provider, score, metrics))
+            scored.sort(key=lambda item: (-item[1], item[0]))
+
+            attempts = 0
+            errors: list[dict[str, Any]] = []
+            for provider, score, metrics in scored:
+                if attempts >= self.max_fallback_attempts:
+                    break
+                attempts += 1
+                client = self.clients[provider]
+                timeout_sec = (
+                    max(0.6, latency_budget_ms / 1000.0)
+                    if latency_budget_ms is not None
+                    else float(os.getenv("DENIS_ROUTER_DEFAULT_TIMEOUT_SEC", "4.5"))
+                )
+                started = time.perf_counter()
+                try:
+                    result = await client.generate(messages=messages, timeout_sec=timeout_sec)
+                    latency_ms = (time.perf_counter() - started) * 1000.0
+                    self.metrics.record_call(provider, latency_ms=latency_ms, success=True)
+                    payload = {
+                        "request_id": request_id,
+                        "llm_used": provider,
+                        "score": round(score, 8),
                         "latency_ms": int(latency_ms),
+                        "attempts": attempts,
+                        "fallback_used": attempts > 1,
+                        "timestamp_utc": _utc_now(),
+                        "ranking": [
+                            {
+                                "provider": p,
+                                "score": round(s, 8),
+                                "latency_p95_ms": m.latency_p95_ms,
+                                "error_rate_1h": m.error_rate_1h,
+                                "availability": m.availability,
+                            }
+                            for p, s, m in scored
+                        ],
                     }
-                )
+                    self.metrics.emit_decision(request_id, payload)
+                    output_tokens = int(result.get("output_tokens") or 0)
+                    input_tokens = int(result.get("input_tokens") or max(1, len(user_text.split())))
+                    cost_usd = self._estimate_cost_usd(
+                        provider=provider,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    )
+                    if cost_limit_usd is not None and cost_usd > cost_limit_usd:
+                        raise RuntimeError(
+                            f"cost_limit_exceeded provider={provider} cost={cost_usd:.6f} limit={cost_limit_usd:.6f}"
+                        )
+                    return {
+                        "response": str(result.get("response") or "").strip(),
+                        "llm_used": provider,
+                        "latency_ms": int(latency_ms),
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cost_usd": round(cost_usd, 6),
+                        "fallback_used": attempts > 1,
+                        "attempts": attempts,
+                        "ranking": payload["ranking"],
+                    }
+                except Exception as exc:
+                    latency_ms = (time.perf_counter() - started) * 1000.0
+                    self.metrics.record_call(provider, latency_ms=latency_ms, success=False)
+                    errors.append(
+                        {
+                            "provider": provider,
+                            "error": str(exc)[:300],
+                            "latency_ms": int(latency_ms),
+                        }
+                    )
 
-        fallback_text = (
-            "Denis router fallback local: no provider respondió correctamente."
-            f" Query: {user_text[:180]}"
-        )
-        self.metrics.emit_decision(
-            request_id,
-            {
-                "request_id": request_id,
+            fallback_text = (
+                "Denis router fallback local: no provider respondió correctamente."
+                f" Query: {user_text[:180]}"
+            )
+            self.metrics.emit_decision(
+                request_id,
+                {
+                    "request_id": request_id,
+                    "llm_used": "local_fallback",
+                    "attempts": attempts,
+                    "fallback_used": True,
+                    "timestamp_utc": _utc_now(),
+                    "errors": errors,
+                },
+            )
+            return {
+                "response": fallback_text,
                 "llm_used": "local_fallback",
-                "attempts": attempts,
+                "latency_ms": 0,
+                "input_tokens": max(1, len(user_text.split())),
+                "output_tokens": max(1, len(fallback_text.split())),
+                "cost_usd": 0.0,
                 "fallback_used": True,
-                "timestamp_utc": _utc_now(),
+                "attempts": attempts,
                 "errors": errors,
-            },
-        )
+                "ranking": [
+                    {
+                        "provider": p,
+                        "score": round(s, 8),
+                        "latency_p95_ms": m.latency_p95_ms,
+                        "error_rate_1h": m.error_rate_1h,
+                        "availability": m.availability,
+                    }
+                    for p, s, m in scored
+                ],
+            }
+
+    def _resolve_engine(self, engine_id: str) -> dict[str, Any] | None:
+        return self.engine_registry.get(engine_id)
+
+    def _format_result(self, result: dict[str, Any], provider_key: str, engine_id: str, model: str | None, plan: InferencePlan, latency_ms: float, skipped_engines: list[dict], internet_status_runtime: str) -> dict[str, Any]:
+        output_tokens = int(result.get("output_tokens") or 0)
+        input_tokens = int(result.get("input_tokens") or 0)
+        cost_usd = self._estimate_cost_usd(provider_key, input_tokens, output_tokens)
+        return {
+            "response": str(result.get("response") or "").strip(),
+            "llm_used": provider_key,
+            "model_selected": model,
+            "engine_id": engine_id,
+            "latency_ms": int(latency_ms),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost_usd": round(cost_usd, 6),
+            "fallback_used": False,
+            "attempts": 1,
+            "inference_plan": plan,
+            "skipped_engines": skipped_engines,
+            "internet_status": internet_status_runtime,
+            "degraded": plan.trace_tags.get("degraded", False),
+        }
+
+    def _degraded_fallback(self, plan: InferencePlan, skipped_engines: list[dict] | None = None, internet_status_runtime: str = "UNKNOWN") -> dict[str, Any]:
+        fallback_text = "Denis router fallback: no engine available or all failed."
         return {
             "response": fallback_text,
-            "llm_used": "local_fallback",
+            "llm_used": "degraded_fallback",
+            "model_selected": None,
+            "engine_id": None,
             "latency_ms": 0,
-            "input_tokens": max(1, len(user_text.split())),
-            "output_tokens": max(1, len(fallback_text.split())),
+            "input_tokens": 0,
+            "output_tokens": len(fallback_text.split()),
             "cost_usd": 0.0,
             "fallback_used": True,
-            "attempts": attempts,
-            "errors": errors,
-            "ranking": [
-                {
-                    "provider": p,
-                    "score": round(s, 8),
-                    "latency_p95_ms": m.latency_p95_ms,
-                    "error_rate_1h": m.error_rate_1h,
-                    "availability": m.availability,
-                }
-                for p, s, m in scored
-            ],
+            "attempts": len(plan.fallback_engine_ids) + 1,
+            "inference_plan": plan,
+            "skipped_engines": skipped_engines or [],
+            "internet_status": internet_status_runtime,
+            "degraded": True,
         }
 
     def _estimate_cost_usd(self, provider: str, input_tokens: int, output_tokens: int) -> float:
         rates_per_1k = {
             "vllm": 0.0001,
-            "legacy_core": 0.0001,
+            "llamacpp": 0.0001,
             "groq": 0.0008,
             "openrouter": 0.0012,
-            "claude": 0.0030,
         }
         rate = rates_per_1k.get(provider, 0.0010)
         tokens = max(1, input_tokens + output_tokens)
         return math.ceil(tokens) / 1000.0 * rate
-
 
 def build_inference_router() -> InferenceRouter:
     # Check if SMX local pipeline should be used

@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Persona Canonical Report",
+  "type": "object",
+  "required": ["schema_version", "doc_type", "generated_utc", "source", "summary", "structure", "invariants", "actions", "bypass_surfaces", "policy_links", "chunks", "evidence"],
+  "properties": {
+    "schema_version": {"type": "integer"},
+    "doc_type": {"type": "string", "const": "persona_canonical_report"},
+    "generated_utc": {"type": "number"},
+    "source": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string"},
+        "bytes": {"type": "integer"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["one_liner", "executive", "migration_readiness"],
+      "properties": {
+        "one_liner": {"type": "string"},
+        "executive": {"type": "array", "items": {"type": "string"}},
+        "migration_readiness": {
+          "type": "object",
+          "required": ["score_0_100", "blocking_issues", "notes"],
+          "properties": {
+            "score_0_100": {"type": "integer"},
+            "blocking_issues": {"type": "array", "items": {"type": "string"}},
+            "notes": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "required": ["sections", "symbols"],
+      "properties": {
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "properties": {
+              "id": {"type": "string"},
+              "title": {"type": "string"},
+              "anchors": {"type": "array", "items": {"type": "string"}},
+              "notes": {"type": "string"}
+            }
+          }
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["symbol", "kind"],
+            "properties": {
+              "symbol": {"type": "string"},
+              "kind": {"type": "string"},
+              "anchor": {"type": "string"},
+              "docstring_digest": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "statement", "severity", "evidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "statement": {"type": "string"},
+          "severity": {"type": "string"},
+          "evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "level", "description", "evidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "level": {"type": "string"},
+          "description": {"type": "string"},
+          "preconditions": {"type": "array", "items": {"type": "string"}},
+          "postconditions": {"type": "array", "items": {"type": "string"}},
+          "evidence": {"type": "array", "items": {"type": "string"}},
+          "bypass_risk": {"type": "string"}
+        }
+      }
+    },
+    "bypass_surfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "mitigation", "evidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "description": {"type": "string"},
+          "attack_path": {"type": "string"},
+          "mitigation": {"type": "string"},
+          "evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "policy_links": {
+      "type": "object",
+      "required": ["identity_core_refs", "enforcement_systems"],
+      "properties": {
+        "identity_core_refs": {"type": "array", "items": {"type": "string"}},
+        "enforcement_systems": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chunk_id", "title", "kind", "text_md", "machine_reason"],
+        "properties": {
+          "chunk_id": {"type": "string"},
+          "title": {"type": "string"},
+          "kind": {"type": "string"},
+          "text_md": {"type": "string"},
+          "machine_reason": {
+            "type": "object",
+            "required": ["rule", "why", "evidence"],
+            "properties": {
+              "rule": {"type": "string"},
+              "why": {"type": "array", "items": {"type": "string"}},
+              "evidence": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["evidence_id", "type", "start_line", "end_line", "sha256_of_slice"],
+        "properties": {
+          "evidence_id": {"type": "string"},
+          "type": {"type": "string"},
+          "anchor": {"type": "string"},
+          "start_line": {"type": "integer"},
+          "end_line": {"type": "integer"},
+          "sha256_of_slice": {"type": "string"},
+          "excerpt": {"type": "string"}
+        }
+      }
+    }
+  }
+}

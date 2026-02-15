@@ -6,11 +6,11 @@
   "items_sorted": true,
   "items_deduped": true,
   "commands_exist": true,
-  "timestamp_utc": 1771022630.466668,
+  "timestamp_utc": 1771023169.947281,
   "overall_success": true,
   "plan_summary": {
-    "total_signals": 5,
+    "total_signals": 4,
     "accepted_items": 4,
-    "rejected_signals_count": 1
+    "rejected_signals_count": 0
   }
 }

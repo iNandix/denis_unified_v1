@@ -11,7 +11,7 @@ import uuid
 from typing import Any
 
 from fastapi import FastAPI, Request, APIRouter
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 # All other imports moved inside create_app() for complete fail-open behavior
@@ -346,11 +346,15 @@ def create_app() -> FastAPI:
 
         app.mount(
             "/static",
-            StaticFiles(directory="api/static", check_dir=False),
+            StaticFiles(directory="static", check_dir=False),
             name="static",
         )
     except Exception:
         pass
+
+    @app.get("/")
+    async def read_root():
+        return FileResponse("static/index.html")
 
     @app.middleware("http")
     async def trace_and_security_middleware(request: Request, call_next):

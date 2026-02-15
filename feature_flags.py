@@ -13,7 +13,7 @@ class FeatureFlags:
     def _load_flags(self) -> Dict[str, Any]:
         """Load flags from environment."""
         flags = {}
-        
+
         # Default flags
         defaults = {
             "denis_use_voice_pipeline": False,
@@ -22,8 +22,19 @@ class FeatureFlags:
             "denis_use_inference_router": False,
             "phase10_enable_prompt_injection_guard": False,
             "phase10_max_output_tokens": 512,
+            # SMX flags
+            "use_smx_local": True,
+            "phase12_smx_enabled": True,
+            "phase12_smx_fast_path": True,
+            "phase12_smx_safety_strict": True,
+            # Agent flags
+            "denis_agent_enabled": True,
+            "denis_persona_enabled": True,
+            "denis_sprint_orchestrator_enabled": True,
+            # Voice
+            "denis_use_voice_pipeline": False,
         }
-        
+
         # Override from environment
         for key, default in defaults.items():
             env_key = key.upper()
@@ -31,12 +42,12 @@ class FeatureFlags:
             if env_value is not None:
                 # Parse boolean
                 if isinstance(default, bool):
-                    flags[key] = env_value.lower() in ('true', '1', 'yes', 'on')
+                    flags[key] = env_value.lower() in ("true", "1", "yes", "on")
                 else:
                     flags[key] = type(default)(env_value)
             else:
                 flags[key] = default
-        
+
         return flags
 
     def get(self, key: str, default=None):
@@ -55,12 +66,14 @@ class FeatureFlags:
 # Global instance
 _flags_instance = None
 
+
 def load_feature_flags():
     """Load feature flags."""
     global _flags_instance
     if _flags_instance is None:
         _flags_instance = FeatureFlags()
     return _flags_instance
+
 
 def load_featureflags():
     """Alias."""

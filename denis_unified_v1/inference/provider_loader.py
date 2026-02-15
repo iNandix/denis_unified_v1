@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
 import os
@@ -605,11 +605,11 @@ def discover_provider_models(
                 metadata={"source": "llama_node2_env_fallback", "mode": mode},
             )
         ]
-    if provider_norm == "legacy_core":
+    if provider_norm == "llamacpp":
         model_id = (os.getenv("LLM_MODEL") or "denis-core").strip()
         return 1, [
             DiscoveredModel(
-                provider="legacy_core",
+                provider="llamacpp",
                 model_id=model_id,
                 model_name=model_id,
                 request_format="openai_chat",
@@ -618,7 +618,7 @@ def discover_provider_models(
                 supports_tools=True,
                 supports_json_mode=True,
                 tags=["general"],
-                metadata={"source": "legacy_core_env"},
+                metadata={"source": "llamacpp_env"},
             )
         ]
     if provider_norm == "claude":
@@ -843,3 +843,49 @@ def run_provider_load(
             summary={"provider": provider_norm, "status": "error", "error": message},
         )
         return reg.get_run(active_run_id)
+
+
+@dataclass
+class ModelInfo:
+    provider: str
+    model_id: str
+    model_name: str
+    supports_tools: bool
+    context_length: int
+    is_free: bool
+    pricing: dict[str, float]
+    rate_limit: dict[str, int] = field(default_factory=dict)
+
+
+import threading
+_cache: dict[str, tuple[list[ModelInfo], float]] = {}
+_cache_lock = threading.Lock()
+
+def discover_provider_models_cached(provider: str, ttl_s: int = 300) -> list[ModelInfo]:
+    import time
+    now = time.time()
+    with _cache_lock:
+        if provider in _cache:
+            models, ts = _cache[provider]
+            if now - ts < ttl_s:
+                return models
+        # Refresh
+        try:
+            total, discovered = discover_provider_models(provider=provider)
+            models = [
+                ModelInfo(
+                    provider=d.provider,
+                    model_id=d.model_id,
+                    model_name=d.model_name,
+                    supports_tools=d.supports_tools,
+                    context_length=d.context_length,
+                    is_free=d.is_free,
+                    pricing=d.metadata.get("pricing", {}),
+                    rate_limit={}  # Add if available
+                ) for d in discovered if d.is_free
+            ]
+            _cache[provider] = (models, now)
+            return models
+        except Exception:
+            # Return empty on error to avoid blocking
+            return []

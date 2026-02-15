@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .sse_handler import stream_text_chunks
+from denis_unified_v1.kernel.scheduler import get_model_scheduler, InferenceRequest
 
 
 def _utc_now() -> int:
@@ -234,25 +234,21 @@ class _ChatHandler:
                 "meta": {"path": "tool_calls"},
             }
 
-        # Use cognitive router for routing decision if available
-        routing_decision = None
-        try:
-            from denis_unified_v1.orchestration.cognitive_router import create_router as create_cognitive_router
-            self.cognitive_router = create_cognitive_router()
-            routing_decision = self.cognitive_router.route_decision(
-                task=user_text,
-                request_id=completion_id,
-                context={"model_requested": req.model, "endpoint": "chat_completions"},
-            )
-        except Exception:
-            self.cognitive_router = None
-            routing_decision = None
+        # Get InferencePlan from scheduler (no double routing)
+        scheduler = get_model_scheduler()
+        inference_request = InferenceRequest(
+            request_id=completion_id,
+            session_id="session_123",  # Dummy, can be from context
+            route_type="fast_talk",  # Derive from req or cognitive_router, default fast_talk
+            task_type="chat",
+            payload={
+                "max_tokens": req.max_tokens or 512,
+                "temperature": req.temperature or 0.7,
+            },
+        )
+        inference_plan = scheduler.assign(inference_request)
 
-        answer = ""
-        path = "local_fallback"
-        router_meta: dict[str, Any] = {}
-
-        # Try inference router if available
+        # Use inference router with plan
         try:
             from denis_unified_v1.inference.router_v2 import create_inference_router
             self.inference_router = create_inference_router()
@@ -267,9 +263,7 @@ class _ChatHandler:
                         for msg in req.messages
                     ],
                     request_id=completion_id,
-                    latency_budget_ms=int(
-                        os.getenv("DENIS_ROUTER_LATENCY_BUDGET_MS", "2500")
-                    ),
+                    inference_plan=inference_plan,
                 )
                 answer = str(routed.get("response") or "").strip()
                 if answer:
@@ -280,16 +274,17 @@ class _ChatHandler:
                         "cost_usd": routed.get("cost_usd"),
                         "fallback_used": routed.get("fallback_used"),
                         "attempts": routed.get("attempts"),
+                        "model_selected": routed.get("model_selected"),
+                        "inference_plan": routed.get("inference_plan"),
                     }
-                    if routing_decision:
-                        router_meta["cognitive_routing"] = {
-                            "tool_selected": routing_decision.tool_name,
-                            "confidence": routing_decision.confidence,
-                            "strategy": routing_decision.strategy.value,
-                        }
+                    if inference_plan:
+                        router_meta["inference_plan_applied"] = True
             except Exception:
                 answer = ""
                 router_meta = {"error": "inference_router_exception"}
+        else:
+            answer = ""
+            router_meta = {"error": "no_inference_router"}
 
         if not answer:
             legacy = await self._try_legacy_chat(user_text)
@@ -308,14 +303,14 @@ class _ChatHandler:
         completion_tokens = max(1, len(validated_answer.split()))
 
         # Record execution result in cognitive router if available
-        if self.cognitive_router is not None and routing_decision is not None:
+        if self.cognitive_router is not None and inference_plan is not None:
             try:
                 self.cognitive_router.record_execution_result(
                     request_id=completion_id,
-                    tool_name=routing_decision.tool_name,
+                    tool_name="inference_router",  # Or from plan
                     success=bool(validated_answer),
                     error=None if validated_answer else "no_response",
-                    execution_time_ms=0,
+                    execution_time_ms=router_meta.get("latency_ms", 0),
                     metadata={
                         "path": path,
                         "router_meta": router_meta,

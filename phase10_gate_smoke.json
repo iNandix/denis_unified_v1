@@ -9,9 +9,9 @@
       "detail": {
         "status_code": 200,
         "body": {
-          "id": "chatcmpl-ad966123aad64038",
+          "id": "chatcmpl-f20bf2793eb2416b",
           "object": "chat.completion",
-          "created": 1771022630,
+          "created": 1771023171,
           "model": "denis-cognitive",
           "choices": [
             {
@@ -37,9 +37,9 @@
       "detail": {
         "status_code": 200,
         "body": {
-          "id": "chatcmpl-c5edb6a5ed794e0a",
+          "id": "chatcmpl-bb24e3df97374a9b",
           "object": "chat.completion",
-          "created": 1771022630,
+          "created": 1771023171,
           "model": "denis-cognitive",
           "choices": [
             {

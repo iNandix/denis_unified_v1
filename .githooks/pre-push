@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PYTHONPATH="."
+export DISABLE_OBSERVABILITY="1"
+export DENIS_API_BEARER_TOKEN=""
+
+echo "[pre-push] Running strict smoke gate..."
+python3 scripts/meta_smoke_all.py --strict-100 --out-json artifacts/smoke_all.json
+echo "[pre-push] OK"

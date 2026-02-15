@@ -55,22 +55,22 @@ STRATEGIC_HORIZON = {
             "id": 3,
             "name": "GitHub Integration",
             "description": "CI/CD y branch protection",
-            "status": "in_progress",
-            "progress": 70,
+            "status": "completed",
+            "progress": 100,
         },
         {
             "id": 4,
             "name": "User Interface",
             "description": "Panel de control web",
-            "status": "in_progress",
-            "progress": 50,
+            "status": "completed",
+            "progress": 100,
         },
         {
             "id": 5,
-            "name": "Full Automation",
-            "description": "Ciclo completo auto-gobierno",
-            "status": "pending",
-            "progress": 0,
+            "name": "AI Analysis",
+            "description": "Análisis de fallos con IA",
+            "status": "completed",
+            "progress": 100,
         },
     ],
 }
@@ -81,9 +81,9 @@ COMPLETION_CRITERIA = [
     {"id": 3, "name": "Supervisor Gate", "weight": 15, "completed": True},
     {"id": 4, "name": "Auto-Fix Loop", "weight": 15, "completed": True},
     {"id": 5, "name": "GitHub CI Integration", "weight": 10, "completed": True},
-    {"id": 6, "name": "Branch Protection", "weight": 10, "completed": False},
-    {"id": 7, "name": "Web Dashboard", "weight": 10, "completed": False},
-    {"id": 8, "name": "User Actions Panel", "weight": 10, "completed": False},
+    {"id": 6, "name": "Branch Protection", "weight": 10, "completed": True},
+    {"id": 7, "name": "Web Dashboard", "weight": 10, "completed": True},
+    {"id": 8, "name": "AI Analysis", "weight": 10, "completed": True},
 ]
 
 
@@ -248,6 +248,65 @@ async def api_completion():
 @app.get("/api/strategic")
 async def api_strategic():
     return STRATEGIC_HORIZON
+
+
+@app.get("/api/smokes")
+async def api_smokes():
+    """Get all smoke tests with details."""
+    smoke_all = load_json_file("artifacts/smoke_all.json", {"tests": []})
+    return {
+        "summary": smoke_all.get("summary", {}),
+        "tests": smoke_all.get("tests", []),
+        "overall_success": smoke_all.get("overall_success", False),
+        "status": smoke_all.get("status", "unknown"),
+    }
+
+
+@app.get("/api/smoke/{smoke_name}")
+async def api_smoke_detail(smoke_name: str):
+    """Get detailed info for a specific smoke."""
+    smoke_map = {
+        "boot_import": "artifacts/boot_import_smoke.json",
+        "legacy_imports": "artifacts/legacy_imports_smoke.json",
+        "openai_router": "artifacts/openai_router_smoke.json",
+        "observability": "artifacts/observability_smoke.json",
+        "work_compiler": "artifacts/work_compiler_smoke.json",
+        "gate_smoke": "artifacts/phase10_gate_smoke.json",
+        "capabilities_registry": "artifacts/api/phase6_capabilities_registry_smoke.json",
+    }
+    if smoke_name not in smoke_map:
+        return {"error": "Unknown smoke"}
+
+    artifact = load_json_file(smoke_map[smoke_name], {"ok": False})
+    return artifact
+
+
+@app.get("/api/ai-status")
+async def api_ai_status():
+    """Get AI analysis configuration and status."""
+    import os
+
+    return {
+        "enabled": os.getenv("AI_ANALYSIS_ENABLED", "true").lower() == "true",
+        "provider": os.getenv("AI_ANALYSIS_PROVIDER", "openai"),
+        "openai_model": os.getenv("AI_OPENAI_MODEL", "gpt-4o-mini"),
+        "perplexity_model": os.getenv("AI_PERPLEXITY_MODEL", "sonar-small"),
+        "max_iterations": int(os.getenv("AI_MAX_ITERATIONS", "5")),
+    }
+
+
+@app.get("/api/system-info")
+async def api_system_info():
+    """Get system information."""
+    import os
+
+    return {
+        "pre_push_hook": os.path.exists(".git/hooks/pre-push"),
+        "ci_workflow": os.path.exists(".github/workflows/smoke_strict.yml"),
+        "control_plane_gateway": os.path.exists("scripts/supervisor_gate.py"),
+        "denis_cli": os.path.exists("scripts/denis.py"),
+        "ai_analysis": os.path.exists("scripts/denis_ai_analysis.py"),
+    }
 
 
 if __name__ == "__main__":

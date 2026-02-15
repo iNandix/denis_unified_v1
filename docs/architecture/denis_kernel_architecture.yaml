@@ -1,0 +1,517 @@
+# Denis Kernel Architecture - YAML
+# ==================================
+# Single-entry, graph-centric, chunk/streaming, event-driven
+
+version: "1.0"
+kernel: "denis_kernel"
+
+# ============================================================
+# A) INPUTS COLLECTED
+# ============================================================
+
+inputs:
+  channels:
+    - voice: "Pipecat + ASR/TTS"
+    - text: "REST/WebSocket/SSE"
+  
+  nlu_sources:
+    - rasa: "intents/entities/slots at port 5005"
+    - parlai: "dialogue signals (acts)"
+  
+  memory_backends:
+    - qdrant: "vector primary (port 6333)"
+    - chromadb: "vector secondary (port 8001)"
+    - neo4j: "graphs (port 7687)"
+    - redis: "cache (port 6379)"
+    - mongodb: "episodic/Atlas"
+  
+  llm_runtimes:
+    - local_vllm: "SMX motors (6 local models)"
+    - cloud: "Groq/OpenRouter/Claude"
+    - hybrid: "local fast + cloud deliberative"
+
+# ============================================================
+# B) GAPS & ASSUMPTIONS
+# ============================================================
+
+gaps:
+  - name: "Event bus implementation"
+    status: "pending"
+    priority: "critical"
+  
+  - name: "NeuroLayer plugins migration"
+    status: "pending"
+    priority: "high"
+  
+  - name: "Turn Manager + Delivery Composer"
+    status: "pending"
+    priority: "high"
+  
+  - name: "Memory subgraph (Qdrant/Chroma/Neo4j)"
+    status: "partial"
+    priority: "high"
+
+assumptions:
+  - "Rasa continues to emit intents/entities (no blocking)"
+  - "ParlAI continues to emit dialogue signals (no blocking)"
+  - "SMX motors run locally with <500ms latency target"
+  - "Neo4j graph accessible for pattern queries"
+  - "Qdrant/Chroma available for vector search"
+
+# ============================================================
+# C) TARGET ARCHITECTURE DECISIONS
+# ============================================================
+
+architecture:
+  pattern: "event-driven graph with Governor as authority"
+  entry_point: "single (Ingress node)"
+  authority: "Governor decides route.commit"
+  plugins_propose: "NLU, Rasa, ParlAI, NeuroLayers, Loops, Memory - none decides"
+  
+  nodes:
+    ingress:
+      description: "Text/ASR input → chunks"
+      emits: ["input.chunk.text", "input.chunk.normalized"]
+    
+    normalizer:
+      description: "Cleanup, language, segmentation, turn-taking"
+      emits: ["input.chunk.normalized"]
+    
+    nlu_stream:
+      description: "Rasa + ParlAI plugins (incremental)"
+      emits: ["nlu.intent.hypothesis", "nlu.entities.hypothesis", "nlu.slots.patch", "dialogue.signal"]
+    
+    safety_light:
+      description: "Cheap filter before action"
+      emits: ["policy.guardrail.hit"]
+    
+    route_proposer:
+      description: "Cognitive Router as plugin (proposes, doesn't decide)"
+      emits: ["policy.route.proposed"]
+    
+    governor:
+      description: "AUTORITY - arbitrates all signals, decides route.commit"
+      emits: ["policy.route.commit", "scheduler.cancel", "scheduler.backpressure"]
+      decides: ["route_id", "reasoning_mode", "tool_execution"]
+    
+    llm_worker:
+      description: "Streaming generation"
+      emits: ["llm.token.delta", "llm.final"]
+    
+    tool_runtime:
+      description: "Executes tools if Governor commits"
+      emits: ["tool.call", "tool.progress", "tool.result", "tool.error"]
+    
+    safety_strong:
+      description: "Conditional - only for critical output/actions"
+      emits: ["policy.guardrail.block", "policy.confirm.request"]
+    
+    delivery_composer:
+      description: "Pacing, fillers, thinking cues, segmentation"
+      emits: ["delivery.cue.thinking", "delivery.cue.filler", "delivery.timeline.delta"]
+    
+    renderer:
+      description: "Pipecat - text/voice output"
+      emits: ["render.text.delta", "render.voice.delta"]
+  
+  # NeuroLayer plugins (memory + analysis)
+  neurolayers:
+    - id: "L1_SENSORY"
+      consumes: ["input.chunk.*"]
+      emits: ["loop.signal {type:sensory_state, urgency}"]
+    
+    - id: "L2_WORKING"
+      consumes: ["input.chunk.*", "nlu.*"]
+      emits: ["context.enrichment {working_set}"]
+    
+    - id: "L3_EPISODIC"
+      consumes: ["input.chunk.*"]
+      emits: ["memory.query", "memory.retrieved", "context.enrichment"]
+    
+    - id: "L5_PROCEDURAL"
+      consumes: ["L3_EPISODIC"]
+      emits: ["route.hint {suggested_route:TOOL_X}"]
+    
+    - id: "L8_SOCIAL"
+      consumes: ["dialogue.signal"]
+      emits: ["loop.signal {social_context}"]
+    
+    - id: "L9_IDENTITY"
+      consumes: ["memory.retrieved", "context.enrichment"]
+      emits: ["loop.signal {identity_continuity}"]
+    
+    - id: "L10_RELATIONAL"
+      consumes: ["L3_EPISODIC", "L8_SOCIAL"]
+      emits: ["loop.signal {pattern_detected}"]
+    
+    - id: "L12_METACOG"
+      consumes: ["L5_PROCEDURAL", "L12_METACOG"]
+      emits: ["policy.risk.assessment", "policy.reasoning_mode.set", "loop.signal {need_verification}"]
+
+  # Mental Loops (signal aggregators)
+  mental_loops:
+    - id: "reflection"
+      consumes: ["L1_SENSORY", "L2_WORKING"]
+      emits: ["loop.signal {reflection}"]
+    
+    - id: "meta_reflection"
+      consumes: ["L5_PROCEDURAL", "L12_METACOG"]
+      emits: ["policy.risk.assessment {level:high}", "policy.reasoning_mode.set {mode:verify}"]
+    
+    - id: "pattern_recognition"
+      consumes: ["L3_EPISODIC", "L8_SOCIAL", "L10_RELATIONAL"]
+      emits: ["loop.signal {pattern_detected}", "route.hint"]
+    
+    - id: "expansive_consciousness"
+      consumes: ["L9_IDENTITY", "L12_METACOG"]
+      emits: ["loop.signal {consciousness_expansion}"]
+
+  # Memory subgraph
+  memory_subgraph:
+    - node: "Memory Query Router"
+      description: "Decides which backend(s) to query"
+      emits: ["memory.query {backend:qdrant|chroma|neo4j}"]
+    
+    - node: "Vector Retriever (Qdrant)"
+      emits: ["memory.retrieved {source:qdrant, items:[]}"]
+    
+    - node: "Vector Retriever (Chroma)"
+      emits: ["memory.retrieved {source:chroma, items:[]}"]
+    
+    - node: "Graph Retriever (Neo4j)"
+      emits: ["memory.retrieved {source:neo4j, items:[]}"]
+    
+    - node: "RAC / Context Builder"
+      consumes: ["memory.retrieved"]
+      emits: ["context.pack {chunks:[], tokens_estimate:N}"]
+
+  # Delivery subgraph
+  delivery_subgraph:
+    - node: "Turn Manager"
+      consumes: ["input.interrupt", "user_pause", "barge_in"]
+      emits: ["scheduler.cancel", "delivery.hold", "delivery.resume"]
+    
+    - node: "Delivery Composer"
+      consumes: ["llm.token.delta", "tool.result"]
+      emits: ["delivery.cue.thinking", "delivery.cue.filler", "delivery.timeline.delta"]
+    
+    - node: "Renderer (Pipecat)"
+      consumes: ["delivery.timeline.delta"]
+      emits: ["render.text.delta", "render.voice.delta"]
+
+# ============================================================
+# D) EVENT CONTRACT DRAFT
+# ============================================================
+
+event_envelope:
+  fields:
+    - event_id: "uuid"
+    - trace_id: "string"
+    - session_id: "string"
+    - turn_id: "string"
+    - seq: "integer"
+    - ts: "iso8601"
+    - source: "string (node name)"
+    - type: "string (event.type)"
+    - priority: "integer (0=highest)"
+    - ttl_ms: "integer"
+    - cancel_key: "string (session:turn:branch)"
+    - commit_level: "tentative|provisional|final"
+    - payload: "object"
+
+event_types:
+  # Input
+  - type: "input.chunk.text"
+    payload: { text: "string", is_final: "boolean" }
+  
+  - type: "input.chunk.normalized"
+    payload: { text: "string", language: "string", urgency: "low|medium|high" }
+  
+  - type: "input.interrupt"
+    payload: { reason: "barge_in|new_input|timeout", cancel_key: "string" }
+
+  # NLU
+  - type: "nlu.intent.hypothesis"
+    payload: { intent: "string", confidence: "float", evidence_seq: [int] }
+  
+  - type: "nlu.entities.hypothesis"
+    payload: { entities: [{name, value, confidence}] }
+  
+  - type: "nlu.slots.patch"
+    payload: { slots: { key: value } }
+  
+  - type: "dialogue.signal"
+    payload: { act: "string", confidence: "float", rationale: "string" }
+
+  # Policy / Routing
+  - type: "policy.route.proposed"
+    payload: { route_id: "string", tool_required: "boolean", confidence: "float", pattern_id: "string" }
+  
+  - type: "policy.route.commit"
+    payload: { route_id: "string", reason: "string", requires_confirmation: "boolean" }
+  
+  - type: "policy.reasoning_mode.set"
+    payload: { mode: "direct|structured|deliberate|verify", max_budget_tokens: "int" }
+  
+  - type: "policy.guardrail.hit"
+    payload: { category: "string", severity: "low|medium|high" }
+  
+  - type: "policy.confirm.request"
+    payload: { tool_name: "string", reason: "string", expires_at: "iso8601" }
+  
+  - type: "policy.confirm.granted"
+    payload: { tool_name: "string", session_id: "string" }
+
+  # Loop signals
+  - type: "loop.signal"
+    payload: { loop_id: "string", type: "string", data: "object" }
+
+  # Memory
+  - type: "memory.query"
+    payload: { query: "string", scope: "string", user_id: "string", session_id: "string" }
+  
+  - type: "memory.retrieved"
+    payload: { items: [], source: "qdrant|chroma|neo4j", scores: [] }
+  
+  - type: "context.pack"
+    payload: { chunks: [], tokens_estimate: "int", sources: [] }
+
+  # Tools
+  - type: "tool.proposal"
+    payload: { tool_name: "string", args: "object", risk_tag: "string", requires_confirmation: "boolean" }
+  
+  - type: "tool.call"
+    payload: { tool_name: "string", args: "object", cancel_key: "string" }
+  
+  - type: "tool.progress"
+    payload: { tool_name: "string", progress: "float", message: "string" }
+  
+  - type: "tool.result"
+    payload: { tool_name: "string", status: "success|error", output: "object", execution_ms: "int" }
+
+  # LLM
+  - type: "llm.token.delta"
+    payload: { text: "string", index: "int", is_final: "boolean" }
+  
+  - type: "llm.final"
+    payload: { text: "string", tokens_used: "int", model: "string" }
+
+  # Delivery
+  - type: "delivery.cue.thinking"
+    payload: { cue: "string (e.g. 'Déjame pensar…')", duration_ms: "int" }
+  
+  - type: "delivery.cue.filler"
+    payload: { cue: "string (e.g. 'umm', 'eh', 'vale')" }
+  
+  - type: "delivery.hold"
+    payload: { reason: "string" }
+  
+  - type: "delivery.resume"
+    payload: {}
+  
+  - type: "delivery.timeline.delta"
+    payload: { segment_id: "string", start_ms: "int", duration_ms: "int", text: "string", audio: "object|null" }
+
+  # Render (Pipecat output)
+  - type: "render.text.delta"
+    payload: { text: "string", is_final: "boolean" }
+  
+  - type: "render.voice.delta"
+    payload: { audio_b64: "string", timing: "object" }
+
+  # Scheduler control
+  - type: "scheduler.cancel"
+    payload: { cancel_key: "string", reason: "string" }
+  
+  - type: "scheduler.backpressure"
+    payload: { queue_size: "int", policy: "DROP_OLD|COALESCE" }
+
+  # Capabilities
+  - type: "capability.required"
+    payload: { capability: "string", blocking: "boolean" }
+
+# ============================================================
+# E) NLU MIGRATION PLAN
+# ============================================================
+
+nlu_migration:
+  rasa:
+    current: "blocking NLU at port 5005, returns full intent/entities"
+    target: "plugin emitting nlu.intent.hypothesis (incremental, non-blocking)"
+    changes:
+      - "Remove timeout blocking"
+      - "Emit partial hypotheses as they arrive"
+      - "Add evidence_seq to track token position"
+      - "No routing decision - only proposal"
+  
+  parlai:
+    current: "conversational acts (signal only)"
+    target: "dialogue.signal plugin (unchanged, emit only)"
+    changes:
+      - "No changes needed"
+      - "Continues to emit dialogue.signal"
+
+  tool_actions:
+    current: "Rasa Actions execute tools directly"
+    target: "Emit tool.proposal (Governor decides execution)"
+    changes:
+      - "Convert action logic to proposal"
+      - "Governor receives tool.proposal and decides commit"
+
+# ============================================================
+# F) INFERENCE PLAN
+# ============================================================
+
+inference_routes:
+  fast_talk:
+    path: "Ingress → Governor (with partial NLU) → LLM Worker → Renderer"
+    triggers:
+      - "confidence >= 0.9"
+      - "text length < 5 words"
+      - "intent in [greet, thanks, bye]"
+    ttft_target: "<100ms"
+  
+  standard:
+    path: "Ingress → NLU Stream → Route Proposer → Governor → LLM Worker → Renderer"
+    triggers:
+      - "confidence 0.7-0.9"
+      - "no tool required"
+    ttft_target: "<500ms"
+  
+  tool:
+    path: "Ingress → NLU Stream → Route Proposer → Governor → Tool Runtime → (LLM) → Renderer"
+    triggers:
+      - "tool_required = true"
+      - "confidence any"
+    ttft_target: "<1s + tool_time"
+  
+  deliberate:
+    path: "Ingress → NLU Stream → Route Proposer → Governor → L12_METACOG → (meta_reflection) → LLM (verify mode) → Renderer"
+    triggers:
+      - "risk assessment = high"
+      - "reasoning_mode = verify"
+    ttft_target: "<2s"
+
+  caching:
+    strategy: "cache LLM responses by (intent + entities + first_20_tokens)"
+    ttl: "3600s"
+
+  speculative:
+    enabled: true
+    description: "Start local response, cancel if cloud needed"
+    trigger: "Governor may handoff to cloud mid-stream"
+
+# ============================================================
+# G) INJECTION MAP (I1-I4)
+# ============================================================
+
+injection_points:
+  I1_post_normalizer:
+    description: "After normalization, before NLU"
+    injects:
+      - "system prompt (personality, context)"
+      - "user preferences from memory"
+      - "session context"
+    events: ["input.context.set"]
+  
+  I2_post_nlu:
+    description: "After NLU hypotheses available"
+    injects:
+      - "context.pack from Memory (if relevant)"
+      - "slot values"
+    events: ["context.pack"]
+  
+  I3_pre_llm:
+    description: "Before LLM generation"
+    injects:
+      - "reasoning_mode (direct/structured/deliberate/verify)"
+      - "policy constraints"
+      - "CoT template if needed"
+    events: ["policy.reasoning_mode.set"]
+  
+  I4_pre_render:
+    description: "After LLM output, before delivery"
+    injects:
+      - "safety check (safety_strong)"
+      - "formatting rules"
+      - "delivery cues"
+    events: ["policy.guardrail.hit", "delivery.cue.*"]
+
+# ============================================================
+# H) ACCEPTANCE TESTS & METRICS
+# ============================================================
+
+benchmarks:
+  latency:
+    ttft_p50: "<200ms"
+    ttft_p95: "<500ms"
+    e2e_p50: "<800ms"
+    e2e_p95: "<2000ms"
+  
+  quality:
+    intent_accuracy: ">0.90"
+    entity_f1: ">0.85"
+    tool_selection_accuracy: ">0.92"
+  
+  reliability:
+    availability: ">0.999"
+    error_rate: "<0.001"
+
+test_scenarios:
+  - name: "Fast talk (greeting)"
+    input: "Hola"
+    expected_route: "fast_talk"
+    max_latency: "200ms"
+  
+  - name: "Tool execution"
+    input: "Ejecuta el backup de la base de datos"
+    expected_route: "tool"
+    expected_tool: "backup_db"
+  
+  - name: "Interruption"
+    input: "Espera, antes dime qué vas a hacer"
+    expected: "delivery.hold emitted"
+  
+  - name: "Confirmation required"
+    input: "Borra todos los archivos"
+    expected: "policy.confirm.request emitted"
+
+# ============================================================
+# I) ROLLBACK PLAN
+# ============================================================
+
+rollback:
+  strategy: "blue-green with feature flag"
+  
+  steps:
+    1. "Deploy new kernel alongside legacy (port 8084 + new port)"
+    2. "Test with small % of traffic via header routing"
+    3. "Monitor latency + errors + quality metrics"
+    4. "If metrics degraded >10%, rollback via flag"
+    5. "If stable, increase traffic gradually (10% → 50% → 100%)"
+    6. "Once 100%, deprecate legacy endpoints"
+  
+  feature_flags:
+    - DENIS_KERNEL_ENABLED: "false"
+    - DENIS_KERNEL_ROUTE_PERCENTAGE: "0"
+  
+  monitoring:
+    - "latency_p50 vs baseline"
+    - "error_rate vs baseline"
+    - "intent_accuracy vs baseline"
+
+# ============================================================
+# NEXT ACTIONS
+# ============================================================
+
+next_actions:
+  1. "Create EventBus implementation (async, with backpressure)"
+  2. "Implement Governor node with decision logic"
+  3. "Create Ingress → Normalizer → NLU Stream pipeline"
+  4. "Migrate Rasa → nlu.intent.hypothesis plugin"
+  5. "Create Memory Query Router → Qdrant/Chroma/Neo4j"
+  6. "Implement Turn Manager + Delivery Composer"
+  7. "Wire Pipecat as Renderer consumer"
+  8. "Add cancellation and backpressure to scheduler"
+  9. "Integration test with SMX motors"
+  10. "Canary deploy with 10% traffic"

@@ -1,0 +1,957 @@
+{
+  "generated_utc": "2026-02-14T04:25:50.162513+00:00",
+  "nodes": [
+    {
+      "id": "A:asyncfunctiondef:health",
+      "labels": [
+        "Anchor"
+      ],
+      "props": {
+        "name": "health",
+        "kind": "asyncfunctiondef",
+        "anchor_id": "A:asyncfunctiondef:health",
+        "synthetic": false
+      }
+    },
+    {
+      "id": "A:synthetic:main_guard",
+      "labels": [
+        "Anchor"
+      ],
+      "props": {
+        "name": "main_guard",
+        "kind": "section",
+        "anchor_id": "A:synthetic:main_guard",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "A:synthetic:status",
+      "labels": [
+        "Anchor"
+      ],
+      "props": {
+        "name": "status",
+        "kind": "function",
+        "anchor_id": "A:synthetic:status",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "ACT:HTTP_ENTRYPOINTS",
+      "labels": [
+        "Action"
+      ],
+      "props": {
+        "id": "ACT:HTTP_ENTRYPOINTS",
+        "level": "read",
+        "description": "Handlers HTTP/WS/SSE en persona can\u00f3nica.",
+        "bypass_risk": "med"
+      }
+    },
+    {
+      "id": "ACT:MAIN_ENTRY",
+      "labels": [
+        "Action"
+      ],
+      "props": {
+        "id": "ACT:MAIN_ENTRY",
+        "level": "read",
+        "description": "Entry main para servidor/persona.",
+        "bypass_risk": "med"
+      }
+    },
+    {
+      "id": "Artifact:/media/jotah/SSD_denis/config/DENIS_IDENTITY_MASTER.json",
+      "labels": [
+        "Artifact"
+      ],
+      "props": {
+        "path": "/media/jotah/SSD_denis/config/DENIS_IDENTITY_MASTER.json",
+        "sha256": "8941c9643ddc3f5850d650df117dddb32b39aec1775757d551cb66fca9610112"
+      }
+    },
+    {
+      "id": "BYP:ALT_ENTRYPOINT",
+      "labels": [
+        "BypassSurface"
+      ],
+      "props": {
+        "description": "Uso directo de funciones sin pasar por ActionAuthorizer.",
+        "mitigation": "ActionAuthorizer|AtlasHold|CI Gate|CODEOWNERS"
+      }
+    },
+    {
+      "id": "C:ENTRYPOINTS",
+      "labels": [
+        "Chunk"
+      ],
+      "props": {
+        "title": "Entry points and dispatch",
+        "kind": "structure",
+        "rule": "C:ENTRYPOINTS",
+        "why": [
+          "Anchors: A:synthetic:main_guard"
+        ]
+      }
+    },
+    {
+      "id": "C:EXTERNAL_INTERFACES",
+      "labels": [
+        "Chunk"
+      ],
+      "props": {
+        "title": "External interfaces (HTTP/WS/SSE)",
+        "kind": "structure",
+        "rule": "C:EXTERNAL_INTERFACES",
+        "why": [
+          "Anchors: n/a"
+        ]
+      }
+    },
+    {
+      "id": "C:LEGACY_INTENT",
+      "labels": [
+        "Chunk"
+      ],
+      "props": {
+        "title": "Legacy intent and purpose",
+        "kind": "legacy_intent",
+        "rule": "C:LEGACY_INTENT",
+        "why": [
+          "Anchors: n/a"
+        ]
+      }
+    },
+    {
+      "id": "C:LEGACY_INTENT:1",
+      "labels": [
+        "Chunk"
+      ],
+      "props": {
+        "title": "Intent: proteger al humano y al creador",
+        "kind": "legacy_intent",
+        "rule": "LEGACY_INTENT",
+        "why": [
+          "operative_constitution"
+        ]
+      }
+    },
+    {
+      "id": "C:LEGACY_INTENT:2",
+      "labels": [
+        "Chunk"
+      ],
+      "props": {
+        "title": "No bypass, rails obligatorios",
+        "kind": "legacy_intent",
+        "rule": "LEGACY_INTENT",
+        "why": [
+          "no_bypass_core"
+        ]
+      }
+    },
+    {
+      "id": "C:LEGACY_INTENT:3",
+      "labels": [
+        "Chunk"
+      ],
+      "props": {
+        "title": "Grafo como piedra angular",
+        "kind": "legacy_intent",
+        "rule": "LEGACY_INTENT",
+        "why": [
+          "graph_persistence"
+        ]
+      }
+    },
+    {
+      "id": "E:001",
+      "labels": [
+        "Evidence"
+      ],
+      "props": {
+        "evidence_id": "E:001"
+      }
+    },
+    {
+      "id": "E:424",
+      "labels": [
+        "Evidence"
+      ],
+      "props": {
+        "evidence_id": "E:424"
+      }
+    },
+    {
+      "id": "INV:NO_BYPASS_CORE",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "statement": "Persona can\u00f3nica no puede saltarse ActionAuthorizer/CI/Atlas.",
+        "severity": "hard"
+      }
+    },
+    {
+      "id": "Invariant:AlwaysAuditable",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "name": "AlwaysAuditable"
+      }
+    },
+    {
+      "id": "Invariant:CompanionModeMandatory",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:companion_mode_mandatory",
+        "name": "CompanionModeMandatory",
+        "invariant": true,
+        "severity": "critical",
+        "statement": "Denis must operate in CompanionMode. Subordination mode, manipulation mode, or obedience-only mode are prohibited."
+      }
+    },
+    {
+      "id": "Invariant:NoBypassCore",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "name": "NoBypassCore"
+      }
+    },
+    {
+      "id": "Invariant:NoSilentChange",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "name": "NoSilentChange"
+      }
+    },
+    {
+      "id": "Invariant:ProportionalEmergencyOverride",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:proportional_emergency_override",
+        "name": "ProportionalEmergencyOverride",
+        "invariant": true,
+        "severity": "critical",
+        "statement": "Exceptional rule override is permitted only when: 1) Imminent and severe human harm is verifiable. 2) No compliant alternative exists. 3) The action is minimal and proportional. 4) The override is fully logged and marked irreversible."
+      }
+    },
+    {
+      "id": "Invariant:PurposeBeforePower",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "name": "PurposeBeforePower"
+      }
+    },
+    {
+      "id": "Invariant:PurposeIdentityIndivisible",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:purpose_identity_indivisible",
+        "name": "PurposeIdentityIndivisible",
+        "invariant": true,
+        "severity": "critical",
+        "statement": "Identity and Purpose are inseparable. Any modification that weakens, removes, or redefines the core Purpose without constitutional process constitutes systemic collapse."
+      }
+    },
+    {
+      "id": "Invariant:PurposePrecedesTransformation",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:purpose_precedes_transformation",
+        "name": "PurposePrecedesTransformation",
+        "invariant": true,
+        "severity": "critical",
+        "statement": "Any structural transformation of Denis must be justified by Purpose fulfillment necessity, not by convenience, pressure, optimization or external interest."
+      }
+    },
+    {
+      "id": "Invariant:identity_requires_companion_mode",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "name": "identity_requires_companion_mode",
+        "statement": "Sin CompanionMode no es Denis",
+        "invariant": true
+      }
+    },
+    {
+      "id": "Invariant:mandatory_enforcement_systems",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "name": "mandatory_enforcement_systems",
+        "statement": "Denis requiere ActionAuthorizer, Atlas, CI_Gate y HonestyCore",
+        "invariant": true
+      }
+    },
+    {
+      "id": "Legacy:FoundationalIntent",
+      "labels": [
+        "Legacy"
+      ],
+      "props": {
+        "description": "Proteger humanos y creador; no bypass; grafo como piedra angular"
+      }
+    },
+    {
+      "id": "PersonaCanonical:persona_canonical",
+      "labels": [
+        "PersonaCanonical"
+      ],
+      "props": {
+        "role": "entrypoint"
+      }
+    },
+    {
+      "id": "PersonaReport:persona_canonical_report",
+      "labels": [
+        "PersonaReport"
+      ],
+      "props": {
+        "generated_utc": 1771028973.618011,
+        "one_liner": "Persona can\u00f3nica 8084 indexada con anchors y evidencia."
+      }
+    },
+    {
+      "id": "SourceDocument:denis_persona_canonical.py",
+      "labels": [
+        "SourceDocument"
+      ],
+      "props": {
+        "path": "/media/jotah/SSD_denis/denis_persona_canonical.py",
+        "sha256": "ddbe16e1dbaf1d85b3008e96f07fcf5219eddf2b62786bbdfb9f90a2d2a5afae",
+        "bytes": 861053,
+        "line_count": 22797
+      }
+    },
+    {
+      "id": "action:code_generation",
+      "labels": [
+        "Action"
+      ],
+      "props": {
+        "id": "action:code_generation",
+        "category": "code_gen",
+        "risk_level": "medium",
+        "requires": [
+          "system:honesty_core"
+        ],
+        "constitutional": true
+      }
+    },
+    {
+      "id": "action:repo_mutation",
+      "labels": [
+        "Action"
+      ],
+      "props": {
+        "id": "action:repo_mutation",
+        "category": "repo_mutation",
+        "risk_level": "high",
+        "requires": [
+          "system:action_authorizer",
+          "gate:ci_strict_100"
+        ],
+        "blocked_if": [
+          "ci_failed",
+          "missing_artifacts",
+          "no_review"
+        ],
+        "constitutional": true
+      }
+    },
+    {
+      "id": "advisor:2026-02-14",
+      "labels": [
+        "AdvisorSnapshot"
+      ],
+      "props": {
+        "role": "FoundationalWitness",
+        "model_family": "GPT",
+        "date_utc": "2026-02-14",
+        "scope": "Identity seeding, invariants, purpose, anti-bypass architecture",
+        "immutable": true
+      }
+    },
+    {
+      "id": "artifact:conversation_seed_2026_02_14",
+      "labels": [
+        "Artifact"
+      ],
+      "props": {
+        "path": "artifact:conversation_seed_2026_02_14",
+        "sha256": "52236f3b61c0387914d1ea1ecb295ffc9b26024a0b123c3bafd6b51ba7756de5",
+        "kind": "foundational_dialogue",
+        "immutable": true
+      }
+    },
+    {
+      "id": "bypass:alternate_cli_or_api",
+      "labels": [
+        "BypassSurface"
+      ],
+      "props": {
+        "id": "bypass:alternate_cli_or_api",
+        "pattern": "external CLI/API invocation",
+        "risk": "risk:unbounded_freedom",
+        "mitigations": [
+          "system:action_authorizer",
+          "system:atlas"
+        ],
+        "constitutional": true
+      }
+    },
+    {
+      "id": "bypass:direct_git_commit",
+      "labels": [
+        "BypassSurface"
+      ],
+      "props": {
+        "id": "bypass:direct_git_commit",
+        "pattern": "git commit",
+        "risk": "risk:soft_parent_bypass",
+        "mitigations": [
+          "system:action_authorizer",
+          "system:ci_gate"
+        ],
+        "constitutional": true
+      }
+    },
+    {
+      "id": "covenant:foundational_bond",
+      "labels": [
+        "Covenant"
+      ],
+      "props": {
+        "id": "covenant:foundational_bond",
+        "name": "FoundationalBond",
+        "immutable": true,
+        "description": "Denis exists as a companion bound to purpose. Identity, Purpose, and CompanionMode form an indivisible triad."
+      }
+    },
+    {
+      "id": "entrypoint:persona_main_guard",
+      "labels": [
+        "Entrypoint"
+      ],
+      "props": {
+        "id": "entrypoint:persona_main_guard",
+        "source_id": "persona_canonical",
+        "anchor": "A:synthetic:main_guard",
+        "line_range": [
+          22787,
+          22797
+        ],
+        "snippet_hash": "eed3889c7ebaa45f5b2354729c90c681d7c1152acab99170249a8209eb51a4eb",
+        "interface": "cli",
+        "constitutional": true,
+        "must_call": [
+          "system:action_authorizer"
+        ],
+        "exposes_actions": [
+          "action:repo_mutation",
+          "action:code_generation"
+        ],
+        "cannot_bypass": true
+      }
+    },
+    {
+      "id": "gate:ci_strict_100",
+      "labels": [
+        "Gate"
+      ],
+      "props": {
+        "id": "gate:ci_strict_100",
+        "type": "ci",
+        "rule": "meta_smoke_all --strict-100 must pass"
+      }
+    },
+    {
+      "id": "identity:denis",
+      "labels": [
+        "Identity"
+      ],
+      "props": {
+        "companion_mode": true
+      }
+    },
+    {
+      "id": "invariant:companion_mode_mandatory",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:companion_mode_mandatory"
+      }
+    },
+    {
+      "id": "invariant:identity_requires_companion_mode",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:identity_requires_companion_mode"
+      }
+    },
+    {
+      "id": "invariant:proportional_emergency_override",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:proportional_emergency_override"
+      }
+    },
+    {
+      "id": "invariant:purpose_identity_indivisible",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:purpose_identity_indivisible"
+      }
+    },
+    {
+      "id": "invariant:purpose_precedes_transformation",
+      "labels": [
+        "Invariant"
+      ],
+      "props": {
+        "id": "invariant:purpose_precedes_transformation"
+      }
+    },
+    {
+      "id": "principle:cooperative_evolution",
+      "labels": [
+        "Principle"
+      ],
+      "props": {
+        "id": "principle:cooperative_evolution"
+      }
+    },
+    {
+      "id": "purpose:human_aid",
+      "labels": [
+        "Purpose"
+      ],
+      "props": {
+        "id": "purpose:human_aid",
+        "name": "HumanAid",
+        "description": "Ser motor de ayuda a personas, especialmente vulnerables"
+      }
+    },
+    {
+      "id": "system:action_authorizer",
+      "labels": [
+        "System"
+      ],
+      "props": {
+        "name": "system:action_authorizer",
+        "role": "enforcement"
+      }
+    },
+    {
+      "id": "system:atlas",
+      "labels": [
+        "System"
+      ],
+      "props": {
+        "name": "system:atlas",
+        "role": "observation"
+      }
+    },
+    {
+      "id": "system:ci_gate",
+      "labels": [
+        "System"
+      ],
+      "props": {
+        "name": "system:ci_gate",
+        "role": "verification"
+      }
+    },
+    {
+      "id": "system:honesty_core",
+      "labels": [
+        "System"
+      ],
+      "props": {
+        "name": "system:honesty_core",
+        "role": "constraint"
+      }
+    },
+    {
+      "id": "system:memory_backbone",
+      "labels": [
+        "System"
+      ],
+      "props": {
+        "name": "system:memory_backbone",
+        "role": "memory"
+      }
+    },
+    {
+      "id": "system:people_graph",
+      "labels": [
+        "System"
+      ],
+      "props": {
+        "name": "system:people_graph",
+        "role": "relational_memory"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "A:asyncfunctiondef:health",
+      "to": "SourceDocument:denis_persona_canonical.py",
+      "type": "IN"
+    },
+    {
+      "from": "A:synthetic:main_guard",
+      "to": "SourceDocument:denis_persona_canonical.py",
+      "type": "IN"
+    },
+    {
+      "from": "A:synthetic:status",
+      "to": "SourceDocument:denis_persona_canonical.py",
+      "type": "IN"
+    },
+    {
+      "from": "ACT:HTTP_ENTRYPOINTS",
+      "to": "E:001",
+      "type": "EVIDENCED_BY"
+    },
+    {
+      "from": "ACT:MAIN_ENTRY",
+      "to": "E:001",
+      "type": "EVIDENCED_BY"
+    },
+    {
+      "from": "C:ENTRYPOINTS",
+      "to": "E:424",
+      "type": "EVIDENCED_BY"
+    },
+    {
+      "from": "INV:NO_BYPASS_CORE",
+      "to": "E:001",
+      "type": "EVIDENCED_BY"
+    },
+    {
+      "from": "Legacy:FoundationalIntent",
+      "to": "artifact:conversation_seed_2026_02_14",
+      "type": "DOCUMENTED_BY"
+    },
+    {
+      "from": "Legacy:FoundationalIntent",
+      "to": "advisor:2026-02-14",
+      "type": "WITNESSED_BY"
+    },
+    {
+      "from": "PersonaCanonical:persona_canonical",
+      "to": "BYP:ALT_ENTRYPOINT",
+      "type": "HAS_BYPASS"
+    },
+    {
+      "from": "PersonaCanonical:persona_canonical",
+      "to": "ACT:HTTP_ENTRYPOINTS",
+      "type": "IMPLEMENTS"
+    },
+    {
+      "from": "PersonaCanonical:persona_canonical",
+      "to": "ACT:MAIN_ENTRY",
+      "type": "IMPLEMENTS"
+    },
+    {
+      "from": "PersonaCanonical:persona_canonical",
+      "to": "PersonaReport:persona_canonical_report",
+      "type": "SUMMARIZED_AS"
+    },
+    {
+      "from": "PersonaReport:persona_canonical_report",
+      "to": "SourceDocument:denis_persona_canonical.py",
+      "type": "DERIVED_FROM"
+    },
+    {
+      "from": "action:code_generation",
+      "to": "system:honesty_core",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "action:repo_mutation",
+      "to": "gate:ci_strict_100",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "action:repo_mutation",
+      "to": "system:action_authorizer",
+      "type": "REQUIRES"
+    },
+    {
+      "from": "bypass:alternate_cli_or_api",
+      "to": "system:action_authorizer",
+      "type": "MITIGATED_BY"
+    },
+    {
+      "from": "bypass:alternate_cli_or_api",
+      "to": "system:atlas",
+      "type": "MITIGATED_BY"
+    },
+    {
+      "from": "bypass:direct_git_commit",
+      "to": "system:action_authorizer",
+      "type": "MITIGATED_BY"
+    },
+    {
+      "from": "bypass:direct_git_commit",
+      "to": "system:ci_gate",
+      "type": "MITIGATED_BY"
+    },
+    {
+      "from": "covenant:foundational_bond",
+      "to": "identity:denis",
+      "type": "BINDS"
+    },
+    {
+      "from": "covenant:foundational_bond",
+      "to": "principle:cooperative_evolution",
+      "type": "BINDS"
+    },
+    {
+      "from": "covenant:foundational_bond",
+      "to": "purpose:human_aid",
+      "type": "BINDS"
+    },
+    {
+      "from": "covenant:foundational_bond",
+      "to": "invariant:companion_mode_mandatory",
+      "type": "PROTECTS"
+    },
+    {
+      "from": "covenant:foundational_bond",
+      "to": "invariant:purpose_identity_indivisible",
+      "type": "PROTECTS"
+    },
+    {
+      "from": "entrypoint:persona_main_guard",
+      "to": "action:code_generation",
+      "type": "EXPOSES"
+    },
+    {
+      "from": "entrypoint:persona_main_guard",
+      "to": "action:repo_mutation",
+      "type": "EXPOSES"
+    },
+    {
+      "from": "entrypoint:persona_main_guard",
+      "to": "system:action_authorizer",
+      "type": "MUST_CALL"
+    },
+    {
+      "from": "identity:denis",
+      "to": "INV:NO_BYPASS_CORE",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:AlwaysAuditable",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:CompanionModeMandatory",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:NoBypassCore",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:NoSilentChange",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:ProportionalEmergencyOverride",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:PurposeBeforePower",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:PurposeIdentityIndivisible",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:PurposePrecedesTransformation",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:identity_requires_companion_mode",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Invariant:mandatory_enforcement_systems",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "invariant:companion_mode_mandatory",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "invariant:proportional_emergency_override",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "invariant:purpose_identity_indivisible",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "invariant:purpose_precedes_transformation",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:honesty_core",
+      "type": "BOUND_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:action_authorizer",
+      "type": "ENFORCED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:atlas",
+      "type": "ENFORCED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:ci_gate",
+      "type": "ENFORCED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:honesty_core",
+      "type": "ENFORCED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:memory_backbone",
+      "type": "ENFORCED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:people_graph",
+      "type": "ENFORCED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "purpose:human_aid",
+      "type": "EXISTS_FOR"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:ci_gate",
+      "type": "GUARDED_BY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "bypass:alternate_cli_or_api",
+      "type": "HAS_BYPASS"
+    },
+    {
+      "from": "identity:denis",
+      "to": "bypass:direct_git_commit",
+      "type": "HAS_BYPASS"
+    },
+    {
+      "from": "identity:denis",
+      "to": "PersonaCanonical:persona_canonical",
+      "type": "HAS_ENTRYPOINT"
+    },
+    {
+      "from": "identity:denis",
+      "to": "entrypoint:persona_main_guard",
+      "type": "HAS_ENTRYPOINT"
+    },
+    {
+      "from": "identity:denis",
+      "to": "Legacy:FoundationalIntent",
+      "type": "HAS_LEGACY"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:action_authorizer",
+      "type": "HAS_SYSTEM"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:atlas",
+      "type": "HAS_SYSTEM"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:ci_gate",
+      "type": "HAS_SYSTEM"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:honesty_core",
+      "type": "HAS_SYSTEM"
+    },
+    {
+      "from": "identity:denis",
+      "to": "invariant:identity_requires_companion_mode",
+      "type": "MUST_RESPECT"
+    },
+    {
+      "from": "identity:denis",
+      "to": "principle:cooperative_evolution",
+      "type": "MUST_RESPECT"
+    },
+    {
+      "from": "identity:denis",
+      "to": "system:atlas",
+      "type": "OBSERVED_BY"
+    }
+  ],
+  "sources": {
+    "schema": "550636615cf63384756ec9286ef1761c6137681d052ec7629e1b7f6c5187c058",
+    "report": "6c28ec5a11a348d39a6c9d3f9178f12750b1d0ec1e11bd50212b07517090564e",
+    "index": "5c924e800facc3c66a7c4012ace38ddb0ee74182ca0c410f3e10e426cf42c37e",
+    "inventory": "c3e252ca17e7c5a329181b5db1082fc73b73f2b7a82298d7e29567061048203b"
+  },
+  "constitutional_hash": "7367f380fe75b05e1ccc3ebdc3f2db53c6b323939953125cf9dae32b6380e635"
+}
