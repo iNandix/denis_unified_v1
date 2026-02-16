@@ -27,89 +27,108 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
     """Build the static engine registry (canonical source).
 
     Graph-centric: Reads from Neo4j if available, falls back to static config.
-    Mixture of Experts across node1 (heavy) and node2 (specialized).
+    Mixture of Experts: PC (intent/safety) + nodo2 (response/macro/draft)
 
-    node1: 2x large models (chat_general, reasoning_deep) - parallel heavy lifting
-    node2: 4x specialized (PLANNER, SCHEDULER, WATCHER, EXECUTOR)
+    PC (127.0.0.1):
+      - smollm_intent_local (8081) → intent, router
+      - phi3_safety_local (8082) → safety, policy
+
+    nodo2 (10.10.10.2):
+      - llama3_8b_response_a (9001) → response
+      - llama3_8b_response_b (9002) → response (fallback/load-balance)
+      - qwen2_7b_macro (9003) → macro (reasoning largo)
+      - tiny_draft (9004) → draft, speculative decoding
     """
     # TODO: Load from graph when DENIS_GRAPH_ENABLED=true
-    # Query: MATCH (e:Engine) RETURN e.name, e.endpoint, e.model, e.tags, e.priority, e.role
+    # Query: MATCH (e:Engine) RETURN e.name, e.host, e.port, e.task_tags, e.priority, e.capabilities
     return {
-        # node1: Heavy engines (parallel capable)
-        "llamacpp_node1_1": {
+        # PC: Fast local engines for intent/safety (ultra low latency)
+        "smollm_intent_local": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
-            "model": "llama-3.1-8b",
-            "endpoint": "http://10.10.10.1:8081",
-            "params_default": {"temperature": 0.2},
-            "cost_factor": 0.001,
-            "max_context": 8192,
-            "tags": ["local", "fast", "chat_general"],
-            "role": "chat_general",
-            "priority": 5,
-        },
-        "llamacpp_node1_2": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "qwen2.5-7b",
-            "endpoint": "http://10.10.10.1:8082",
-            "params_default": {"temperature": 0.2},
-            "cost_factor": 0.001,
-            "max_context": 8192,
-            "tags": ["local", "reasoning", "deep"],
-            "role": "reasoning_deep",
-            "priority": 6,
-        },
-        # node2: Specialized engines (Mixture of Experts)
-        "llamacpp_node2_1": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "llama-3.1-8b",
-            "endpoint": "http://10.10.10.2:8081",
-            "params_default": {"temperature": 0.2},
-            "cost_factor": 0.001,
-            "max_context": 4096,
-            "tags": ["local", "fast", "planner"],
-            "role": "PLANNER",
-            "priority": 10,
-        },
-        "llamacpp_node2_2": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "qwen2.5-3b",
-            "endpoint": "http://10.10.10.2:8082",
-            "params_default": {"temperature": 0.2},
-            "cost_factor": 0.001,
-            "max_context": 4096,
-            "tags": ["local", "scheduler"],
-            "role": "SCHEDULER",
-            "priority": 20,
-        },
-        "llamacpp_node2_3": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "phi-3-mini",
-            "endpoint": "http://10.10.10.2:8083",
-            "params_default": {"temperature": 0.2},
-            "cost_factor": 0.0005,
-            "max_context": 4096,
-            "tags": ["local", "small", "watcher", "preprocess"],
-            "role": "WATCHER",
-            "priority": 25,
-        },
-        "llamacpp_node2_4": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "tinyllama",
-            "endpoint": "http://10.10.10.2:8084",
+            "model": "smollm",
+            "endpoint": "http://127.0.0.1:8081",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.0001,
             "max_context": 2048,
-            "tags": ["local", "tiny", "fast", "chat_fast", "executor"],
-            "role": "EXECUTOR",
-            "priority": 30,
+            "tags": ["local", "intent", "router"],
+            "role": "intent",
+            "priority": 5,
+            "max_concurrency": 8,
+            "capabilities": {"stream": True, "chat": True, "tools": False},
         },
-        # Internet boosters
+        "phi3_safety_local": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "phi-3-mini",
+            "endpoint": "http://127.0.0.1:8082",
+            "params_default": {"temperature": 0.1},
+            "cost_factor": 0.0001,
+            "max_context": 2048,
+            "tags": ["local", "safety", "policy"],
+            "role": "safety",
+            "priority": 8,
+            "max_concurrency": 8,
+            "capabilities": {"stream": False, "chat": True, "tools": False},
+        },
+        # nodo2: Heavy engines for response/macro
+        "llama3_8b_response_a": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "llama-3.1-8b",
+            "endpoint": "http://10.10.10.2:9001",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.001,
+            "max_context": 4096,
+            "tags": ["local", "response"],
+            "role": "response",
+            "priority": 10,
+            "max_concurrency": 4,
+            "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        "llama3_8b_response_b": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "llama-3.1-8b",
+            "endpoint": "http://10.10.10.2:9002",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.001,
+            "max_context": 4096,
+            "tags": ["local", "response"],
+            "role": "response",
+            "priority": 20,
+            "max_concurrency": 4,
+            "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        "qwen2_7b_macro": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "qwen2.5-7b",
+            "endpoint": "http://10.10.10.2:9003",
+            "params_default": {"temperature": 0.3},
+            "cost_factor": 0.001,
+            "max_context": 8192,
+            "tags": ["local", "macro"],
+            "role": "macro",
+            "priority": 40,
+            "max_concurrency": 2,
+            "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        "tiny_draft": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "tinyllama",
+            "endpoint": "http://10.10.10.2:9004",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.0001,
+            "max_context": 2048,
+            "tags": ["local", "draft", "response"],
+            "role": "draft",
+            "priority": 15,
+            "max_concurrency": 8,
+            "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        # Internet boosters (disabled by default - offline-first)
         "groq_1": {
             "provider_key": "groq",
             "provider": "groq",
@@ -121,6 +140,7 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "tags": ["booster", "internet_required", "fast"],
             "role": "booster",
             "priority": 50,
+            "enabled": False,  # Disabled by policy
         },
     }
 
