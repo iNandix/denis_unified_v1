@@ -10,36 +10,52 @@ P1.3 + P2 Integration:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 
-from denis_unified_v1.kernel.scheduler import get_model_scheduler, InferenceRequest
+app = FastAPI(title="DENIS Persona Runtime", version="1.1-P2")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from denis_unified_v1.kernel.scheduler import get_model_scheduler
 from denis_unified_v1.inference.router import InferenceRouter
+from denis_unified_v1.telemetry.outcome_recorder import OutcomeRecorder
+from denis_unified_v1.cognition.local_responder import create_local_responder
+from denis_unified_v1.cognition.executor import Executor, Evaluator, ReentryController
+from denis_unified_v1.cognition.tools import build_tool_registry
+from denis_unified_v1.kernel.ops.engine_probe import run_engine_probe
 from denis_unified_v1.kernel.engine_registry import get_engine_registry
 from denis_unified_v1.kernel.internet_health import get_internet_health
-from denis_unified_v1.actions.planner import generate_candidate_plans, select_plan
-from denis_unified_v1.actions.models import Intent_v1
-from denis_unified_v1.intent.unified_parser import parse_intent
 from denis_unified_v1.telemetry.outcome_recorder import (
-    OutcomeRecorder,
-    ExecutionMode,
-    InternetStatus,
-    ConfidenceBand,
     select_mode,
     get_internet_status,
     get_allow_boosters,
+    ExecutionMode,
+    ConfidenceBand,
 )
-from denis_unified_v1.cognition.local_responder import create_local_responder
-from denis_unified_v1.cognition.executor import Executor, Evaluator, ReentryController, save_toolchain_log
-from denis_unified_v1.cognition.tools import build_tool_registry
-from denis_unified_v1.kernel.ops.engine_probe import run_engine_probe
+from denis_unified_v1.intent.unified_parser import parse_intent
 from denis_unified_v1.catalog.tool_catalog import get_tool_catalog, CatalogContext
+from denis_unified_v1.delivery import DeliverySubgraph
+from denis_unified_v1.delivery.events_v1 import (
+    RenderTextDeltaV1,
+    RenderVoiceCancelledV1,
+    DeliveryTextDeltaV1,
+    DeliveryInterruptV1,
+)
 
 
 MAX_REENTRY = 2
@@ -49,9 +65,9 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str = "default"
     group_id: str = "default"
+    session_id: str | None = None
+    voice_enabled: bool = False
 
-
-app = FastAPI(title="DENIS Persona Runtime", version="1.1-P2")
 
 router = InferenceRouter()
 scheduler = get_model_scheduler()
@@ -62,9 +78,230 @@ evaluator = Evaluator()
 reentry_controller = ReentryController()
 
 
+@app.get("/meta")
+async def meta():
+    return {"status": "ok", "version": "1.1-P2", "service": "denis-persona"}
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest) -> dict[str, Any]:
     """Persona chat: P1.3 + P2 mode selection + execution with reentry."""
+    return await _chat(req)
+
+
+@app.post("/v1/chat")
+async def chat_v1(req: ChatRequest) -> dict[str, Any]:
+    """Alias for /chat - API v1 compatible."""
+    return await _chat(req)
+
+
+@app.websocket("/chat")
+async def chat_ws(websocket: WebSocket):
+    """WS: single output stream via DeliverySubgraph with voice support."""
+    await websocket.accept()
+    print("WS: accepted connection")
+
+    # Track cancel events and deliveries per request
+    cancel_events: dict[str, asyncio.Event] = {}
+    active_deliveries: dict[str, Any] = {}
+
+    try:
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=60.0)
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                print(f"WS: receive error: {e}")
+                break
+
+            # Handle client.interrupt
+            if data.get("type") == "client.interrupt":
+                request_id = data.get("request_id")
+                if request_id and request_id in cancel_events:
+                    cancel_events[request_id].set()
+
+                    # Propagate interrupt to delivery subgraph
+                    if request_id in active_deliveries:
+                        delivery = active_deliveries[request_id]
+                        interrupt_events = await delivery.handle_interrupt(
+                            DeliveryInterruptV1(
+                                request_id=request_id, reason="user_interrupt"
+                            )
+                        )
+                        # Send events from delivery (includes render.voice.cancelled)
+                        for ev in interrupt_events:
+                            await websocket.send_json(ev)
+
+                    # Also send confirmation
+                    await websocket.send_json(
+                        {
+                            "request_id": request_id,
+                            "type": "render.voice.cancelled",
+                            "sequence": 0,
+                            "payload": {"reason_code": "user_interrupt"},
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+                continue
+
+            # Get voice_enabled from client if present
+            voice_enabled = data.get("voice_enabled", False)
+
+            request_id = (
+                data.get("request_id")
+                or f"req_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
+            )
+            user_text = data.get("message", data.get("text", ""))
+
+            # Create cancel event for this request
+            cancel_event = asyncio.Event()
+            cancel_events[request_id] = cancel_event
+
+            # Create subgraph for this request
+            delivery = DeliverySubgraph(
+                voice_enabled=voice_enabled,
+                tts_provider="piper_stream" if voice_enabled else "none",
+                piper_base_url="http://10.10.10.2:8005",
+            )
+            active_deliveries[request_id] = delivery
+
+            # Send initial ack immediately (TTFC)
+            seq = 0
+            await websocket.send_json(
+                {
+                    "request_id": request_id,
+                    "type": "render.text.delta",
+                    "sequence": seq,
+                    "payload": {"text": ""},
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            seq += 1
+
+            # Get response from persona pipeline (sync for now)
+            accumulated_text = ""
+            try:
+                req = ChatRequest(
+                    message=user_text, user_id=data.get("user_id", "default")
+                )
+                result = await _chat(req)
+                accumulated_text = result.get("response", "")
+
+                # Send text through delivery for parallel voice streaming
+                # PipecatRenderer will:
+                # 1. Emit text delta immediately
+                # 2. Detect boundaries and launch TTS in parallel
+                # 3. Emit voice deltas as they arrive
+                if voice_enabled and delivery and accumulated_text:
+                    text_delta = DeliveryTextDeltaV1(
+                        request_id=request_id,
+                        text_delta=accumulated_text,
+                        is_final=True,
+                        sequence=seq,
+                    )
+                    # This now handles text + voice in parallel internally
+                    events = await delivery.handle_text_delta(text_delta)
+                    for ev in events:
+                        await websocket.send_json(ev)
+                        seq += 1
+                else:
+                    # No voice - just send text
+                    await websocket.send_json(
+                        {
+                            "request_id": request_id,
+                            "type": "render.text.delta",
+                            "sequence": seq,
+                            "payload": {"text": accumulated_text},
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
+                    seq += 1
+
+                # Send final text
+                await websocket.send_json(
+                    {
+                        "request_id": request_id,
+                        "type": "render.text.final",
+                        "sequence": seq,
+                        "payload": {"text": accumulated_text},
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                seq += 1
+
+            except Exception as e:
+                print(f"WS: processing error: {e}")
+                await websocket.send_json(
+                    {
+                        "request_id": request_id,
+                        "type": "error",
+                        "sequence": seq,
+                        "payload": {"error": str(e)},
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+
+            # Get voice metrics if voice was enabled
+            voice_metrics = {}
+            if voice_enabled and delivery:
+                voice_metrics = delivery.get_metrics(request_id)
+
+            # Send outcome
+            await websocket.send_json(
+                {
+                    "request_id": request_id,
+                    "type": "render.outcome",
+                    "sequence": seq,
+                    "payload": {
+                        "mode": "direct",
+                        "reason_codes": ["voice_enabled"]
+                        if voice_enabled
+                        else ["voice_disabled"],
+                        "response_length": len(accumulated_text),
+                        "voice_ttfc_ms": voice_metrics.get("voice_ttfc_ms", 0),
+                        "tts_backend": voice_metrics.get("tts_backend", "none"),
+                        "voice_cancelled": voice_metrics.get("voice_cancelled", False),
+                        "cancel_latency_ms": voice_metrics.get("cancel_latency_ms", 0),
+                        "bytes_streamed": voice_metrics.get("bytes_streamed", 0),
+                        "audio_duration_ms": voice_metrics.get("audio_duration_ms", 0),
+                    },
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+            # Cleanup
+            if request_id in cancel_events:
+                del cancel_events[request_id]
+
+    except Exception as e:
+        print(f"WS error: {e}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+    finally:
+        print("WS: connection closed")
+
+
+@app.websocket("/v1/chat")
+async def chat_ws_v1(websocket: WebSocket):
+    """WebSocket alias for /v1/chat."""
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            req = ChatRequest(**data)
+            result = await _chat(req)
+            await websocket.send_json(result)
+    except Exception as e:
+        try:
+            await websocket.send_json({"error": str(e)})
+        except:
+            pass
+
+
+async def _chat(req: ChatRequest) -> dict[str, Any]:
     request_id = str(uuid.uuid4())
     text = req.message
 
@@ -424,33 +661,6 @@ async def _execute_local(
             "retrieval_used": local_response.retrieval_used,
             "llm_used": local_response.llm_used,
         },
-    }
-
-
-@app.get("/meta")
-async def meta() -> dict[str, Any]:
-    """Health/meta endpoint for ops and debugging."""
-    registry = get_engine_registry()
-    internet_status = get_internet_health().check()
-    allow_boosters = get_allow_boosters()
-    engines = list(registry.keys())
-    locals_count = sum(1 for e in registry.values() if "local" in e.get("tags", []))
-    boosters_count = sum(
-        1 for e in registry.values() if "internet_required" in e.get("tags", [])
-    )
-
-    return {
-        "version": "v1.1-P2",
-        "registry_hash": hash(json.dumps(registry, sort_keys=True)),
-        "internet_status": internet_status,
-        "allow_boosters": allow_boosters,
-        "engine_summary": {
-            "total": len(engines),
-            "locals": locals_count,
-            "boosters": boosters_count,
-        },
-        "max_reentry": MAX_REENTRY,
-        "uptime_sec": 0,
     }
 
 
