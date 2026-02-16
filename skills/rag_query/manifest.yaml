@@ -1,0 +1,37 @@
+name: rag_query
+version: 1.0.0
+description: Query knowledge base using Retrieval Augmented Generation
+type: executable_skill
+policy:
+  read_only: true
+  risk_level: low
+  requires_approval: false
+  gating: fast_band
+capability: information_retrieval
+config:
+  max_results: 10
+  timeout_ms: 15000
+intents:
+  - query_knowledge
+  - rag_search
+  - find_info
+dependencies:
+  tools:
+    - embed_text
+    - rag_query
+  engines:
+    - qwen3b_local
+    - smollm_node2
+  collections:
+    - knowledge_base
+    - system_config
+observability:
+  writes_to:
+    - L2_SHORT_TERM
+tests:
+  - name: intent_resolution
+    description: verify query_knowledge intent resolves to skill
+  - name: retrieval
+    description: verify context is retrieved from knowledge base
+  - name: memory_storage
+    description: verify results stored in short term memory

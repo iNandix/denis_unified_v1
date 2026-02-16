@@ -1,0 +1,42 @@
+name: git_operations
+version: 1.0.0
+description: Full git workflow operations (commit, branch, merge, PR)
+type: executable_skill
+policy:
+  read_only: false
+  mutating: true
+  risk_level: medium
+  requires_approval: true
+  gating: quality_band
+capability: version_control
+config:
+  operations:
+    - commit
+    - branch
+    - merge
+    - rebase
+    - pr
+  timeout_ms: 30000
+intents:
+  - git_commit
+  - create_branch
+  - git_merge
+  - git_pr
+dependencies:
+  tools:
+    - git
+    - git_exec
+  engines:
+    - qwen_coder7b_local
+observability:
+  writes_to:
+    - L2_SHORT_TERM
+    - L3_EPISODIC
+    - audit_trail
+tests:
+  - name: intent_resolution
+    description: verify git_commit intent resolves to skill
+  - name: status_check
+    description: verify git status is checked before operations
+  - name: audit_logging
+    description: verify operations logged to audit_trail

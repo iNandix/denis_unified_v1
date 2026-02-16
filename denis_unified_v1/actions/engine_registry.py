@@ -2,6 +2,7 @@
 Engine Registry - Graph-centric engine discovery and healthcheck.
 
 Provides engine lookup, health monitoring, and selection logic.
+Network-aware: prefers dedicated > lan > tailscale for internal services.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 import httpx
+import os
 from typing import Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -24,6 +26,15 @@ class EngineStatus(Enum):
     INACTIVE = "inactive"
     UNHEALTHY = "unhealthy"
     UNKNOWN = "unknown"
+
+
+# Network priority (lower = better)
+NETWORK_PRIORITY = {
+    "dedicated": 1,
+    "lan": 2,
+    "tailscale": 3,
+    "cloud": 4,
+}
 
 
 @dataclass
@@ -307,6 +318,55 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
         logger.warning(f"Failed to select engine: {e}")
 
     return None
+
+
+# Network priority (lower = better)
+NETWORK_PRIORITY = {
+    "dedicated": 1,
+    "lan": 2,
+    "tailscale": 3,
+    "cloud": 4,
+    "unknown": 5,
+}
+
+
+def get_engine_network_kind(engine_name: str) -> str:
+    """Get network kind for an engine (dedicated > lan > tailscale > cloud)."""
+    driver = _get_neo4j_driver()
+    if not driver:
+        return "unknown"
+
+    try:
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (s:Service)-[:LISTENS_ON]->(i:Interface)<-[:HAS_IFACE]-(n:Node)
+                MATCH (s)-[:PROVIDES]->(e:Engine {name: $name})
+                RETURN i.kind as kind
+                LIMIT 1
+            """,
+                name=engine_name,
+            )
+
+            record = result.single()
+            if record and record["kind"]:
+                return record["kind"]
+
+            result = session.run(
+                """
+                MATCH (s:Service {type: 'cloud'})-[:PROVIDES]->(e:Engine {name: $name})
+                RETURN 'cloud' as kind
+            """,
+                name=engine_name,
+            )
+
+            record = result.single()
+            if record:
+                return "cloud"
+    except Exception as e:
+        logger.debug(f"Failed to get network kind: {e}")
+
+    return "unknown"
 
 
 def get_engines_by_node(node: str) -> list[Engine]:

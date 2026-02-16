@@ -1,0 +1,44 @@
+name: test_generation
+version: 1.0.0
+description: Generate unit and integration tests from source code
+type: executable_skill
+policy:
+  read_only: true
+  risk_level: low
+  requires_approval: false
+  gating: fast_band
+capability: code_testing
+config:
+  test_types:
+    - unit
+    - integration
+    - e2e
+  timeout_ms: 60000
+intents:
+  - write_tests
+  - generate_tests
+  - add_test_coverage
+dependencies:
+  tools:
+    - glob_files
+    - file python_exec
+    - code_executor_read
+    -
+    - write_file
+  engines:
+    - qwen_coder7b_local
+    - qwen15b_node2
+    - gemma_node2
+  collections:
+    - code_templates
+observability:
+  writes_to:
+    - L2_SHORT_TERM
+    - L3_EPISODIC
+tests:
+  - name: intent_resolution
+    description: verify write_tests intent resolves to skill
+  - name: test_generation
+    description: verify tests are generated from source
+  - name: file_creation
+    description: verify test files are written

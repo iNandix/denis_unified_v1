@@ -1,0 +1,37 @@
+name: memory_recall
+version: 1.0.0
+description: Recall information from episodic memory and past conversations
+type: executable_skill
+policy:
+  read_only: true
+  risk_level: low
+  requires_approval: false
+  gating: fast_band
+capability: memory_retrieval
+config:
+  max_memories: 20
+  timeout_ms: 10000
+intents:
+  - remember
+  - recall_context
+dependencies:
+  tools:
+    - neo4j_query
+  engines:
+    - qwen3b_local
+    - smollm_node2
+  collections:
+    - episodic_memory
+    - conversations
+observability:
+  writes_to:
+    - L2_SHORT_TERM
+  reads_from:
+    - L3_EPISODIC
+tests:
+  - name: intent_resolution
+    description: verify remember intent resolves to skill
+  - name: memory_retrieval
+    description: verify memories are retrieved from episodic memory
+  - name: context_building
+    description: verify context is added to short term memory

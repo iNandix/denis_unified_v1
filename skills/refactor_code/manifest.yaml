@@ -1,0 +1,48 @@
+name: refactor_code
+version: 1.0.0
+description: Refactor existing code for better quality, readability and performance
+type: executable_skill
+policy:
+  read_only: false
+  mutating: true
+  risk_level: medium
+  requires_approval: true
+  gating: quality_band
+capability: code_refactoring
+config:
+  refactor_types:
+    - extract_method
+    - rename
+    - simplify
+    - optimize
+  timeout_ms: 90000
+intents:
+  - refactor
+  - improve_code
+dependencies:
+  tools:
+    - glob_files
+    - file_read
+    - python_exec
+    - code_executor
+    - write_file
+  engines:
+    - qwen_coder7b_local
+    - qwen15b_node2
+    - gemma_node2
+  collections:
+    - code_templates
+observability:
+  writes_to:
+    - L2_SHORT_TERM
+    - L3_EPISODIC
+    - audit_trail
+tests:
+  - name: intent_resolution
+    description: verify refactor intent resolves to skill
+  - name: code_analysis
+    description: verify code is analyzed before refactoring
+  - name: approval_required
+    description: verify mutating operations require approval
+  - name: audit_logging
+    description: verify refactor logged to audit_trail

@@ -1,0 +1,48 @@
+name: multi_file_write
+version: 1.0.0
+description: Write multiple files in parallel for code generation
+type: executable_skill
+policy:
+  read_only: false
+  mutating: true
+  risk_level: medium
+  requires_approval: true
+  gating: quality_band
+capability: file_writing
+config:
+  max_files: 20
+  timeout_ms: 60000
+  parallel: true
+  atomic: false
+intents:
+  - write_multiple_files
+  - generate_code
+  - scaffold_project
+dependencies:
+  tools:
+    - write_file
+    - file_write
+    - edit_file
+    - glob_files
+    - read_file
+  engines:
+    - qwen_coder7b_local
+    - qwen15b_node2
+    - gemma_node2
+  collections:
+    - code_templates
+    - system_config
+observability:
+  writes_to:
+    - Turn
+    - Episode
+    - audit_trail
+tests:
+  - name: intent_resolution
+    description: verify write_multiple_files intent resolves to skill
+  - name: toolchain_execution
+    description: verify validate -> write -> verify chain executes
+  - name: approval_required
+    description: verify mutating files triggers approval
+  - name: audit_trail
+    description: verify writes logged to audit_trail
