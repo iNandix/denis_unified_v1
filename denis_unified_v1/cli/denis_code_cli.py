@@ -3,10 +3,12 @@
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -238,13 +240,77 @@ def log_audit(workspace: Path, entry: Dict[str, Any]):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def _args_hash(args) -> str:
+    """Compute hash of args for audit."""
+    if hasattr(args, "__dict__"):
+        args = vars(args)
+    payload = json.dumps(args, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+async def run_codecraft(args):
+    """Run code generation using CodeCraft executor."""
+    from denis_unified_v1.actions.codecraft_executor import execute_codecraft
+
+    start_time = time.time()
+    session_id = os.getenv("DENIS_SESSION_ID", f"cli-codecraft-{uuid.uuid4().hex[:8]}")
+    os.environ["DENIS_SESSION_ID"] = session_id
+
+    result = execute_codecraft(
+        intent=args.intent,
+        description=args.query,
+        session_id=session_id,
+        language=args.language,
+    )
+
+    duration_ms = int((time.time() - start_time) * 1000)
+
+    if args.format == "json":
+        output = {
+            "status": result.status,
+            "specialty": result.specialty,
+            "selected_chunks": result.selected_chunks,
+            "reuse_candidates": result.reuse_candidates,
+            "composed_diff": result.composed_diff,
+            "files_changed": result.files_changed,
+            "diff_lines": result.diff_lines,
+            "tests_passed": result.tests_passed,
+            "tests_failed": result.tests_failed,
+            "duration_ms": duration_ms,
+            "trace_id": result.trace_id,
+            "config": {
+                "intent": args.intent,
+                "language": args.language,
+            },
+        }
+        print(json.dumps(output, indent=2, ensure_ascii=False))
+    else:
+        print(f"\n{'=' * 60}")
+        print(f"💻 CODECRAFT: {args.query}")
+        print(f"{'=' * 60}")
+        print(f"Intent: {args.intent} | Language: {args.language}")
+        print(f"Specialty: {result.specialty}")
+        print(f"Duration: {duration_ms}ms")
+        print(f"\nDiff ({result.diff_lines} lines):")
+        print(
+            f"{result.composed_diff[:500]}..."
+            if len(result.composed_diff) > 500
+            else f"{result.composed_diff}"
+        )
+        print(f"\n{'─' * 60}")
+        print(f"Files changed: {result.files_changed}")
+        if result.tests_passed is not None:
+            print(f"Tests: {result.tests_passed} passed, {result.tests_failed} failed")
+        print(f"\nTrace ID: {result.trace_id}")
+        print(f"{'=' * 60}\n")
+
+
 async def run_research(args):
     """Run research command using PRO_SEARCH executor."""
-    import time as time_module
     from denis_unified_v1.actions.pro_search_executor import run_pro_search
     from denis_unified_v1.actions.cli_trace import cli_trace_research
 
-    start_time = time_module.time()
+    start_time = time.time()
     session_id = os.getenv("DENIS_SESSION_ID", f"cli-research-{uuid.uuid4().hex[:8]}")
     os.environ["DENIS_SESSION_ID"] = session_id
 
@@ -262,7 +328,7 @@ async def run_research(args):
         session_id=session_id,
     )
 
-    duration_ms = int((time_module.time() - start_time) * 1000)
+    duration_ms = int((time.time() - start_time) * 1000)
 
     if args.format == "json":
         output = {
@@ -334,10 +400,34 @@ async def main():
         "--format", choices=["human", "json"], default="human", help="Output format"
     )
 
+    # Code generation command (generate subcommand)
+    gen_parser = subparsers.add_parser("generate", help="Code generation (CodeCraft)")
+    gen_parser.add_argument("query", help="Code request")
+    gen_parser.add_argument(
+        "--intent",
+        choices=[
+            "write_code",
+            "fix_bug",
+            "refactor_code",
+            "implement_feature",
+            "find_code",
+        ],
+        default="write_code",
+        help="Intent",
+    )
+    gen_parser.add_argument("--language", default="python", help="Programming language")
+    gen_parser.add_argument(
+        "--format", choices=["human", "json"], default="human", help="Output format"
+    )
+
     args = parser.parse_args()
 
+    if args.command == "generate":
+        await run_codecraft(args)
+        return
+
     # If no subcommand, assume code task (backwards compatibility)
-    if args.command is None:
+    if args.command == "code" or args.command is None:
         args.command = "code"
         # Shift arguments for backwards compatibility
         if hasattr(args, "task"):
@@ -348,6 +438,10 @@ async def main():
 
     if args.command == "research":
         await run_research(args)
+        return
+
+    if args.command == "code":
+        await run_codecraft(args)
         return
 
     # Original code assistant logic

@@ -40,6 +40,11 @@ class ToolMeta:
     domain: str          # belt
     mutability: str      # "ro"|"rw"
     risk: str            # "low"|"med"|"high"
+    requires_approval: bool = None  # If None, defaults to True if risk == "high"
+
+    def __post_init__(self):
+        if self.requires_approval is None:
+            self.requires_approval = self.risk == "high"
     requires_internet: bool = False
     timeout_ms: int = 30_000
 
