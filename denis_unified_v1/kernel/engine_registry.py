@@ -40,7 +40,7 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
     """
     # TODO: Load from graph when DENIS_GRAPH_ENABLED=true
     return {
-        # nodo1 / PC: RTX 3080 10GB - Heavy chat
+        # nodo1 / PC: RTX 3080 10GB - Heavy chat (2 modelos máximo)
         "llama3_8b_response_a": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
@@ -68,21 +68,6 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "role": "response",
             "priority": 20,
             "max_concurrency": 4,
-            "gpu": "3080_10gb",
-            "capabilities": {"stream": True, "chat": True, "tools": False},
-        },
-        "qwen2_7b_macro": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "qwen2.5-7b",
-            "endpoint": "http://127.0.0.1:9003",
-            "params_default": {"temperature": 0.3},
-            "cost_factor": 0.001,
-            "max_context": 8192,
-            "tags": ["local", "macro"],
-            "role": "macro",
-            "priority": 40,
-            "max_concurrency": 2,
             "gpu": "3080_10gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
         },
