@@ -32,6 +32,7 @@ from denis_unified_v1.cognition.legacy_tools_v2 import (
     ToolResult,
 )
 from denis_unified_v1.telemetry.steps import emit_tool_step
+from denis_unified_v1.delivery.graph_projection import get_inference_projection
 
 try:
     from denis_unified_v1.inference.vllm_client import VLLMClient
@@ -509,6 +510,11 @@ class InferenceRouter:
                         ],
                     }
                     self.metrics.emit_decision(request_id, payload)
+                    # Project inference decision to graph (fail-open)
+                    try:
+                        get_inference_projection().project_inference_decision(**payload)
+                    except Exception:
+                        pass
                     output_tokens = int(result.get("output_tokens") or 0)
                     input_tokens = int(
                         result.get("input_tokens") or max(1, len(user_text.split()))
@@ -561,6 +567,19 @@ class InferenceRouter:
                     "errors": errors,
                 },
             )
+            # Project fallback decision to graph (fail-open)
+            try:
+                get_inference_projection().project_inference_decision(
+                    request_id=request_id,
+                    llm_used="local_fallback",
+                    latency_ms=0,
+                    input_tokens=max(1, len(user_text.split())),
+                    output_tokens=max(1, len(fallback_text.split())),
+                    cost_usd=0.0,
+                    mode="legacy_fallback",
+                )
+            except Exception:
+                pass
             return {
                 "response": fallback_text,
                 "llm_used": "local_fallback",

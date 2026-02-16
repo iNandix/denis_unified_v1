@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import re
 import time
 from typing import Callable, Dict, Any, Optional, Literal, AsyncIterator
 
 from .events_v1 import *
 from .piper_stream import PiperStreamProvider, PiperStreamProviderWithCancel
+from .voice_cache import get_voice_cache
 
 
 class VoiceMetrics:
@@ -12,8 +14,11 @@ class VoiceMetrics:
 
     def __init__(self, request_id: str):
         self.request_id = request_id
-        self.tts_start_ts: Optional[float] = None
-        self.tts_first_chunk_ts: Optional[float] = None
+        self.request_start_ts: Optional[float] = None  # When request arrived
+        self.tts_start_ts: Optional[float] = None  # When first segment started
+        self.tts_first_chunk_ts: Optional[float] = (
+            None  # When first audio chunk arrived
+        )
         self.tts_end_ts: Optional[float] = None
         self.bytes_streamed: int = 0
         self.chunks_count: int = 0
@@ -22,14 +27,22 @@ class VoiceMetrics:
         self.backend: str = "none"
 
     def to_dict(self) -> dict:
+        # TTFC global: from request_start to first audio chunk
         voice_ttfc_ns = 0
-        if self.tts_start_ts and self.tts_first_chunk_ts:
+        if self.request_start_ts and self.tts_first_chunk_ts:
+            voice_ttfc_ns = int(
+                (self.tts_first_chunk_ts - self.request_start_ts) * 1_000_000_000
+            )
+        # Fallback to segment-level TTFC if global not available
+        elif self.tts_start_ts and self.tts_first_chunk_ts:
             voice_ttfc_ns = int(
                 (self.tts_first_chunk_ts - self.tts_start_ts) * 1_000_000_000
             )
 
         audio_duration_ms = 0
-        if self.tts_end_ts and self.tts_start_ts:
+        if self.tts_end_ts and self.request_start_ts:
+            audio_duration_ms = int((self.tts_end_ts - self.request_start_ts) * 1000)
+        elif self.tts_end_ts and self.tts_start_ts:
             audio_duration_ms = int((self.tts_end_ts - self.tts_start_ts) * 1000)
 
         cancel_latency_ms = 0
@@ -119,6 +132,7 @@ class PipecatRendererNode:
             self.voice_tasks[request_id] = []
             self.cancel_flags[request_id] = asyncio.Event()
             self.metrics[request_id] = VoiceMetrics(request_id)
+            self.metrics[request_id].request_start_ts = time.time()
             self.tts_ready[request_id] = asyncio.Event()
 
         # Append to buffer
@@ -191,6 +205,20 @@ class PipecatRendererNode:
         was_cancelled = False
         seg_idx = self.segment_counters.get(request_id, 0)
 
+        voice_cache = get_voice_cache()
+        asyncio.create_task(
+            voice_cache.start_segment(
+                request_id=request_id,
+                segment_id=segment_id,
+                sample_rate=self.sample_rate,
+                channels=1,
+                encoding="pcm_s16le",
+            )
+        )
+        first_chunk_global = None
+        if request_id in self.metrics:
+            first_chunk_global = self.metrics[request_id].tts_first_chunk_ts
+
         try:
             seq = 0
             async for chunk in self.piper_provider.synthesize_stream(
@@ -227,12 +255,26 @@ class PipecatRendererNode:
                         "type": "render.voice.delta",
                         "sequence": chunk.get("sequence", seq),
                         "payload": {
+                            "encoding": "pcm_s16le",
+                            "sample_rate": self.sample_rate,
+                            "channels": 1,
                             **chunk.get("payload", {}),
                             "segment_id": segment_id,
                         },
                         "ts": time.time(),
                     }
                 )
+
+                audio_b64 = chunk.get("payload", {}).get("audio_b64", "")
+                if audio_b64:
+                    try:
+                        pcm = base64.b64decode(audio_b64)
+                        asyncio.create_task(
+                            voice_cache.append_audio(request_id, segment_id, pcm)
+                        )
+                    except Exception:
+                        pass
+
                 seq += 1
 
             if self.metrics.get(request_id):
@@ -245,6 +287,9 @@ class PipecatRendererNode:
                 self.metrics[request_id].cancel_ts = time.time()
         except Exception as e:
             print(f"Voice segment error: {e}")
+
+        # Mark segment complete in cache
+        asyncio.create_task(voice_cache.complete_segment(request_id, segment_id))
 
         # Project TTS step to graph (fail-open)
         try:
@@ -357,6 +402,7 @@ class PipecatRendererNode:
         """Generate voice using streaming TTS."""
         if request_id not in self.metrics:
             self.metrics[request_id] = VoiceMetrics(request_id)
+            self.metrics[request_id].request_start_ts = time.time()
 
         metrics = self.metrics[request_id]
         metrics.tts_start_ts = time.time()
@@ -392,7 +438,12 @@ class PipecatRendererNode:
                             "request_id": request_id,
                             "type": "render.voice.delta",
                             "sequence": chunk.get("sequence", 0),
-                            "payload": chunk.get("payload", {}),
+                            "payload": {
+                                "encoding": "pcm_s16le",
+                                "sample_rate": self.sample_rate,
+                                "channels": 1,
+                                **chunk.get("payload", {}),
+                            },
                             "ts": time.time(),
                         }
                     )

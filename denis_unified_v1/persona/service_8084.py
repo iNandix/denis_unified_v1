@@ -64,6 +64,7 @@ MAX_REENTRY = 2
 # Seed voice pipeline topology in graph at import time (idempotent)
 try:
     get_voice_projection().seed_topology()
+    get_voice_projection().seed_engines()
 except Exception:
     pass  # fail-open
 
@@ -88,6 +89,50 @@ reentry_controller = ReentryController()
 @app.get("/meta")
 async def meta():
     return {"status": "ok", "version": "1.1-P2", "service": "denis-persona"}
+
+
+@app.get("/render/voice/segment")
+async def get_voice_segment(request_id: str, segment_id: str = ""):
+    """Serve cached voice segment as WAV for HASS media_player."""
+    from denis_unified_v1.delivery.voice_cache import get_voice_cache
+    import io
+    import wave
+
+    cache = get_voice_cache()
+
+    if segment_id:
+        seg = await cache.get_segment(request_id, segment_id)
+    else:
+        seg = await cache.get_latest_segment(request_id)
+
+    if not seg:
+        return {"error": "segment not found"}, 404
+
+    if seg.is_cancelled:
+        return {"error": "segment cancelled"}, 410
+
+    if not seg.pcm_bytes:
+        return {"error": "no audio data"}, 404
+
+    # Convert PCM to WAV
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav:
+        wav.setnchannels(seg.channels)
+        wav.setsampwidth(2)  # 16-bit
+        wav.setframerate(seg.sample_rate)
+        wav.writeframes(seg.pcm_bytes)
+
+    wav_bytes = buf.getvalue()
+
+    from starlette.responses import Response
+
+    return Response(
+        content=wav_bytes,
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": f"inline; filename=voice_{segment_id or request_id}.wav"
+        },
+    )
 
 
 @app.post("/chat")

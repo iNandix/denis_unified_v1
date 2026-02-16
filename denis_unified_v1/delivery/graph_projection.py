@@ -26,6 +26,7 @@ def _neo4j_write(query: str, params: Dict[str, Any]) -> bool:
     """Execute a Neo4j write query using connections.py. Fail-open."""
     try:
         from denis_unified_v1.connections import get_neo4j_driver
+
         driver = get_neo4j_driver()
         if not driver:
             return False
@@ -48,9 +49,11 @@ class VoiceGraphProjection:
         if self._topology_seeded:
             return
 
-        ok = _neo4j_write("""
-        MATCH (persona:Service {name: 'Persona'})
-        SET persona:PipelineNode, persona.updated_at = datetime()
+        ok = _neo4j_write(
+            """
+        MERGE (persona:Service:PipelineNode {name: 'Persona'})
+        SET persona.module = 'persona.service_8084', persona.node = 'nodo1',
+            persona.ws_port = 8084, persona.updated_at = datetime()
 
         MERGE (delivery:PipelineNode {name: 'DeliverySubgraph'})
         SET delivery.module = 'delivery.subgraph', delivery.node = 'nodo1',
@@ -74,11 +77,85 @@ class VoiceGraphProjection:
         MERGE (delivery)-[:RENDERS_WITH]->(renderer)
         MERGE (renderer)-[:TTS_BY]->(piper)
         MERGE (renderer)-[:OUTPUT_TO]->(hass)
-        """, {})
+        """,
+            {},
+        )
 
         if ok:
             self._topology_seeded = True
             logger.info("Voice pipeline topology seeded in graph")
+
+    def seed_engines(self):
+        """Seed Engine nodes from engine_registry into Neo4j."""
+        try:
+            from denis_unified_v1.kernel.engine_registry import get_engine_registry
+
+            registry = get_engine_registry()
+        except Exception as e:
+            logger.warning(f"Cannot load engine_registry: {e}")
+            return False
+
+        created = 0
+        for engine_id, config in registry.items():
+            ok = _neo4j_write(
+                """
+                MERGE (e:Engine {name: $engine_id})
+                SET e.provider_key = $provider_key,
+                    e.model = $model,
+                    e.endpoint = $endpoint,
+                    e.host = $host,
+                    e.port = $port,
+                    e.priority = $priority,
+                    e.tags = $tags,
+                    e.enabled = true,
+                    e.updated_at = datetime()
+                """,
+                {
+                    "engine_id": engine_id,
+                    "provider_key": config.get("provider_key", ""),
+                    "model": config.get("model", ""),
+                    "endpoint": config.get("endpoint", ""),
+                    "host": config.get("endpoint", "").split("//")[1].split(":")[0]
+                    if "://" in config.get("endpoint", "")
+                    else "",
+                    "port": int(config.get("endpoint", "").split(":")[-1])
+                    if ":" in config.get("endpoint", "")
+                    else 0,
+                    "priority": config.get("priority", 100),
+                    "tags": config.get("tags", []),
+                },
+            )
+            if ok:
+                created += 1
+
+        _neo4j_write(
+            """
+            MERGE (scheduler:Scheduler {name: 'ModelScheduler'})
+            SET scheduler.updated_at = datetime()
+        """,
+            {},
+        )
+
+        _neo4j_write(
+            """
+            MATCH (s:Scheduler), (e:Engine)
+            WHERE s.name = 'ModelScheduler' AND e.enabled = true
+            MERGE (s)-[:SELECTS_FROM]->(e)
+        """,
+            {},
+        )
+
+        _neo4j_write(
+            """
+            MATCH (s:Scheduler), (p:Service {name: 'Persona'})
+            WHERE s.name = 'ModelScheduler'
+            MERGE (s)-[:DECIDES_FOR]->(p)
+        """,
+            {},
+        )
+
+        logger.info(f"Seeded {created} engines and Scheduler in graph")
+        return True
 
     def project_voice_request(
         self,
@@ -88,7 +165,8 @@ class VoiceGraphProjection:
         started_at: str = "",
     ):
         """Project a voice request start to the graph."""
-        _neo4j_write("""
+        _neo4j_write(
+            """
         MERGE (req:VoiceRequest {id: $request_id})
         SET req.voice_enabled = $voice_enabled,
             req.user_id = $user_id,
@@ -98,12 +176,14 @@ class VoiceGraphProjection:
         WITH req
         MATCH (pipeline:PipelineNode {name: 'DeliverySubgraph'})
         MERGE (req)-[:USED_PIPELINE]->(pipeline)
-        """, {
-            "request_id": request_id,
-            "voice_enabled": voice_enabled,
-            "user_id": user_id,
-            "started_at": started_at,
-        })
+        """,
+            {
+                "request_id": request_id,
+                "voice_enabled": voice_enabled,
+                "user_id": user_id,
+                "started_at": started_at,
+            },
+        )
 
     # Keep backward compat alias
     project_request = project_voice_request
@@ -122,7 +202,8 @@ class VoiceGraphProjection:
         if not ttfc_ns:
             ttfc_ns = metrics.get("voice_ttfc_ms", 0) * 1_000_000
 
-        _neo4j_write("""
+        _neo4j_write(
+            """
         MERGE (req:VoiceRequest {id: $request_id})
         SET req.completed_at = datetime()
 
@@ -138,18 +219,20 @@ class VoiceGraphProjection:
             outcome.created_at = datetime()
 
         MERGE (req)-[:HAS_OUTCOME]->(outcome)
-        """, {
-            "request_id": request_id,
-            "outcome_id": f"vo_{request_id}",
-            "ttfc_ns": ttfc_ns,
-            "ttfc_ms": int(ttfc_ns / 1_000_000),
-            "bytes_streamed": metrics.get("bytes_streamed", 0),
-            "audio_duration_ms": metrics.get("audio_duration_ms", 0),
-            "chunks_count": metrics.get("chunks_count", 0),
-            "cancelled": metrics.get("voice_cancelled", False),
-            "cancel_latency_ms": metrics.get("cancel_latency_ms", 0),
-            "tts_backend": metrics.get("tts_backend", "none"),
-        })
+        """,
+            {
+                "request_id": request_id,
+                "outcome_id": f"vo_{request_id}",
+                "ttfc_ns": ttfc_ns,
+                "ttfc_ms": int(ttfc_ns / 1_000_000),
+                "bytes_streamed": metrics.get("bytes_streamed", 0),
+                "audio_duration_ms": metrics.get("audio_duration_ms", 0),
+                "chunks_count": metrics.get("chunks_count", 0),
+                "cancelled": metrics.get("voice_cancelled", False),
+                "cancel_latency_ms": metrics.get("cancel_latency_ms", 0),
+                "tts_backend": metrics.get("tts_backend", "none"),
+            },
+        )
 
     def project_tts_step(
         self,
@@ -165,7 +248,8 @@ class VoiceGraphProjection:
 
         ttfc_ns: time-to-first-chunk in nanoseconds (canonical).
         """
-        _neo4j_write("""
+        _neo4j_write(
+            """
         MERGE (req:VoiceRequest {id: $request_id})
 
         MERGE (step:ToolchainStep {id: $step_id})
@@ -184,25 +268,97 @@ class VoiceGraphProjection:
         WITH step
         MATCH (piper:PipelineNode {name: 'PiperTTS'})
         MERGE (step)-[:EXECUTED_ON]->(piper)
-        """, {
-            "request_id": request_id,
-            "step_id": f"tts_{segment_id}",
-            "segment_id": segment_id,
-            "segment_idx": segment_idx,
-            "text_length": len(text),
-            "ttfc_ns": ttfc_ns,
-            "ttfc_ms": int(ttfc_ns / 1_000_000),
-            "bytes_sent": bytes_sent,
-            "cancelled": cancelled,
-        })
+        """,
+            {
+                "request_id": request_id,
+                "step_id": f"tts_{segment_id}",
+                "segment_id": segment_id,
+                "segment_idx": segment_idx,
+                "text_length": len(text),
+                "ttfc_ns": ttfc_ns,
+                "ttfc_ms": int(ttfc_ns / 1_000_000),
+                "bytes_sent": bytes_sent,
+                "cancelled": cancelled,
+            },
+        )
 
 
-# Singleton
-_projection: Optional[VoiceGraphProjection] = None
+class InferenceGraphProjection:
+    """Projects inference decisions to Neo4j."""
+
+    def __init__(self):
+        self._topology_seeded = False
+
+    def seed_topology(self):
+        """Seed static inference topology (idempotent, run once at startup)."""
+        if self._topology_seeded:
+            return
+        # Seed providers as nodes
+        providers = ["vllm", "groq", "openrouter", "llamacpp", "legacy_core"]
+        for p in providers:
+            _neo4j_write(
+                """
+            MERGE (prov:Provider {name: $name})
+            """,
+                {"name": p},
+            )
+        self._topology_seeded = True
+
+    def project_inference_decision(
+        self,
+        request_id: str,
+        llm_used: str,
+        latency_ms: int,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        mode: str = "plan_first",
+        **kwargs,
+    ):
+        """Project inference decision to graph."""
+        _neo4j_write(
+            """
+        MERGE (req:Request {id: $request_id})
+        MERGE (dec:InferenceDecision {id: $decision_id})
+        SET dec.llm_used = $llm_used,
+            dec.latency_ms = $latency_ms,
+            dec.input_tokens = $input_tokens,
+            dec.output_tokens = $output_tokens,
+            dec.cost_usd = $cost_usd,
+            dec.mode = $mode,
+            dec.created_at = datetime()
+        MERGE (req)-[:HAS_INFERENCE_DECISION]->(dec)
+        MERGE (prov:Provider {name: $llm_used})
+        MERGE (dec)-[:USES_PROVIDER]->(prov)
+        """,
+            {
+                "request_id": request_id,
+                "decision_id": f"{request_id}:inference",
+                "llm_used": llm_used,
+                "latency_ms": latency_ms,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_usd": cost_usd,
+                "mode": mode,
+            },
+        )
+
+
+_VOICE_PROJECTION: Optional[VoiceGraphProjection] = None
+_INFERENCE_PROJECTION: Optional[InferenceGraphProjection] = None
 
 
 def get_voice_projection() -> VoiceGraphProjection:
-    global _projection
-    if _projection is None:
-        _projection = VoiceGraphProjection()
-    return _projection
+    global _VOICE_PROJECTION
+    if _VOICE_PROJECTION is None:
+        _VOICE_PROJECTION = VoiceGraphProjection()
+        _VOICE_PROJECTION.seed_topology()
+    return _VOICE_PROJECTION
+
+
+def get_inference_projection() -> InferenceGraphProjection:
+    global _INFERENCE_PROJECTION
+    if _INFERENCE_PROJECTION is None:
+        _INFERENCE_PROJECTION = InferenceGraphProjection()
+        _INFERENCE_PROJECTION.seed_topology()
+    return _INFERENCE_PROJECTION

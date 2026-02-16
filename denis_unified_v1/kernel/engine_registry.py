@@ -26,11 +26,16 @@ _engine_registry: dict[str, dict[str, Any]] = {}
 def _build_static_registry() -> dict[str, dict[str, Any]]:
     """Build the static engine registry (canonical source).
 
-    Local-first: 6 engines across node1 and node2
-    Boosters: groq for when internet is available
+    Graph-centric: Reads from Neo4j if available, falls back to static config.
+    Mixture of Experts across node1 (heavy) and node2 (specialized).
+
+    node1: 2x large models (chat_general, reasoning_deep) - parallel heavy lifting
+    node2: 4x specialized (PLANNER, SCHEDULER, WATCHER, EXECUTOR)
     """
+    # TODO: Load from graph when DENIS_GRAPH_ENABLED=true
+    # Query: MATCH (e:Engine) RETURN e.name, e.endpoint, e.model, e.tags, e.priority, e.role
     return {
-        # Local llama.cpp engines - node1 (more powerful)
+        # node1: Heavy engines (parallel capable)
         "llamacpp_node1_1": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
@@ -39,8 +44,9 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 8192,
-            "tags": ["local", "node1", "fast"],
-            "priority": 5,  # Best priority
+            "tags": ["local", "fast", "chat_general"],
+            "role": "chat_general",
+            "priority": 5,
         },
         "llamacpp_node1_2": {
             "provider_key": "llamacpp",
@@ -50,10 +56,11 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 8192,
-            "tags": ["local", "node1"],
+            "tags": ["local", "reasoning", "deep"],
+            "role": "reasoning_deep",
             "priority": 6,
         },
-        # Local llama.cpp engines - node2 (4 engines)
+        # node2: Specialized engines (Mixture of Experts)
         "llamacpp_node2_1": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
@@ -62,7 +69,8 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
-            "tags": ["local", "node2", "fast"],
+            "tags": ["local", "fast", "planner"],
+            "role": "PLANNER",
             "priority": 10,
         },
         "llamacpp_node2_2": {
@@ -73,7 +81,8 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
-            "tags": ["local", "node2"],
+            "tags": ["local", "scheduler"],
+            "role": "SCHEDULER",
             "priority": 20,
         },
         "llamacpp_node2_3": {
@@ -84,7 +93,8 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.0005,
             "max_context": 4096,
-            "tags": ["local", "node2", "small"],
+            "tags": ["local", "small", "watcher", "preprocess"],
+            "role": "WATCHER",
             "priority": 25,
         },
         "llamacpp_node2_4": {
@@ -95,10 +105,11 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.0001,
             "max_context": 2048,
-            "tags": ["local", "node2", "tiny", "fast"],
+            "tags": ["local", "tiny", "fast", "chat_fast", "executor"],
+            "role": "EXECUTOR",
             "priority": 30,
         },
-        # Groq boosters (internet required - fallback when online)
+        # Internet boosters
         "groq_1": {
             "provider_key": "groq",
             "provider": "groq",
@@ -108,7 +119,8 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "cost_factor": 0.05,
             "max_context": 128000,
             "tags": ["booster", "internet_required", "fast"],
-            "priority": 50,  # Only used when internet OK
+            "role": "booster",
+            "priority": 50,
         },
     }
 

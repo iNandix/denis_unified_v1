@@ -7,11 +7,9 @@ import sys
 import time
 import websockets
 
-WS_URL = os.getenv("DENIS_WS_URL", "ws://10.10.10.1:8084/chat")
+WS_URL = os.getenv("DENIS_WS_URL", "ws://localhost:8084/chat")
 
-DEFAULT_PROMPT = os.getenv(
-    "DENIS_PROMPT", "Hola Denis, prueba de voz en streaming. Cuenta 1 a 5."
-)
+DEFAULT_PROMPT = os.getenv("DENIS_PROMPT", "Hola Denis, soy el PC. ¿Me oyes?")
 
 
 def eprint(*a):
@@ -30,15 +28,12 @@ async def main():
         WS_URL, ping_interval=20, ping_timeout=20, max_size=50_000_000
     ) as ws:
         init_msg = {
-            "type": "chat.request",
+            "message": DEFAULT_PROMPT,
+            "voice_enabled": True,
             "request_id": f"pc-audio-{int(time.time() * 1000)}",
-            "payload": {
-                "input_text": DEFAULT_PROMPT,
-                "modalities": ["text", "voice"],
-            },
         }
         await ws.send(json.dumps(init_msg))
-        eprint("[ws] sent init request")
+        eprint("[ws] sent init request with voice_enabled=True")
 
         while True:
             raw = await ws.recv()
