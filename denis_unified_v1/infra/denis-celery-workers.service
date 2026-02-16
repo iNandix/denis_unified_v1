@@ -1,0 +1,53 @@
+# /etc/systemd/system/denis-celery-workers.service
+# Install: sudo cp denis-celery-workers.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now denis-celery-workers
+
+[Unit]
+Description=Denis Celery Workers (tts + graph_ingest + ha_playback + tools + housekeeping)
+After=redis.service network.target
+Requires=redis.service
+
+[Service]
+Type=forking
+User=jotah
+Group=jotah
+WorkingDirectory=/media/jotah/SSD_denis/home_jotah/denis_unified_v1
+
+# Start all workers via celery multi
+ExecStart=/home/jotah/.local/bin/celery multi start \
+    w_tts w_graph w_ha w_tools w_housekeeping \
+    -A denis_unified_v1.infra.tasks \
+    -Q:w_tts tts \
+    -Q:w_graph graph_ingest \
+    -Q:w_ha ha_playback \
+    -Q:w_tools tools_ro,tools_mut \
+    -Q:w_housekeeping housekeeping \
+    -c:w_tts 2 \
+    -c:w_graph 2 \
+    -c:w_ha 1 \
+    -c:w_tools 4 \
+    -c:w_housekeeping 1 \
+    --loglevel=INFO \
+    --pidfile=/tmp/denis-celery-%n.pid \
+    --logfile=/tmp/denis-celery-%n.log
+
+ExecStop=/home/jotah/.local/bin/celery multi stop \
+    w_tts w_graph w_ha w_tools w_housekeeping \
+    --pidfile=/tmp/denis-celery-%n.pid
+
+ExecReload=/home/jotah/.local/bin/celery multi restart \
+    w_tts w_graph w_ha w_tools w_housekeeping \
+    -A denis_unified_v1.infra.tasks \
+    --pidfile=/tmp/denis-celery-%n.pid
+
+Restart=on-failure
+RestartSec=10
+
+Environment="NEO4J_PASSWORD=Leon1234$"
+Environment="PIPER_BASE_URL=http://10.10.10.2:8005"
+Environment="REDIS_URL=redis://localhost:6379/0"
+Environment="CELERY_BROKER_URL=redis://localhost:6379/1"
+Environment="CELERY_RESULT_BACKEND=redis://localhost:6379/2"
+
+[Install]
+WantedBy=multi-user.target

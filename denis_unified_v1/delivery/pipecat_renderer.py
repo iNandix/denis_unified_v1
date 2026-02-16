@@ -24,7 +24,9 @@ class VoiceMetrics:
     def to_dict(self) -> dict:
         voice_ttfc_ns = 0
         if self.tts_start_ts and self.tts_first_chunk_ts:
-            voice_ttfc_ns = int((self.tts_first_chunk_ts - self.tts_start_ts) * 1_000_000_000)
+            voice_ttfc_ns = int(
+                (self.tts_first_chunk_ts - self.tts_start_ts) * 1_000_000_000
+            )
 
         audio_duration_ms = 0
         if self.tts_end_ts and self.tts_start_ts:
@@ -236,6 +238,7 @@ class PipecatRendererNode:
         # Project TTS step to graph (fail-open)
         try:
             from denis_unified_v1.delivery.graph_projection import get_voice_projection
+
             get_voice_projection().project_tts_step(
                 request_id=request_id,
                 segment_id=segment_id,
@@ -260,11 +263,17 @@ class PipecatRendererNode:
                 for task in self.voice_tasks[request_id]:
                     if not task.done():
                         task.cancel()
-                # Cancel server-side streams on nodo2 for each segment
-                if self.piper_provider and hasattr(self.piper_provider, "cancel_request"):
+            # Cancel server-side streams on nodo2 for each segment
+            if self.piper_provider and hasattr(self.piper_provider, "cancel_request"):
+                try:
+                    # Cancel each segment
                     for i in range(1, self.segment_counters.get(request_id, 0) + 1):
                         segment_id = f"{request_id}:s{i}"
-                        asyncio.create_task(self.piper_provider.cancel_request(segment_id))
+                        await self.piper_provider.cancel_request(segment_id)
+                    # Also try cancel on main request_id
+                    await self.piper_provider.cancel_request(request_id)
+                except Exception as e:
+                    print(f"Server-side cancel error: {e}")
                 self.voice_tasks[request_id] = []
 
             # Clear queues

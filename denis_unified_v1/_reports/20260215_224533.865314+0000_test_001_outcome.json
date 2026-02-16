@@ -1,0 +1,34 @@
+{
+  "request_id": "test_001",
+  "ts_utc": "2026-02-15T22:45:33.865314+00:00",
+  "intent": {
+    "intent": "run_tests_ci",
+    "confidence": 0.75,
+    "confidence_band": "medium",
+    "sources_used": [
+      "rasa",
+      "heuristics"
+    ],
+    "reason_codes": [
+      "default_fallback"
+    ]
+  },
+  "selected_mode": "actions_plan",
+  "allow_boosters": false,
+  "internet_status": "OK",
+  "plan": null,
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "engine_used": null,
+  "degraded": false,
+  "reason_codes": [],
+  "reentry_count": 1,
+  "catalog_size": 0,
+  "num_matches": 0,
+  "top_score": 0.0,
+  "booster_health": false,
+  "steps_planned": 0,
+  "blocked_steps": 0
+}
