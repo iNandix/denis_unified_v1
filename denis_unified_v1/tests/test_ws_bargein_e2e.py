@@ -52,26 +52,32 @@ async def run_bargein_test():
             print("Connected.")
 
             # Send chat with voice_enabled
-            msg = json.dumps({
-                "message": "Cuéntame una historia larga sobre un dragón que vivía en una montaña muy alta y tenía muchos amigos en el bosque cercano.",
-                "voice_enabled": True,
-                "request_id": request_id,
-                "user_id": "test_bargein",
-            })
+            msg = json.dumps(
+                {
+                    "message": "Cuéntame una historia larga sobre un dragón que vivía en una montaña muy alta y tenía muchos amigos en el bosque cercano.",
+                    "voice_enabled": True,
+                    "request_id": request_id,
+                    "user_id": "test_bargein",
+                }
+            )
             await ws.send(msg)
             print(f"Sent request: voice_enabled=true")
 
-            # Schedule interrupt after delay
+            # Send interrupt immediately on first voice delta (for deterministic barge-in test)
             async def send_interrupt():
                 nonlocal cancel_sent
-                await asyncio.sleep(INTERRUPT_DELAY)
-                interrupt = json.dumps({
-                    "type": "client.interrupt",
-                    "request_id": request_id,
-                })
-                await ws.send(interrupt)
-                cancel_sent = True
-                print(f">>> Sent client.interrupt after {INTERRUPT_DELAY}s")
+                while not cancel_sent and time.time() < deadline:
+                    await asyncio.sleep(0.05)
+                if not cancel_sent:
+                    interrupt = json.dumps(
+                        {
+                            "type": "client.interrupt",
+                            "request_id": request_id,
+                        }
+                    )
+                    await ws.send(interrupt)
+                    cancel_sent = True
+                    print(f">>> Sent client.interrupt (immediate)")
 
             interrupt_task = asyncio.create_task(send_interrupt())
 
@@ -94,6 +100,16 @@ async def run_bargein_test():
                         voice_deltas_after_cancel += 1
                     else:
                         voice_deltas_before_cancel += 1
+                        # Send interrupt immediately on first voice chunk
+                        interrupt = json.dumps(
+                            {
+                                "type": "client.interrupt",
+                                "request_id": request_id,
+                            }
+                        )
+                        await ws.send(interrupt)
+                        cancel_sent = True
+                        print(f">>> Sent client.interrupt on first voice chunk")
 
                 elif ev_type == "render.voice.cancelled":
                     got_cancelled = True
@@ -102,7 +118,9 @@ async def run_bargein_test():
                 elif ev_type == "render.outcome":
                     got_outcome = True
                     outcome_payload = ev.get("payload", {})
-                    print(f"  <<< render.outcome: {json.dumps(outcome_payload, indent=2)}")
+                    print(
+                        f"  <<< render.outcome: {json.dumps(outcome_payload, indent=2)}"
+                    )
                     break
 
             interrupt_task.cancel()
@@ -129,14 +147,22 @@ async def run_bargein_test():
 
     # Check 2: Got voice deltas before cancel
     ok = voice_deltas_before_cancel > 0
-    checks.append(("render.voice.delta before cancel", ok, f"count={voice_deltas_before_cancel}"))
+    checks.append(
+        ("render.voice.delta before cancel", ok, f"count={voice_deltas_before_cancel}")
+    )
 
     # Check 3: Got cancelled event
     checks.append(("render.voice.cancelled received", got_cancelled, ""))
 
     # Check 4: voice_deltas_after_cancel is small (barge-in stopped streaming)
     ok = voice_deltas_after_cancel <= 2  # allow 1-2 in-flight
-    checks.append(("voice deltas stopped after cancel", ok, f"after_cancel={voice_deltas_after_cancel}"))
+    checks.append(
+        (
+            "voice deltas stopped after cancel",
+            ok,
+            f"after_cancel={voice_deltas_after_cancel}",
+        )
+    )
 
     # Check 5: outcome received
     checks.append(("render.outcome received", got_outcome, ""))
@@ -144,12 +170,19 @@ async def run_bargein_test():
     # Check 6: outcome shows cancelled (if we actually cancelled in time)
     if got_cancelled:
         ok = outcome_payload.get("voice_cancelled", False) is True
-        checks.append(("outcome.voice_cancelled=true", ok, f"got={outcome_payload.get('voice_cancelled')}"))
+        checks.append(
+            (
+                "outcome.voice_cancelled=true",
+                ok,
+                f"got={outcome_payload.get('voice_cancelled')}",
+            )
+        )
 
     # Check 7: Neo4j projection
     neo4j_ok = False
     try:
         from denis_unified_v1.connections import get_neo4j_driver
+
         driver = get_neo4j_driver()
         if driver:
             with driver.session() as session:
@@ -161,8 +194,13 @@ async def run_bargein_test():
                 ).single()
                 if r:
                     neo4j_ok = True
-                    checks.append(("Neo4j: VoiceRequest+Outcome projected", True,
-                                   f"ttfc_ns={r['ttfc_ns']}, bytes={r['bytes']}, cancelled={r['cancelled']}, backend={r['backend']}"))
+                    checks.append(
+                        (
+                            "Neo4j: VoiceRequest+Outcome projected",
+                            True,
+                            f"ttfc_ns={r['ttfc_ns']}, bytes={r['bytes']}, cancelled={r['cancelled']}, backend={r['backend']}",
+                        )
+                    )
 
                     # Check steps
                     s = session.run(
@@ -171,9 +209,17 @@ async def run_bargein_test():
                         rid=request_id,
                     ).single()
                     if s:
-                        checks.append(("Neo4j: ToolchainSteps linked", s["steps"] > 0, f"count={s['steps']}"))
+                        checks.append(
+                            (
+                                "Neo4j: ToolchainSteps linked",
+                                s["steps"] > 0,
+                                f"count={s['steps']}",
+                            )
+                        )
                 else:
-                    checks.append(("Neo4j: VoiceRequest+Outcome projected", False, "not found"))
+                    checks.append(
+                        ("Neo4j: VoiceRequest+Outcome projected", False, "not found")
+                    )
     except Exception as e:
         checks.append(("Neo4j: VoiceRequest+Outcome projected", False, str(e)))
 
@@ -197,8 +243,12 @@ async def run_bargein_test():
     if neo4j_ok:
         print()
         print("Neo4j inspection queries:")
-        print(f"  MATCH (r:VoiceRequest {{id:'{request_id}'}})-[:HAS_OUTCOME]->(o) RETURN r, o;")
-        print(f"  MATCH (r:VoiceRequest {{id:'{request_id}'}})-[:HAS_STEP]->(s) RETURN s ORDER BY s.segment_idx;")
+        print(
+            f"  MATCH (r:VoiceRequest {{id:'{request_id}'}})-[:HAS_OUTCOME]->(o) RETURN r, o;"
+        )
+        print(
+            f"  MATCH (r:VoiceRequest {{id:'{request_id}'}})-[:HAS_STEP]->(s) RETURN s ORDER BY s.segment_idx;"
+        )
 
     return failed == 0
 
