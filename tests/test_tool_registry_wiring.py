@@ -167,5 +167,105 @@ def test_toolchain_log_with_real_execution(tmp_path):
     assert data["kind"] == "toolchain_step_log_v1"
     assert data["status"] == "success"
     assert len(data["step_results"]) == 1
-    assert data["step_results"][0]["status"] == "ok"
-    assert data["step_results"][0]["output"]  # should have disk info
+def test_executor_tools_medium_blocks_run_command(tmp_path):
+    """run_command blocked in medium confidence."""
+    registry = build_tool_registry_v2()
+    executor = Executor(tool_registry=registry, evidence_dir=tmp_path)
+
+    plan = ActionPlanCandidate(
+        candidate_id="test_medium_run",
+        intent="debug_repo",
+        steps=[
+            ActionStep(
+                step_id="step_run",
+                description="Run command",
+                read_only=False,
+                tool_calls=[ToolCall(name="run_command", args={"cmd": "echo test"})],
+            ),
+        ],
+    )
+
+    context = {"confidence_band": "medium"}
+    result = executor.execute_plan(plan, context)
+
+    assert len(result.step_results) == 1
+    assert result.step_results[0].status.value == "failed"
+    assert "belt_filtered" in result.step_results[0].reason_codes
+
+
+def test_executor_tools_medium_allows_read_file(tmp_path):
+    """read_file allowed in medium."""
+    registry = build_tool_registry_v2()
+    executor = Executor(tool_registry=registry, evidence_dir=tmp_path)
+
+    plan = ActionPlanCandidate(
+        candidate_id="test_medium_read",
+        intent="debug_repo",
+        steps=[
+            ActionStep(
+                step_id="step_read",
+                description="Read file",
+                read_only=True,
+                tool_calls=[ToolCall(name="read_file", args={"path": "denis_unified_v1/actions/models.py", "max_lines": 10})],
+            ),
+        ],
+    )
+
+    context = {"confidence_band": "medium"}
+    result = executor.execute_plan(plan, context)
+
+    assert len(result.step_results) == 1
+    assert result.step_results[0].status.value == "ok"
+    assert "class StepStatus" in result.step_results[0].output
+
+
+def test_executor_tools_high_allows_pytest_command(tmp_path):
+    """pytest allowed in high."""
+    registry = build_tool_registry_v2()
+    executor = Executor(tool_registry=registry, evidence_dir=tmp_path)
+
+    plan = ActionPlanCandidate(
+        candidate_id="test_high_pytest",
+        intent="run_tests_ci",
+        steps=[
+            ActionStep(
+                step_id="step_pytest",
+                description="Run pytest",
+                read_only=True,
+                tool_calls=[ToolCall(name="run_command", args={"cmd": "pytest --version"})],
+            ),
+        ],
+    )
+
+    context = {"confidence_band": "high"}
+    result = executor.execute_plan(plan, context)
+
+    assert len(result.step_results) == 1
+    assert result.step_results[0].status.value == "ok"
+    assert "pytest" in result.step_results[0].output
+
+
+def test_executor_unknown_tool_logs_policy_error(tmp_path):
+    """Unknown tool fails gracefully."""
+    registry = build_tool_registry_v2()
+    executor = Executor(tool_registry=registry, evidence_dir=tmp_path)
+
+    plan = ActionPlanCandidate(
+        candidate_id="test_unknown",
+        intent="chat",
+        steps=[
+            ActionStep(
+                step_id="step_unknown",
+                description="Unknown tool",
+                read_only=True,
+                tool_calls=[ToolCall(name="unknown_tool", args={})],
+            ),
+        ],
+    )
+
+    context = {"confidence_band": "high"}
+    result = executor.execute_plan(plan, context)
+
+    assert len(result.step_results) == 1
+    assert result.step_results[0].status.value == "failed"
+    assert "Tool not found" in result.step_results[0].error

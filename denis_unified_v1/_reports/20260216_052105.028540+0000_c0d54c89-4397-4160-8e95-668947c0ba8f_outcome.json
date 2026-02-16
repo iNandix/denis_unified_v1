@@ -1,0 +1,36 @@
+{
+  "request_id": "c0d54c89-4397-4160-8e95-668947c0ba8f",
+  "ts_utc": "2026-02-16T05:21:05.028540+00:00",
+  "intent": {
+    "intent": "unknown",
+    "confidence": 0.0,
+    "confidence_band": "low",
+    "sources_used": [
+      "rasa"
+    ],
+    "reason_codes": [
+      "default_fallback"
+    ]
+  },
+  "selected_mode": "clarify",
+  "allow_boosters": false,
+  "internet_status": "UNKNOWN",
+  "plan": null,
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "engine_used": null,
+  "degraded": false,
+  "reason_codes": [
+    "needs_clarification",
+    "clarify_low_confidence"
+  ],
+  "reentry_count": 1,
+  "catalog_size": 9,
+  "num_matches": 0,
+  "top_score": 0.0,
+  "booster_health": false,
+  "steps_planned": 0,
+  "blocked_steps": 0
+}

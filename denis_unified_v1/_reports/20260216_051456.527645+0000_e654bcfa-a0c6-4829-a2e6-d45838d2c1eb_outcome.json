@@ -1,0 +1,36 @@
+{
+  "request_id": "e654bcfa-a0c6-4829-a2e6-d45838d2c1eb",
+  "ts_utc": "2026-02-16T05:14:56.527645+00:00",
+  "intent": {
+    "intent": "unknown",
+    "confidence": 0.0,
+    "confidence_band": "low",
+    "sources_used": [
+      "rasa"
+    ],
+    "reason_codes": [
+      "default_fallback"
+    ]
+  },
+  "selected_mode": "clarify",
+  "allow_boosters": false,
+  "internet_status": "UNKNOWN",
+  "plan": null,
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "engine_used": null,
+  "degraded": false,
+  "reason_codes": [
+    "needs_clarification",
+    "clarify_low_confidence"
+  ],
+  "reentry_count": 1,
+  "catalog_size": 9,
+  "num_matches": 0,
+  "top_score": 0.0,
+  "booster_health": false,
+  "steps_planned": 0,
+  "blocked_steps": 0
+}

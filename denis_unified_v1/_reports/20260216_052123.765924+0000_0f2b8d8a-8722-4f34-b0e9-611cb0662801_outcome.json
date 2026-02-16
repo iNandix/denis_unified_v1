@@ -1,0 +1,37 @@
+{
+  "request_id": "0f2b8d8a-8722-4f34-b0e9-611cb0662801",
+  "ts_utc": "2026-02-16T05:21:23.765924+00:00",
+  "intent": {
+    "intent": "run_tests_ci",
+    "confidence": 0.923,
+    "confidence_band": "high",
+    "sources_used": [
+      "rasa"
+    ],
+    "reason_codes": [
+      "rasa_wins_high_confidence"
+    ]
+  },
+  "selected_mode": "actions_plan",
+  "allow_boosters": false,
+  "internet_status": "UNKNOWN",
+  "plan": null,
+  "status": "success",
+  "steps": [],
+  "total_duration_ms": 0,
+  "evidence_artifacts": [],
+  "engine_used": null,
+  "degraded": true,
+  "reason_codes": [
+    "capability_exists",
+    "tool_selected:run_tests_ci",
+    "error:name 'Intent_v1' is not defined"
+  ],
+  "reentry_count": 1,
+  "catalog_size": 9,
+  "num_matches": 1,
+  "top_score": 0.75,
+  "booster_health": false,
+  "steps_planned": 0,
+  "blocked_steps": 0
+}
