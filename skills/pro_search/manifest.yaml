@@ -1,0 +1,160 @@
+skill:
+  id: pro_search
+  name: PRO_SEARCH
+  version: "2.0.0"
+  description: "Research OS graph-centric: multi-engine search, verification, synthesis, graph storage."
+  owner: denis
+  status: stable
+
+entrypoints:
+  intents:
+    - research
+    - find_information
+    - learn_topic
+    - analyze_market
+    - verify_fact
+
+query_types:
+  user_pure:
+    description: "Natural language from user."
+    output: "streamed_text + citations"
+  hybrid:
+    description: "Natural language + denis-agent context directives."
+    output: "streamed_text + citations + internal_notes"
+  machine_only:
+    description: "Structured JSON request for internal automation/learning."
+    output: "json"
+
+depths:
+  quick:
+    max_sources: 5
+    time_budget_ms: 30000
+    cross_verify_min: 1
+  standard:
+    max_sources: 15
+    time_budget_ms: 180000
+    cross_verify_min: 2
+  deep:
+    max_sources: 50
+    time_budget_ms: 900000
+    cross_verify_min: 3
+  continuous:
+    max_sources: 0
+    time_budget_ms: 0
+    cross_verify_min: 2
+    schedule:
+      enabled: false
+      rrule: "FREQ=HOURLY"
+
+categories:
+  - general
+  - academic
+  - technical
+  - news
+  - competitive
+
+policies:
+  - id: deep_mode_policy
+    description: "Blocks deep if cross-verification < 3."
+    required_for_depths: ["deep"]
+  - id: cost_control
+    description: "Limits cost units per request; prefers cheap engines for light tasks."
+  - id: source_diversity
+    description: "Requires minimum unique domains."
+    min_unique_domains: 3
+  - id: bias_detection
+    description: "Flags bias and requests counter-sources."
+    enabled: true
+
+toolchain:
+  steps:
+    - step_id: ps_01_classify
+      name: classify_query
+      order: 1
+      required: true
+
+    - step_id: ps_02_expand
+      name: expand_query
+      order: 2
+      required: true
+      conditional: "query_type in ['hybrid','machine_only'] or depth in ['standard','deep','continuous']"
+      params:
+        expansions: 5
+
+    - step_id: ps_03_search
+      name: multi_engine_search
+      order: 3
+      required: true
+      streaming: true
+
+    - step_id: ps_04_verify
+      name: evaluate_sources
+      order: 4
+      required: true
+      params:
+        cross_verify: true
+        min_sources: 3
+
+    - step_id: ps_05_synthesize
+      name: synthesize_results
+      order: 5
+      required: true
+      streaming: true
+      params:
+        mode: "analysis|summary|comparative"
+
+    - step_id: ps_06_store
+      name: store_knowledge
+      order: 6
+      required: false
+      conditional: "learning_enabled == true"
+
+dependencies:
+  engines:
+    primaries:
+      heavy: ["qwen3b_local", "qwen_coder7b_local"]
+      light: ["smollm_node2", "gemma_node2", "qwen5b_node2", "qwen15b_node2"]
+    boosters:
+      - groq_booster
+      - openrouter_cloud
+  collections:
+    - knowledge_base
+  memory_layers:
+    - L2_SHORT_TERM
+    - L3_EPISODIC
+
+outputs:
+  artifacts:
+    - citations
+    - reliability_score
+    - bias_flags
+    - result_graph
+  persistence:
+    graph_nodes:
+      - SearchRequest
+      - SearchMode
+      - Depth
+      - Category
+      - Policy
+      - Result
+      - Source
+      - URL
+      - Claim
+      - Verification
+      - ReliabilityScore
+
+dark_web:
+  enabled: false
+  requires_approval: true
+  audit_log: mandatory
+  sandbox_required: true
+  engines: ["onion", "darksearch"]
+  policy_id: "dark_web_policy"
+
+tests:
+  - name: user_pure_query
+  - name: hybrid_context
+  - name: machine_json_output
+  - name: knowledge_graph_update
+  - name: source_verification
+  - name: policy_enforcement
