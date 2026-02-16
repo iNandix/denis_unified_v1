@@ -17,6 +17,21 @@ import os
 import threading
 from typing import Any, Optional
 
+
+# Lazy .env loader
+def _load_env():
+    try:
+        from dotenv import load_dotenv
+
+        env_path = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+    except ImportError:
+        pass
+
+
+_load_env()
+
 from denis_unified_v1.actions.models import (
     ActionPlanCandidate,
     ActionStep,

@@ -1,74 +1,96 @@
 """Feature flags for DENIS.
 
-Local re-implementation to avoid circular imports.
+Simple, type-safe feature flags with environment variable support.
 """
 
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Optional
 import os
-from typing import Dict, Any
+import threading
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    """Load boolean from environment variable."""
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+@dataclass(frozen=True)
 class FeatureFlags:
-    """Feature flags container."""
+    """Feature flags container - all booleans, no None."""
 
-    def __init__(self):
-        self._flags = self._load_flags()
+    # Graph-centric migration flags (graph-first by default)
+    graph_only: bool = False
+    router_uses_graph: bool = True
+    planner_uses_graph: bool = True
+    approval_uses_graph: bool = True
+    tool_executor_uses_graph: bool = True
+    context_uses_graph: bool = True
+    memory_uses_graph: bool = True
+    engines_uses_graph: bool = True
 
-    def _load_flags(self) -> Dict[str, Any]:
-        flags = {}
-        defaults = {
-            "denis_use_voice_pipeline": False,
-            "denis_use_memory_unified": False,
-            "denis_use_atlas": False,
-            "denis_use_inference_router": False,
-            "phase10_enable_prompt_injection_guard": False,
-            "phase10_max_output_tokens": 512,
-            "use_smx_local": True,
-            "phase12_smx_enabled": True,
-            "phase12_smx_fast_path": True,
-            "denis_persona_unified": False,
-            "denis_enable_action_planner": False,
-            # Graph-centric migration flags
-            "graph_only": False,
-            "router_uses_graph": True,
-            "planner_uses_graph": True,
-            "approval_uses_graph": False,
-            "tool_executor_uses_graph": False,
-            "context_uses_graph": False,
-            "memory_uses_graph": False,
-            "engines_uses_graph": False,
-        }
-        for key, default in defaults.items():
-            env_val = os.getenv(key.upper())
-            if env_val is not None:
-                flags[key] = env_val.lower() == "true"
-            else:
-                flags[key] = default
-        return flags
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self._flags.get(key, default)
-
-    def is_enabled(self, key: str) -> bool:
-        return self._flags.get(key, False)
-
-    def __getitem__(self, key: str) -> Any:
-        return self._flags[key]
-
-    def __contains__(self, key: str) -> bool:
-        return key in self._flags
+    # Legacy flags (keep for compatibility)
+    denis_use_voice_pipeline: bool = False
+    denis_use_memory_unified: bool = False
+    denis_use_atlas: bool = False
+    denis_use_inference_router: bool = False
+    phase10_enable_prompt_injection_guard: bool = False
+    phase10_max_output_tokens: int = 512
+    use_smx_local: bool = True
+    phase12_smx_enabled: bool = True
+    phase12_smx_fast_path: bool = True
+    denis_persona_unified: bool = False
+    denis_enable_action_planner: bool = False
 
 
-_flags_instance: FeatureFlags = None
+_flags_instance: Optional[FeatureFlags] = None
+_flags_lock = threading.Lock()
 
 
-def load_feature_flags() -> FeatureFlags:
-    """Load feature flags."""
+def load_feature_flags(force_reload: bool = False) -> FeatureFlags:
+    """Load feature flags from environment (thread-safe singleton)."""
     global _flags_instance
-    if _flags_instance is None:
-        _flags_instance = FeatureFlags()
-    return _flags_instance
+    if _flags_instance is not None and not force_reload:
+        return _flags_instance
+
+    with _flags_lock:
+        if _flags_instance is not None and not force_reload:
+            return _flags_instance
+
+        _flags_instance = FeatureFlags(
+            # Graph-centric migration flags
+            graph_only=_env_bool("GRAPH_ONLY", False),
+            router_uses_graph=_env_bool("ROUTER_USES_GRAPH", True),
+            planner_uses_graph=_env_bool("PLANNER_USES_GRAPH", True),
+            approval_uses_graph=_env_bool("APPROVAL_USES_GRAPH", True),
+            tool_executor_uses_graph=_env_bool("TOOL_EXECUTOR_USES_GRAPH", True),
+            context_uses_graph=_env_bool("CONTEXT_USES_GRAPH", True),
+            memory_uses_graph=_env_bool("MEMORY_USES_GRAPH", True),
+            engines_uses_graph=_env_bool("ENGINES_USES_GRAPH", True),
+            # Legacy flags
+            denis_use_voice_pipeline=_env_bool("DENIS_USE_VOICE_PIPELINE", False),
+            denis_use_memory_unified=_env_bool("DENIS_USE_MEMORY_UNIFIED", False),
+            denis_use_atlas=_env_bool("DENIS_USE_ATLAS", False),
+            denis_use_inference_router=_env_bool("DENIS_USE_INFERENCE_ROUTER", False),
+            phase10_enable_prompt_injection_guard=_env_bool(
+                "PHASE10_ENABLE_PROMPT_INJECTION_GUARD", False
+            ),
+            phase10_max_output_tokens=int(
+                os.getenv("PHASE10_MAX_OUTPUT_TOKENS", "512")
+            ),
+            use_smx_local=_env_bool("USE_SMX_LOCAL", True),
+            phase12_smx_enabled=_env_bool("PHASE12_SMX_ENABLED", True),
+            phase12_smx_fast_path=_env_bool("PHASE12_SMX_FAST_PATH", True),
+            denis_persona_unified=_env_bool("DENIS_PERSONA_UNIFIED", False),
+            denis_enable_action_planner=_env_bool("DENIS_ENABLE_ACTION_PLANNER", False),
+        )
+        return _flags_instance
 
 
 def is_enabled(flag: str) -> bool:
-    """Check if a feature flag is enabled."""
-    return load_feature_flags().is_enabled(flag)
+    """Check if a feature flag is enabled (compatibility wrapper)."""
+    flags = load_feature_flags()
+    return getattr(flags, flag, False)

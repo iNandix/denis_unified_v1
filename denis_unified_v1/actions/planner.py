@@ -17,17 +17,29 @@ def _utc_now() -> str:
 
 def generate_candidate_plans(intent_v1: Intent_v1) -> list[ActionPlanCandidate]:
     """Generate candidate plans. Uses Neo4j graph first, falls back to hardcoded."""
-    # Try grafocentric resolution first
-    try:
-        from denis_unified_v1.actions.graph_intent_resolver import (
-            generate_candidate_plans_from_graph,
-        )
+    from denis_unified_v1.feature_flags import load_feature_flags
 
-        candidates = generate_candidate_plans_from_graph(intent_v1)
-        if candidates:
-            return candidates
-    except Exception as e:
-        logger.debug(f"Graph resolver unavailable, using legacy: {e}")
+    flags = load_feature_flags()
+
+    # Use graph if enabled
+    if flags.planner_uses_graph:
+        try:
+            from denis_unified_v1.actions.graph_intent_resolver import (
+                generate_candidate_plans_from_graph,
+            )
+
+            candidates = generate_candidate_plans_from_graph(intent_v1)
+            if candidates:
+                return candidates
+        except Exception as e:
+            logger.debug(f"Graph resolver unavailable, using legacy: {e}")
+
+    # Graph-only mode: fail fast
+    if flags.graph_only:
+        logger.error(
+            f"GRAPH_ONLY=1: No candidates from graph for intent {intent_v1.intent}"
+        )
+        return []
 
     # Legacy hardcoded fallback
     return _generate_candidate_plans_legacy(intent_v1)
