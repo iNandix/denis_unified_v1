@@ -25,6 +25,15 @@ DECISION_KINDS = {
     "routing",
     "research",
     "policy_eval",
+    # Codecraft kinds
+    "codecraft_classify",
+    "codecraft_retrieve",
+    "codecraft_rank_select",
+    "codecraft_plan",
+    "codecraft_compose",
+    "codecraft_apply",
+    "codecraft_verify",
+    "codecraft_reuse",
 }
 
 DECISION_MODES = {
@@ -34,6 +43,20 @@ DECISION_MODES = {
     "routing": {"DEDICATED", "LAN", "TAILSCALE", "CLOUD"},
     "research": {"FAST", "DEEP", "WEB_ONLY", "GRAPH_ONLY"},
     "policy_eval": {"PASSED", "BLOCKED", "FORCED", "SKIPPED"},
+    # Codecraft modes
+    "codecraft_classify": {
+        "scaffold_arch",
+        "impl_refactor",
+        "integration_tooling",
+        "quality_reliability",
+    },
+    "codecraft_retrieve": {"local_repo", "knowledge_base", "github", "huggingface"},
+    "codecraft_rank_select": {"REUSE", "CHUNKS", "GENERATE"},
+    "codecraft_plan": {"SIMPLE", "DECOMPOSED", "COMPOSED"},
+    "codecraft_compose": {"ADAPTED", "COMPOSED", "GENERATED"},
+    "codecraft_apply": {"APPLIED", "APPROVAL_REQUIRED", "BLOCKED"},
+    "codecraft_verify": {"PASSED", "FAILED", "SKIPPED"},
+    "codecraft_reuse": {"EXACT", "ADAPTED", "NONE"},
 }
 
 
@@ -366,3 +389,171 @@ def get_recent_traces(
     except Exception as e:
         logger.warning(f"Failed to get recent traces: {e}")
         return []
+
+
+# =============================================================================
+# CODECRAFT TRACE FUNCTIONS
+# =============================================================================
+
+
+def trace_codecraft_classify(
+    specialty: str,
+    confidence: float,
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft request classification."""
+    return emit_decision_trace(
+        kind="codecraft_classify",
+        mode=specialty,
+        reason=f"confidence_{confidence:.2f}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        confidence=confidence,
+    )
+
+
+def trace_codecraft_retrieve(
+    sources: list[str],
+    candidates_found: int,
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft retrieval step."""
+    return emit_decision_trace(
+        kind="codecraft_retrieve",
+        mode="|".join(sources),
+        reason=f"candidates_{candidates_found}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={"candidates_found": candidates_found, "sources": sources},
+    )
+
+
+def trace_codecraft_rank_select(
+    selection_mode: str,
+    best_score: float,
+    best_candidate_id: Optional[str],
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft rank and selection."""
+    return emit_decision_trace(
+        kind="codecraft_rank_select",
+        mode=selection_mode,
+        reason=f"score_{best_score:.2f}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={"best_score": best_score, "best_candidate_id": best_candidate_id},
+    )
+
+
+def trace_codecraft_plan(
+    plan_mode: str,
+    tasks_count: int,
+    specialty: str,
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft plan decomposition."""
+    return emit_decision_trace(
+        kind="codecraft_plan",
+        mode=plan_mode,
+        reason=f"tasks_{tasks_count}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={"tasks_count": tasks_count, "specialty": specialty},
+    )
+
+
+def trace_codecraft_compose(
+    compose_mode: str,
+    chunks_used: list[str],
+    diff_lines: int,
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft composition from chunks."""
+    return emit_decision_trace(
+        kind="codecraft_compose",
+        mode=compose_mode,
+        reason=f"diff_{diff_lines}_lines",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={"chunks_used": chunks_used, "diff_lines": diff_lines},
+    )
+
+
+def trace_codecraft_apply(
+    status: str,
+    diff_lines: int,
+    files_changed: list[str],
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft apply changes."""
+    return emit_decision_trace(
+        kind="codecraft_apply",
+        mode=status,
+        reason=f"files_{len(files_changed)}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={"diff_lines": diff_lines, "files_changed": files_changed},
+    )
+
+
+def trace_codecraft_verify(
+    status: str,
+    tests_passed: Optional[int],
+    tests_failed: Optional[int],
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft verification step."""
+    return emit_decision_trace(
+        kind="codecraft_verify",
+        mode=status,
+        reason=f"passed_{tests_passed}_failed_{tests_failed}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={"tests_passed": tests_passed, "tests_failed": tests_failed},
+    )
+
+
+def trace_codecraft_reuse(
+    reuse_type: str,
+    source: str,
+    adaptation_score: float,
+    snippet_id: Optional[str],
+    intent: str,
+    session_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+) -> Optional[str]:
+    """Trace codecraft reuse decision."""
+    return emit_decision_trace(
+        kind="codecraft_reuse",
+        mode=reuse_type,
+        reason=f"source_{source}_score_{adaptation_score:.2f}",
+        session_id=session_id,
+        turn_id=turn_id,
+        intent=intent,
+        extra={
+            "source": source,
+            "adaptation_score": adaptation_score,
+            "snippet_id": snippet_id,
+        },
+    )
