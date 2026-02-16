@@ -25,12 +25,24 @@ class FeatureFlags:
             "use_smx_local": True,
             "phase12_smx_enabled": True,
             "phase12_smx_fast_path": True,
-            "denis_persona_unified": os.getenv("DENIS_PERSONA_UNIFIED", "0") == "1",
-            "denis_enable_action_planner": os.getenv("DENIS_ENABLE_ACTION_PLANNER", "0")
-            == "1",
+            "denis_persona_unified": False,
+            "denis_enable_action_planner": False,
+            # Graph-centric migration flags
+            "graph_only": False,
+            "router_uses_graph": True,
+            "planner_uses_graph": True,
+            "approval_uses_graph": False,
+            "tool_executor_uses_graph": False,
+            "context_uses_graph": False,
+            "memory_uses_graph": False,
+            "engines_uses_graph": False,
         }
         for key, default in defaults.items():
-            flags[key] = os.getenv(key.upper(), str(default)).lower() == "true"
+            env_val = os.getenv(key.upper())
+            if env_val is not None:
+                flags[key] = env_val.lower() == "true"
+            else:
+                flags[key] = default
         return flags
 
     def get(self, key: str, default: Any = None) -> Any:
