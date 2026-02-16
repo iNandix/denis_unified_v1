@@ -26,99 +26,119 @@ _engine_registry: dict[str, dict[str, Any]] = {}
 def _build_static_registry() -> dict[str, dict[str, Any]]:
     """Build the static engine registry.
 
-    Hardware-aware Mixture of Experts:
-
-    nodo1 / PC (RTX 3080 10GB) - Chat principal pesado:
-      - llama3_8b_response_a (9001) → response
-      - llama3_8b_response_b (9002) → response (fallback/load-balance)
-      - qwen2_7b_macro (9003) → macro (reasoning largo)
-
-    nodo2 (1050 Ti 4GB) - Engines ligeros:
-      - smollm_intent (8081) → intent, router
-      - phi3_safety (8082) → safety, policy
-      - tiny_draft (8083) → draft, speculative decoding
+    ACTUAL HARDWARE:
+    - nodo1 (this PC): RTX 3080 10GB -> 9997, 9998
+    - nodo2 (10.10.10.2): 1050 Ti 4GB -> 8003-8008
     """
-    # TODO: Load from graph when DENIS_GRAPH_ENABLED=true
     return {
-        # nodo1 / PC: RTX 3080 10GB - Heavy chat (2 modelos máximo)
-        "llama3_8b_response_a": {
+        # nodo1 / PC: RTX 3080 10GB - Heavy models
+        "qwen3b_local": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
-            "model": "llama-3.1-8b",
-            "endpoint": "http://127.0.0.1:9001",
+            "model": "qwen2.5-3b-instruct",
+            "endpoint": "http://127.0.0.1:9997",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
-            "tags": ["local", "response"],
+            "tags": ["local", "node1", "response"],
             "role": "response",
-            "priority": 10,
-            "max_concurrency": 4,
+            "priority": 5,
+            "max_concurrency": 2,
             "gpu": "3080_10gb",
-            "capabilities": {"stream": True, "chat": True, "tools": False},
+            "capabilities": {"stream": True, "chat": True, "tools": True},
         },
-        "llama3_8b_response_b": {
+        "qwen_coder7b_local": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
-            "model": "llama-3.1-8b",
-            "endpoint": "http://127.0.0.1:9002",
+            "model": "qwen2.5-coder-7b",
+            "endpoint": "http://127.0.0.1:9998",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
-            "tags": ["local", "response"],
-            "role": "response",
-            "priority": 20,
-            "max_concurrency": 4,
+            "tags": ["local", "node1", "coder"],
+            "role": "coder",
+            "priority": 6,
+            "max_concurrency": 2,
             "gpu": "3080_10gb",
-            "capabilities": {"stream": True, "chat": True, "tools": False},
+            "capabilities": {"stream": True, "chat": True, "tools": True},
         },
         # nodo2: 1050 Ti 4GB - Light engines
-        "smollm_intent": {
+        "qwen05b_node2": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
-            "model": "smollm",
-            "endpoint": "http://10.10.10.2:8081",
+            "model": "qwen2.5-0.5b",
+            "endpoint": "http://10.10.10.2:8003",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.0001,
             "max_context": 2048,
-            "tags": ["local", "intent", "router"],
-            "role": "intent",
-            "priority": 5,
-            "max_concurrency": 8,
+            "tags": ["local", "node2", "fast"],
+            "role": "fast",
+            "priority": 10,
+            "max_concurrency": 4,
             "gpu": "1050ti_4gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
         },
-        "phi3_safety": {
+        "smollm_node2": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
-            "model": "phi-3-mini",
-            "endpoint": "http://10.10.10.2:8082",
+            "model": "smollm2-1.7b",
+            "endpoint": "http://10.10.10.2:8006",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.0001,
+            "max_context": 2048,
+            "tags": ["local", "node2", "intent"],
+            "role": "intent",
+            "priority": 15,
+            "max_concurrency": 4,
+            "gpu": "1050ti_4gb",
+            "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        "gemma_node2": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "gemma-3-1b",
+            "endpoint": "http://10.10.10.2:8007",
             "params_default": {"temperature": 0.1},
             "cost_factor": 0.0001,
             "max_context": 2048,
-            "tags": ["local", "safety", "policy"],
+            "tags": ["local", "node2", "safety"],
             "role": "safety",
-            "priority": 8,
-            "max_concurrency": 8,
+            "priority": 20,
+            "max_concurrency": 4,
             "gpu": "1050ti_4gb",
             "capabilities": {"stream": False, "chat": True, "tools": False},
         },
-        "tiny_draft": {
+        "qwen15b_node2": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
-            "model": "tinyllama",
-            "endpoint": "http://10.10.10.2:8083",
+            "model": "qwen2.5-1.5b",
+            "endpoint": "http://10.10.10.2:8008",
             "params_default": {"temperature": 0.2},
-            "cost_factor": 0.0001,
-            "max_context": 2048,
-            "tags": ["local", "draft", "response"],
-            "role": "draft",
-            "priority": 15,
-            "max_concurrency": 8,
+            "cost_factor": 0.0002,
+            "max_context": 3072,
+            "tags": ["local", "node2", "balanced"],
+            "role": "balanced",
+            "priority": 25,
+            "max_concurrency": 3,
             "gpu": "1050ti_4gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
         },
+        # TTS (Piper)
+        "piper_tts": {
+            "provider_key": "piper",
+            "provider": "piper",
+            "model": "piper-es",
+            "endpoint": "http://10.10.10.2:8005",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.0,
+            "max_context": 0,
+            "tags": ["local", "node2", "tts"],
+            "role": "tts",
+            "priority": 1,
+            "capabilities": {"stream": True, "chat": False, "tools": False},
+        },
         # Internet boosters (disabled - offline-first)
-        "groq_1": {
+        "groq_booster": {
             "provider_key": "groq",
             "provider": "groq",
             "model": "llama-3.1-8b-instant",
@@ -128,7 +148,7 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "max_context": 128000,
             "tags": ["booster", "internet_required"],
             "role": "booster",
-            "priority": 50,
+            "priority": 99,
             "enabled": False,
         },
     }
@@ -177,19 +197,16 @@ def validate_engine_registry(registry: dict[str, dict[str, Any]]) -> None:
                 _err(f"{engine_id}: tags must include 'local' or 'internet_required'")
 
             if is_local and isinstance(endpoint, str):
-                if not (
-                    endpoint.startswith("http://") or endpoint.startswith("https://")
-                ):
-                    _err(
-                        f"{engine_id}: local endpoint must be http(s), got {endpoint!r}"
-                    )
+                if endpoint.startswith("http://") or endpoint.startswith("https://"):
+                    pass  # Valid local endpoint
+                elif endpoint.startswith("groq://"):
+                    _err(f"{engine_id}: groq must be internet_required")
 
     if errors:
-        raise ValueError("Invalid engine_registry:\n  - " + "\n  - ".join(errors))
+        raise ValueError("engine_registry validation failed:\n" + "\n".join(errors))
 
 
 def get_engine_registry() -> dict[str, dict[str, Any]]:
-    """Return the engine registry (canonical source)."""
     global _engine_registry
     if not _engine_registry:
         _engine_registry = _build_static_registry()
@@ -197,12 +214,34 @@ def get_engine_registry() -> dict[str, dict[str, Any]]:
     return _engine_registry
 
 
-def resolve_engine(engine_id: str) -> dict[str, Any] | None:
-    """Resolve a single engine_id to its registry entry."""
+def get_engine(engine_id: str) -> dict[str, Any] | None:
     return get_engine_registry().get(engine_id)
 
 
-def reset_registry() -> None:
-    """Reset the registry (for testing)."""
-    global _engine_registry
-    _engine_registry = {}
+def list_engines(
+    tags: list[str] | None = None,
+    roles: list[str] | None = None,
+    include_disabled: bool = False,
+) -> dict[str, dict[str, Any]]:
+    registry = get_engine_registry()
+
+    filtered = {}
+    for engine_id, config in registry.items():
+        # Skip disabled engines
+        if not include_disabled and not config.get("enabled", True):
+            continue
+
+        # Filter by tags
+        if tags:
+            engine_tags = config.get("tags", [])
+            if not any(t in engine_tags for t in tags):
+                continue
+
+        # Filter by role
+        if roles:
+            if config.get("role") not in roles:
+                continue
+
+        filtered[engine_id] = config
+
+    return filtered
