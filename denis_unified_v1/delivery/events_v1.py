@@ -17,9 +17,11 @@ class RenderTextDeltaV1(TypedDict):
 
 class RenderVoiceDeltaV1(TypedDict):
     request_id: str
-    audio_chunk_b64: str
-    format: Literal["wav"]
+    audio_b64: str
+    encoding: Literal["pcm_s16le", "wav"]
     sample_rate: int
+    channels: int
+    pts_ms: int
     sequence: int
 
 class RenderVoiceCancelledV1(TypedDict):

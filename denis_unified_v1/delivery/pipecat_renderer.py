@@ -22,9 +22,9 @@ class VoiceMetrics:
         self.backend: str = "none"
 
     def to_dict(self) -> dict:
-        voice_ttfc_ms = 0
+        voice_ttfc_ns = 0
         if self.tts_start_ts and self.tts_first_chunk_ts:
-            voice_ttfc_ms = int((self.tts_first_chunk_ts - self.tts_start_ts) * 1000)
+            voice_ttfc_ns = int((self.tts_first_chunk_ts - self.tts_start_ts) * 1_000_000_000)
 
         audio_duration_ms = 0
         if self.tts_end_ts and self.tts_start_ts:
@@ -35,7 +35,8 @@ class VoiceMetrics:
             cancel_latency_ms = int((self.cancel_ts - self.tts_end_ts) * 1000)
 
         return {
-            "voice_ttfc_ms": voice_ttfc_ms,
+            "voice_ttfc_ns": voice_ttfc_ns,
+            "voice_ttfc_ms": int(voice_ttfc_ns / 1_000_000),
             "tts_backend": self.backend,
             "voice_cancelled": self.cancelled,
             "cancel_latency_ms": cancel_latency_ms,
@@ -171,6 +172,14 @@ class PipecatRendererNode:
         if request_id in self.metrics:
             if self.metrics[request_id].tts_start_ts is None:
                 self.metrics[request_id].tts_start_ts = time.time()
+            self.metrics[request_id].backend = "piper_stream"
+
+        seg_bytes = 0
+        seg_ttfc_ns = 0
+        seg_start = time.time()
+        seg_first_chunk = None
+        was_cancelled = False
+        seg_idx = self.segment_counters.get(request_id, 0)
 
         try:
             seq = 0
@@ -183,15 +192,21 @@ class PipecatRendererNode:
                     self.cancel_flags.get(request_id)
                     and self.cancel_flags[request_id].is_set()
                 ):
+                    was_cancelled = True
                     break
+
+                if seg_first_chunk is None:
+                    seg_first_chunk = time.time()
+                    seg_ttfc_ns = int((seg_first_chunk - seg_start) * 1_000_000_000)
 
                 if self.metrics.get(request_id):
                     if self.metrics[request_id].tts_first_chunk_ts is None:
-                        self.metrics[request_id].tts_first_chunk_ts = time.time()
+                        self.metrics[request_id].tts_first_chunk_ts = seg_first_chunk
                     audio_b64 = chunk.get("payload", {}).get("audio_b64", "")
                     if audio_b64:
                         self.metrics[request_id].bytes_streamed += len(audio_b64)
                         self.metrics[request_id].chunks_count += 1
+                        seg_bytes += len(audio_b64)
 
                 self.emit_callback(
                     {
@@ -211,14 +226,30 @@ class PipecatRendererNode:
                 self.metrics[request_id].tts_end_ts = time.time()
 
         except asyncio.CancelledError:
+            was_cancelled = True
             if self.metrics.get(request_id):
                 self.metrics[request_id].cancelled = True
                 self.metrics[request_id].cancel_ts = time.time()
         except Exception as e:
             print(f"Voice segment error: {e}")
 
+        # Project TTS step to graph (fail-open)
+        try:
+            from denis_unified_v1.delivery.graph_projection import get_voice_projection
+            get_voice_projection().project_tts_step(
+                request_id=request_id,
+                segment_id=segment_id,
+                text=text,
+                segment_idx=seg_idx,
+                ttfc_ns=seg_ttfc_ns,
+                bytes_sent=seg_bytes,
+                cancelled=was_cancelled,
+            )
+        except Exception:
+            pass
+
     async def on_interrupt(self, interrupt: DeliveryInterruptV1):
-        """Handle interrupt/cancel - cancels all voice tasks."""
+        """Handle interrupt/cancel - cancels all voice tasks + server-side cancel."""
         request_id = interrupt["request_id"]
 
         if request_id in self.cancel_flags:
@@ -229,6 +260,11 @@ class PipecatRendererNode:
                 for task in self.voice_tasks[request_id]:
                     if not task.done():
                         task.cancel()
+                # Cancel server-side streams on nodo2 for each segment
+                if self.piper_provider and hasattr(self.piper_provider, "cancel_request"):
+                    for i in range(1, self.segment_counters.get(request_id, 0) + 1):
+                        segment_id = f"{request_id}:s{i}"
+                        asyncio.create_task(self.piper_provider.cancel_request(segment_id))
                 self.voice_tasks[request_id] = []
 
             # Clear queues

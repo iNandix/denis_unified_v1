@@ -45,6 +45,7 @@ class PiperStreamProvider:
             "voice": self.voice,
             "encoding": self.encoding,
             "sample_rate": self.sample_rate,
+            "request_id": request_id,
         }
 
         session_timeout = aiohttp.ClientTimeout(total=30, connect=5)

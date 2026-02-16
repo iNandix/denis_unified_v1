@@ -56,9 +56,16 @@ from denis_unified_v1.delivery.events_v1 import (
     DeliveryTextDeltaV1,
     DeliveryInterruptV1,
 )
+from denis_unified_v1.delivery.graph_projection import get_voice_projection
 
 
 MAX_REENTRY = 2
+
+# Seed voice pipeline topology in graph at import time (idempotent)
+try:
+    get_voice_projection().seed_topology()
+except Exception:
+    pass  # fail-open
 
 
 class ChatRequest(BaseModel):
@@ -132,17 +139,6 @@ async def chat_ws(websocket: WebSocket):
                         # Send events from delivery (includes render.voice.cancelled)
                         for ev in interrupt_events:
                             await websocket.send_json(ev)
-
-                    # Also send confirmation
-                    await websocket.send_json(
-                        {
-                            "request_id": request_id,
-                            "type": "render.voice.cancelled",
-                            "sequence": 0,
-                            "payload": {"reason_code": "user_interrupt"},
-                            "ts": datetime.now(timezone.utc).isoformat(),
-                        }
-                    )
                 continue
 
             # Get voice_enabled from client if present
@@ -165,6 +161,16 @@ async def chat_ws(websocket: WebSocket):
                 piper_base_url="http://10.10.10.2:8005",
             )
             active_deliveries[request_id] = delivery
+
+            # Project request to graph
+            try:
+                get_voice_projection().project_voice_request(
+                    request_id=request_id,
+                    voice_enabled=voice_enabled,
+                    user_id=data.get("user_id", "default"),
+                )
+            except Exception:
+                pass  # fail-open
 
             # Send initial ack immediately (TTFC)
             seq = 0
@@ -269,6 +275,15 @@ async def chat_ws(websocket: WebSocket):
                     "ts": datetime.now(timezone.utc).isoformat(),
                 }
             )
+
+            # Project outcome to graph
+            try:
+                get_voice_projection().project_outcome(
+                    request_id=request_id,
+                    metrics=voice_metrics,
+                )
+            except Exception:
+                pass  # fail-open
 
             # Cleanup
             if request_id in cancel_events:
