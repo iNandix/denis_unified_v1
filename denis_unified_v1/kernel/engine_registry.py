@@ -24,59 +24,28 @@ _engine_registry: dict[str, dict[str, Any]] = {}
 
 
 def _build_static_registry() -> dict[str, dict[str, Any]]:
-    """Build the static engine registry (canonical source).
+    """Build the static engine registry.
 
-    Graph-centric: Reads from Neo4j if available, falls back to static config.
-    Mixture of Experts: PC (intent/safety) + nodo2 (response/macro/draft)
+    Hardware-aware Mixture of Experts:
 
-    PC (127.0.0.1):
-      - smollm_intent_local (8081) → intent, router
-      - phi3_safety_local (8082) → safety, policy
-
-    nodo2 (10.10.10.2):
+    nodo1 / PC (RTX 3080 10GB) - Chat principal pesado:
       - llama3_8b_response_a (9001) → response
       - llama3_8b_response_b (9002) → response (fallback/load-balance)
       - qwen2_7b_macro (9003) → macro (reasoning largo)
-      - tiny_draft (9004) → draft, speculative decoding
+
+    nodo2 (1050 Ti 4GB) - Engines ligeros:
+      - smollm_intent (8081) → intent, router
+      - phi3_safety (8082) → safety, policy
+      - tiny_draft (8083) → draft, speculative decoding
     """
     # TODO: Load from graph when DENIS_GRAPH_ENABLED=true
-    # Query: MATCH (e:Engine) RETURN e.name, e.host, e.port, e.task_tags, e.priority, e.capabilities
     return {
-        # PC: Fast local engines for intent/safety (ultra low latency)
-        "smollm_intent_local": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "smollm",
-            "endpoint": "http://127.0.0.1:8081",
-            "params_default": {"temperature": 0.2},
-            "cost_factor": 0.0001,
-            "max_context": 2048,
-            "tags": ["local", "intent", "router"],
-            "role": "intent",
-            "priority": 5,
-            "max_concurrency": 8,
-            "capabilities": {"stream": True, "chat": True, "tools": False},
-        },
-        "phi3_safety_local": {
-            "provider_key": "llamacpp",
-            "provider": "llama_cpp",
-            "model": "phi-3-mini",
-            "endpoint": "http://127.0.0.1:8082",
-            "params_default": {"temperature": 0.1},
-            "cost_factor": 0.0001,
-            "max_context": 2048,
-            "tags": ["local", "safety", "policy"],
-            "role": "safety",
-            "priority": 8,
-            "max_concurrency": 8,
-            "capabilities": {"stream": False, "chat": True, "tools": False},
-        },
-        # nodo2: Heavy engines for response/macro
+        # nodo1 / PC: RTX 3080 10GB - Heavy chat
         "llama3_8b_response_a": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
             "model": "llama-3.1-8b",
-            "endpoint": "http://10.10.10.2:9001",
+            "endpoint": "http://127.0.0.1:9001",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
@@ -84,13 +53,14 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "role": "response",
             "priority": 10,
             "max_concurrency": 4,
+            "gpu": "3080_10gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
         },
         "llama3_8b_response_b": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
             "model": "llama-3.1-8b",
-            "endpoint": "http://10.10.10.2:9002",
+            "endpoint": "http://127.0.0.1:9002",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.001,
             "max_context": 4096,
@@ -98,13 +68,14 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "role": "response",
             "priority": 20,
             "max_concurrency": 4,
+            "gpu": "3080_10gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
         },
         "qwen2_7b_macro": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
             "model": "qwen2.5-7b",
-            "endpoint": "http://10.10.10.2:9003",
+            "endpoint": "http://127.0.0.1:9003",
             "params_default": {"temperature": 0.3},
             "cost_factor": 0.001,
             "max_context": 8192,
@@ -112,13 +83,45 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "role": "macro",
             "priority": 40,
             "max_concurrency": 2,
+            "gpu": "3080_10gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        # nodo2: 1050 Ti 4GB - Light engines
+        "smollm_intent": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "smollm",
+            "endpoint": "http://10.10.10.2:8081",
+            "params_default": {"temperature": 0.2},
+            "cost_factor": 0.0001,
+            "max_context": 2048,
+            "tags": ["local", "intent", "router"],
+            "role": "intent",
+            "priority": 5,
+            "max_concurrency": 8,
+            "gpu": "1050ti_4gb",
+            "capabilities": {"stream": True, "chat": True, "tools": False},
+        },
+        "phi3_safety": {
+            "provider_key": "llamacpp",
+            "provider": "llama_cpp",
+            "model": "phi-3-mini",
+            "endpoint": "http://10.10.10.2:8082",
+            "params_default": {"temperature": 0.1},
+            "cost_factor": 0.0001,
+            "max_context": 2048,
+            "tags": ["local", "safety", "policy"],
+            "role": "safety",
+            "priority": 8,
+            "max_concurrency": 8,
+            "gpu": "1050ti_4gb",
+            "capabilities": {"stream": False, "chat": True, "tools": False},
         },
         "tiny_draft": {
             "provider_key": "llamacpp",
             "provider": "llama_cpp",
             "model": "tinyllama",
-            "endpoint": "http://10.10.10.2:9004",
+            "endpoint": "http://10.10.10.2:8083",
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.0001,
             "max_context": 2048,
@@ -126,9 +129,10 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "role": "draft",
             "priority": 15,
             "max_concurrency": 8,
+            "gpu": "1050ti_4gb",
             "capabilities": {"stream": True, "chat": True, "tools": False},
         },
-        # Internet boosters (disabled by default - offline-first)
+        # Internet boosters (disabled - offline-first)
         "groq_1": {
             "provider_key": "groq",
             "provider": "groq",
@@ -137,10 +141,10 @@ def _build_static_registry() -> dict[str, dict[str, Any]]:
             "params_default": {"temperature": 0.2},
             "cost_factor": 0.05,
             "max_context": 128000,
-            "tags": ["booster", "internet_required", "fast"],
+            "tags": ["booster", "internet_required"],
             "role": "booster",
             "priority": 50,
-            "enabled": False,  # Disabled by policy
+            "enabled": False,
         },
     }
 
