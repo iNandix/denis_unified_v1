@@ -1,0 +1,115 @@
+skill:
+  id: code_craft
+  name: CodeCraft
+  version: "1.0.0"
+  description: "Code generation with reuse-first policy - consumes PRO_SEARCH chunks"
+  owner: denis
+  status: stable
+
+entrypoints:
+  intents:
+    - write_code
+    - fix_bug
+    - refactor_code
+    - implement_feature
+    - find_code
+
+inputs:
+  consumes_from:
+    - skill_id: pro_search
+      output_types:
+        - chunk
+        - code
+        - api_ref
+
+strategies:
+  reuse:
+    priority: 1
+    description: "Reuse existing code from research chunks"
+    license_check: true
+    risk_check: true
+    requires:
+      - data_type: CODE
+        min_utility: 0.7
+      - data_type: API_REF
+        min_utility: 0.7
+
+  adapt:
+    priority: 2
+    description: "Adapt existing code with modifications"
+    license_check: true
+
+  generate:
+    priority: 3
+    description: "Generate new code from scratch"
+
+quality_gates:
+  - id: license_check
+    description: "Verify chunk has acceptable license"
+    allowed_licenses:
+      - MIT
+      - Apache-2.0
+      - BSD-3-Clause
+      - GPL-3.0
+      - LGPL-3.0
+    blocking: true
+
+  - id: risk_check
+    description: "Check chunk for unsafe code patterns"
+    risk_flags_block:
+      - unsafe_code
+      - malware_risk
+    blocking: true
+
+  - id: verification_check
+    description: "Prefer verified chunks"
+    preferred: true
+    blocking: false
+
+  - id: freshness_check
+    description: "Prefer fresh code"
+    min_freshness: 0.5
+    blocking: false
+
+utility_thresholds:
+  reuse_threshold: 0.7
+  generation_threshold: 0.3
+
+preferred_data_types:
+  - type: CODE
+    reuse_score: 1.0
+    adapt_score: 0.9
+  - type: API_REF
+    reuse_score: 0.95
+    adapt_score: 0.8
+  - type: CONFIG
+    reuse_score: 0.9
+  - type: TUTORIAL
+    adapt_score: 0.7
+
+outputs:
+  artifacts:
+    - code_snippet
+    - generated_code
+    - adapted_code
+  persistence:
+    graph_nodes:
+      - CodeRequest
+      - Strategy
+      - QualityGate
+      - CodeResult
+
+dependencies:
+  engines:
+    primaries:
+      - qwen_coder7b_local
+      - qwen3b_local
+    boosters:
+      - groq_booster
+
+tests:
+  - name: reuse_strategy_with_license
+  - name: reuse_blocked_by_risk
+  - name: adapt_strategy
+  - name: generate_when_no_chunks
+  - name: quality_gates_enforcement

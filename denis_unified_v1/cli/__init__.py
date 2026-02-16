@@ -1,0 +1,1 @@
+"""Denis Code CLI module."""
