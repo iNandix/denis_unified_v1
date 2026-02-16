@@ -27,15 +27,55 @@ except ImportError:
     SMXOrchestrator = None  # type: ignore[misc,assignment]
     CognitiveRouter = None  # type: ignore[misc,assignment]
 
-from denis_unified_v1.kernel.decision_trace import DecisionTrace, TraceSpan
-from denis_unified_v1.kernel.scheduler import InferencePlan
-from denis_unified_v1.kernel.engine_registry import get_engine_registry
-from denis_unified_v1.kernel.internet_health import get_internet_health
-from denis_unified_v1.inference.legacy_core_client import LegacyCoreClient
-from denis_unified_v1.inference.llamacpp_client import LlamaCppClient
-from denis_unified_v1.inference.vllm_client import VLLMClient
-from denis_unified_v1.inference.groq_client import GroqClient
-from denis_unified_v1.inference.openrouter_client import OpenRouterClient
+from denis_unified_v1.cognition.legacy_tools_v2 import (
+    build_tool_registry_v2,
+    ToolResult,
+)
+from denis_unified_v1.telemetry.steps import emit_tool_step
+
+try:
+    from denis_unified_v1.inference.vllm_client import VLLMClient
+    from denis_unified_v1.inference.groq_client import GroqClient
+    from denis_unified_v1.inference.openrouter_client import OpenRouterClient
+    from denis_unified_v1.inference.legacy_core_client import LegacyCoreClient
+    from denis_unified_v1.inference.llamacpp_client import LlamaCppClient
+except ImportError:
+    VLLMClient = None
+    GroqClient = None
+    OpenRouterClient = None
+    LegacyCoreClient = None
+    LlamaCppClient = None
+
+try:
+    from denis_unified_v1.kernel.engine_registry import get_engine_registry
+except ImportError:
+    get_engine_registry = None
+
+
+_TOOLS_V2: Any = None
+
+
+def _get_tools_v2() -> Any:
+    global _TOOLS_V2
+    if _TOOLS_V2 is None:
+        _TOOLS_V2 = build_tool_registry_v2()
+    return _TOOLS_V2
+
+
+def _allowed_domains(confidence_band: str) -> set[str]:
+    if confidence_band == "high":
+        return {
+            "ide.fs",
+            "ide.exec",
+            "ha.read",
+            "ha.write",
+            "graph.read",
+            "graph.write",
+            "ops.system",
+        }
+    if confidence_band == "medium":
+        return {"ide.fs", "ha.read", "graph.read"}
+    return set()
 
 
 def _utc_now() -> str:
@@ -209,18 +249,22 @@ class InferenceRouter:
             token.strip().lower() for token in raw_order.split(",") if token.strip()
         ]
         self.max_fallback_attempts = int(os.getenv("DENIS_ROUTER_MAX_ATTEMPTS", "3"))
-        self.clients: dict[str, ProviderClient] = {
-            # llamacpp clients are instantiated per-engine with correct endpoint
-            "vllm": VLLMClient(),
-            "groq": GroqClient(),
-            "openrouter": OpenRouterClient(),
-            "legacy_core": LegacyCoreClient(),
-        }
+
+        # Only instantiate clients if they're available
+        self.clients: dict[str, ProviderClient] = {}
+        if VLLMClient is not None:
+            self.clients["vllm"] = VLLMClient()
+        if GroqClient is not None:
+            self.clients["groq"] = GroqClient()
+        if OpenRouterClient is not None:
+            self.clients["openrouter"] = OpenRouterClient()
+        if LegacyCoreClient is not None:
+            self.clients["legacy_core"] = LegacyCoreClient()
 
         # Deep-copy so test mutations don't leak back into the global singleton
-        self.engine_registry = {
-            eid: dict(e) for eid, e in get_engine_registry().items()
-        }
+        # If no registry, degrade gracefully
+        registry = get_engine_registry() if get_engine_registry else {}
+        self.engine_registry = {eid: dict(e) for eid, e in (registry or {}).items()}
 
         # Assign clients per engine_id with correct endpoint from registry
         for eid, e in self.engine_registry.items():

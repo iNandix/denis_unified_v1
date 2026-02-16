@@ -116,29 +116,51 @@ async def chat_ws(websocket: WebSocket):
         while True:
             try:
                 data = await asyncio.wait_for(websocket.receive_json(), timeout=60.0)
+                print(
+                    f"WS: Received: type={data.get('type')}, request_id={data.get('request_id')}",
+                    flush=True,
+                )
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
-                print(f"WS: receive error: {e}")
+                print(f"WS: receive error: {e}", flush=True)
                 break
 
-            # Handle client.interrupt
+            # Handle client.interrupt - propagate to active delivery
             if data.get("type") == "client.interrupt":
+                print(f"WS: Received client.interrupt event: {data}")
                 request_id = data.get("request_id")
+                print(f"[INTERRUPT] cancel_events keys: {list(cancel_events.keys())}")
+                print(
+                    f"[INTERRUPT] active_deliveries keys: {list(active_deliveries.keys())}"
+                )
                 if request_id and request_id in cancel_events:
+                    print(f"[INTERRUPT] Setting cancel event for {request_id}")
                     cancel_events[request_id].set()
 
-                    # Propagate interrupt to delivery subgraph
+                    # Propagate to active delivery if exists
                     if request_id in active_deliveries:
-                        delivery = active_deliveries[request_id]
-                        interrupt_events = await delivery.handle_interrupt(
-                            DeliveryInterruptV1(
-                                request_id=request_id, reason="user_interrupt"
-                            )
+                        print(
+                            f"[INTERRUPT] Propagating to active delivery for {request_id}"
                         )
-                        # Send events from delivery (includes render.voice.cancelled)
-                        for ev in interrupt_events:
-                            await websocket.send_json(ev)
+                        delivery = active_deliveries[request_id]
+                        try:
+                            interrupt_events = await delivery.handle_interrupt(
+                                DeliveryInterruptV1(
+                                    request_id=request_id, reason="user_interrupt"
+                                )
+                            )
+                            print(
+                                f"[INTERRUPT] Got {len(interrupt_events)} events from handle_interrupt: {interrupt_events}"
+                            )
+                            for ev in interrupt_events:
+                                await websocket.send_json(ev)
+                        except Exception as e:
+                            print(f"[INTERRUPT] Error propagating: {e}")
+                    else:
+                        print(
+                            f"[INTERRUPT] request_id {request_id} NOT in active_deliveries"
+                        )
                 continue
 
             # Get voice_enabled from client if present
@@ -185,56 +207,147 @@ async def chat_ws(websocket: WebSocket):
             )
             seq += 1
 
-            # Get response from persona pipeline (sync for now)
+            # Get response from persona pipeline (non-blocking with interrupt support)
+            # Pattern A: WS loop never blocks - reads messages while pipeline runs
             accumulated_text = ""
+            task_seq = seq
+            cancel_event = cancel_events.get(request_id)
+            interrupted = False
+
             try:
                 req = ChatRequest(
                     message=user_text, user_id=data.get("user_id", "default")
                 )
-                result = await _chat(req)
-                accumulated_text = result.get("response", "")
 
-                # Send text through delivery for parallel voice streaming
-                # PipecatRenderer will:
-                # 1. Emit text delta immediately
-                # 2. Detect boundaries and launch TTS in parallel
-                # 3. Emit voice deltas as they arrive
-                if voice_enabled and delivery and accumulated_text:
-                    text_delta = DeliveryTextDeltaV1(
-                        request_id=request_id,
-                        text_delta=accumulated_text,
-                        is_final=True,
-                        sequence=seq,
-                    )
-                    # This now handles text + voice in parallel internally
-                    events = await delivery.handle_text_delta(text_delta)
-                    for ev in events:
-                        await websocket.send_json(ev)
-                        seq += 1
-                else:
-                    # No voice - just send text
+                async def run_pipeline():
+                    nonlocal accumulated_text
+                    result = await _chat(req)
+                    accumulated_text = result.get("response", "")
+
+                    if voice_enabled and delivery and accumulated_text:
+                        text_delta = DeliveryTextDeltaV1(
+                            request_id=request_id,
+                            text_delta=accumulated_text,
+                            is_final=True,
+                            sequence=task_seq,
+                        )
+                        events = await delivery.handle_text_delta(text_delta)
+                        for ev in events:
+                            await websocket.send_json(ev)
+
                     await websocket.send_json(
                         {
                             "request_id": request_id,
-                            "type": "render.text.delta",
-                            "sequence": seq,
+                            "type": "render.text.final",
+                            "sequence": task_seq + 1,
                             "payload": {"text": accumulated_text},
                             "ts": datetime.now(timezone.utc).isoformat(),
                         }
                     )
-                    seq += 1
 
-                # Send final text
+                # Start pipeline in background - WS loop stays free
+                voice_task = asyncio.create_task(run_pipeline())
+
+                # WS loop: keep reading messages while pipeline runs
+                # This allows receiving client.interrupt at any time
+                while not voice_task.done():
+                    try:
+                        # Wait for next message with timeout to check task periodically
+                        msg_data = await asyncio.wait_for(
+                            websocket.receive_json(), timeout=0.1
+                        )
+
+                        print(f"[WS_LOOP] Received msg: {msg_data}", flush=True)
+
+                        # Handle interrupt immediately - don't wait for task
+                        if msg_data.get("type") == "client.interrupt":
+                            print(f"[WS_LOOP] INTERRUPT DETECTED: {msg_data}")
+                            # ALWAYS propagate to delivery, regardless of cancel_events
+                            if delivery:
+                                print(
+                                    f"[WS_LOOP] Calling delivery.handle_interrupt for {request_id}"
+                                )
+                                try:
+                                    interrupt_events = await delivery.handle_interrupt(
+                                        DeliveryInterruptV1(
+                                            request_id=request_id,
+                                            reason="user_interrupt",
+                                        )
+                                    )
+                                    print(
+                                        f"[WS_LOOP] Got {len(interrupt_events)} events from handle_interrupt"
+                                    )
+                                    for ev in interrupt_events:
+                                        print(
+                                            f"[WS_LOOP] Sending event: {ev.get('type')}"
+                                        )
+                                        await websocket.send_json(ev)
+                                except Exception as e:
+                                    print(f"[WS_LOOP] Error in handle_interrupt: {e}")
+
+                            interrupted = True
+                            break
+
+                    except asyncio.TimeoutError:
+                        # Check if interrupt was set via cancel_event
+                        if cancel_event and cancel_event.is_set():
+                            print(f"[INTERRUPT] Cancel event set, breaking loop")
+                            interrupted = True
+                            break
+                        continue
+                    except Exception as e:
+                        print(f"WS: receive error in loop: {e}")
+                        break
+
+                # Wait for pipeline to complete (or cancelled)
+                if not voice_task.done():
+                    voice_task.cancel()
+                    try:
+                        await voice_task
+                    except asyncio.CancelledError:
+                        pass
+
+                # Get metrics and send outcome
+                voice_metrics = {}
+                if voice_enabled and delivery:
+                    voice_metrics = delivery.get_metrics(request_id)
+
                 await websocket.send_json(
                     {
                         "request_id": request_id,
-                        "type": "render.text.final",
-                        "sequence": seq,
-                        "payload": {"text": accumulated_text},
+                        "type": "render.outcome",
+                        "sequence": task_seq + 2,
+                        "payload": {
+                            "mode": "direct",
+                            "reason_codes": ["voice_enabled"]
+                            if voice_enabled
+                            else ["voice_disabled"],
+                            "response_length": len(accumulated_text),
+                            "voice_ttfc_ms": voice_metrics.get("voice_ttfc_ms", 0),
+                            "tts_backend": voice_metrics.get("tts_backend", "none"),
+                            "voice_cancelled": voice_metrics.get(
+                                "voice_cancelled", False
+                            ),
+                            "cancel_latency_ms": voice_metrics.get(
+                                "cancel_latency_ms", 0
+                            ),
+                            "bytes_streamed": voice_metrics.get("bytes_streamed", 0),
+                            "audio_duration_ms": voice_metrics.get(
+                                "audio_duration_ms", 0
+                            ),
+                        },
                         "ts": datetime.now(timezone.utc).isoformat(),
                     }
                 )
-                seq += 1
+
+                # Project outcome to graph
+                try:
+                    get_voice_projection().project_outcome(
+                        request_id=request_id,
+                        metrics=voice_metrics,
+                    )
+                except Exception:
+                    pass  # fail-open
 
             except Exception as e:
                 print(f"WS: processing error: {e}")
@@ -247,43 +360,6 @@ async def chat_ws(websocket: WebSocket):
                         "ts": datetime.now(timezone.utc).isoformat(),
                     }
                 )
-
-            # Get voice metrics if voice was enabled
-            voice_metrics = {}
-            if voice_enabled and delivery:
-                voice_metrics = delivery.get_metrics(request_id)
-
-            # Send outcome
-            await websocket.send_json(
-                {
-                    "request_id": request_id,
-                    "type": "render.outcome",
-                    "sequence": seq,
-                    "payload": {
-                        "mode": "direct",
-                        "reason_codes": ["voice_enabled"]
-                        if voice_enabled
-                        else ["voice_disabled"],
-                        "response_length": len(accumulated_text),
-                        "voice_ttfc_ms": voice_metrics.get("voice_ttfc_ms", 0),
-                        "tts_backend": voice_metrics.get("tts_backend", "none"),
-                        "voice_cancelled": voice_metrics.get("voice_cancelled", False),
-                        "cancel_latency_ms": voice_metrics.get("cancel_latency_ms", 0),
-                        "bytes_streamed": voice_metrics.get("bytes_streamed", 0),
-                        "audio_duration_ms": voice_metrics.get("audio_duration_ms", 0),
-                    },
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-
-            # Project outcome to graph
-            try:
-                get_voice_projection().project_outcome(
-                    request_id=request_id,
-                    metrics=voice_metrics,
-                )
-            except Exception:
-                pass  # fail-open
 
             # Cleanup
             if request_id in cancel_events:

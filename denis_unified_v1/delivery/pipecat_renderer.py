@@ -68,6 +68,9 @@ class PipecatRendererNode:
         self.segment_chars = segment_chars
 
         self.cancel_flags: Dict[str, asyncio.Event] = {}
+        self.interrupted_requests: set[str] = (
+            set()
+        )  # Track immediately interrupted requests
         self.queues: Dict[str, asyncio.Queue[str]] = {}
         self.text_sent: Dict[str, bool] = {}
         self.metrics: Dict[str, VoiceMetrics] = {}
@@ -97,6 +100,11 @@ class PipecatRendererNode:
         if len(text) >= self.segment_chars:
             return self.segment_chars
         return 0
+
+    def _should_drop_voice(self, request_id: str) -> bool:
+        """Check if we should drop voice chunks (request was cancelled)."""
+        ev = self.cancel_flags.get(request_id)
+        return bool(ev and ev.is_set())
 
     async def on_timeline_delta(self, delta: DeliveryTextDeltaV1):
         """Handle incoming text delta with parallel voice streaming."""
@@ -190,10 +198,8 @@ class PipecatRendererNode:
                 request_id=segment_id,
                 cancel_event=self.cancel_flags.get(request_id),
             ):
-                if (
-                    self.cancel_flags.get(request_id)
-                    and self.cancel_flags[request_id].is_set()
-                ):
+                # First check - stop getting more chunks
+                if self._should_drop_voice(request_id):
                     was_cancelled = True
                     break
 
@@ -209,6 +215,11 @@ class PipecatRendererNode:
                         self.metrics[request_id].bytes_streamed += len(audio_b64)
                         self.metrics[request_id].chunks_count += 1
                         seg_bytes += len(audio_b64)
+
+                # Second check - anti-race, drop if cancelled just before emit
+                if self._should_drop_voice(request_id):
+                    was_cancelled = True
+                    break
 
                 self.emit_callback(
                     {
@@ -255,57 +266,62 @@ class PipecatRendererNode:
         """Handle interrupt/cancel - cancels all voice tasks + server-side cancel."""
         request_id = interrupt["request_id"]
 
-        if request_id in self.cancel_flags:
-            self.cancel_flags[request_id].set()
+        # Set cancelled flag to stop local streaming
+        if request_id not in self.cancel_flags:
+            self.cancel_flags[request_id] = asyncio.Event()
+        self.cancel_flags[request_id].set()
 
-            # Cancel all voice tasks for this request
-            if request_id in self.voice_tasks:
-                for task in self.voice_tasks[request_id]:
-                    if not task.done():
-                        task.cancel()
-            # Cancel server-side streams on nodo2 for each segment
-            if self.piper_provider and hasattr(self.piper_provider, "cancel_request"):
+        # IMMEDIATELY mark as interrupted to stop any pending emissions
+        self.interrupted_requests.add(request_id)
+
+        # Mark as cancelled in metrics
+        if request_id in self.metrics:
+            self.metrics[request_id].cancelled = True
+            self.metrics[request_id].cancel_ts = time.time()
+
+        # Cancel all voice tasks for this request
+        if request_id in self.voice_tasks:
+            for task in self.voice_tasks[request_id]:
+                if not task.done():
+                    task.cancel()
+
+        # Cancel server-side streams on nodo2 for each segment
+        if self.piper_provider and hasattr(self.piper_provider, "cancel_request"):
+            try:
+                max_seg = self.segment_counters.get(request_id, 0)
+                segments_to_cancel = set()
+                for i in range(1, max(1, max_seg) + 1):
+                    segments_to_cancel.add(f"{request_id}:s{i}")
+                segments_to_cancel.add(request_id)
+
+                for seg_id in segments_to_cancel:
+                    await self.piper_provider.cancel_request(seg_id)
+                print(
+                    f"DEBUG: Cancelled {len(segments_to_cancel)} segments for {request_id}"
+                )
+            except Exception as e:
+                print(f"Server-side cancel error: {e}")
+
+        # Clear queues
+        if request_id in self.queues:
+            while not self.queues[request_id].empty():
                 try:
-                    # Get known segments - use counter + also try s1 for first segment
-                    max_seg = self.segment_counters.get(request_id, 0)
-                    # Always try s1 at minimum (first segment)
-                    segments_to_cancel = set()
-                    for i in range(1, max(1, max_seg) + 1):
-                        segments_to_cancel.add(f"{request_id}:s{i}")
-                    # Also try the main request_id
-                    segments_to_cancel.add(request_id)
+                    self.queues[request_id].get_nowait()
+                except asyncio.QueueEmpty:
+                    break
 
-                    for seg_id in segments_to_cancel:
-                        await self.piper_provider.cancel_request(seg_id)
-                    print(
-                        f"DEBUG: Cancelled {len(segments_to_cancel)} segments for {request_id}"
-                    )
-                except Exception as e:
-                    print(f"Server-side cancel error: {e}")
-                self.voice_tasks[request_id] = []
+        # Clear voice tasks
+        self.voice_tasks[request_id] = []
 
-            # Clear queues
-            if request_id in self.queues:
-                while not self.queues[request_id].empty():
-                    try:
-                        self.queues[request_id].get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-
-            if request_id in self.metrics:
-                self.metrics[request_id].cancelled = True
-                self.metrics[request_id].cancel_ts = time.time()
-
-            self.emit_callback(
-                {
-                    "request_id": request_id,
-                    "type": "render.voice.cancelled",
-                    "payload": {
-                        "reason_code": interrupt.get("reason", "user_interrupt")
-                    },
-                    "ts": time.time(),
-                }
-            )
+        # Always emit cancelled event - THIS IS KEY
+        self.emit_callback(
+            {
+                "request_id": request_id,
+                "type": "render.voice.cancelled",
+                "payload": {"reason_code": interrupt.get("reason", "user_interrupt")},
+                "ts": time.time(),
+            }
+        )
 
     def get_metrics(self, request_id: str) -> dict:
         """Get voice metrics for a request."""
@@ -355,7 +371,8 @@ class PipecatRendererNode:
                     request_id=request_id,
                     cancel_event=self.cancel_flags[request_id],
                 ):
-                    if self.cancel_flags[request_id].is_set():
+                    # First check
+                    if self._should_drop_voice(request_id):
                         break
 
                     if metrics.tts_first_chunk_ts is None:
@@ -365,6 +382,10 @@ class PipecatRendererNode:
                     if audio_b64:
                         metrics.bytes_streamed += len(audio_b64)
                         metrics.chunks_count += 1
+
+                    # Second check - anti-race
+                    if self._should_drop_voice(request_id):
+                        break
 
                     self.emit_callback(
                         {
