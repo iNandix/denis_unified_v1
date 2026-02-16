@@ -120,7 +120,7 @@ def list_engines(status_filter: Optional[str] = None) -> list[Engine]:
         params = {}
 
     query += """
-        RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+        RETURN DISTINCT e.name as name, e.endpoint as endpoint, e.model as model,
                e.status as status, e.node as node, e.capabilities as capabilities
         ORDER BY e.name
     """
