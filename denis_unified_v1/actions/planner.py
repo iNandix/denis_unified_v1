@@ -4,8 +4,11 @@ from denis_unified_v1.actions.models import *
 from denis_unified_v1.actions.stop_eval import eval_stop_condition
 from pathlib import Path
 import uuid
+import logging
 from datetime import datetime, timezone
 import json
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
@@ -13,6 +16,24 @@ def _utc_now() -> str:
 
 
 def generate_candidate_plans(intent_v1: Intent_v1) -> list[ActionPlanCandidate]:
+    """Generate candidate plans. Uses Neo4j graph first, falls back to hardcoded."""
+    # Try grafocentric resolution first
+    try:
+        from denis_unified_v1.actions.graph_intent_resolver import (
+            generate_candidate_plans_from_graph,
+        )
+        candidates = generate_candidate_plans_from_graph(intent_v1)
+        if candidates:
+            return candidates
+    except Exception as e:
+        logger.debug(f"Graph resolver unavailable, using legacy: {e}")
+
+    # Legacy hardcoded fallback
+    return _generate_candidate_plans_legacy(intent_v1)
+
+
+def _generate_candidate_plans_legacy(intent_v1: Intent_v1) -> list[ActionPlanCandidate]:
+    """Legacy hardcoded plan generation (fallback when graph is unavailable)."""
     if intent_v1.intent == "run_tests_ci":
         return _generate_run_tests_ci_candidates()
     elif intent_v1.intent == "debug_repo":

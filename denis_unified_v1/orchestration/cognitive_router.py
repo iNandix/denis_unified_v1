@@ -115,9 +115,13 @@ class Neo4jClient:
 
             uri = os.getenv("NEO4J_URI", "bolt://10.10.10.1:7687")
             user = os.getenv("NEO4J_USER", "neo4j")
-            password = os.getenv("NEO4J_PASSWORD") or os.getenv(
-                "NEO4J_PASS", "Leon1234$"
-            )
+            password = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS")
+            if not password:
+                if os.getenv("DENIS_DEV") == "1":
+                    password = "neo4j"
+                else:
+                    print("WARNING: NEO4J_PASSWORD/NEO4J_PASS missing; graph disabled.")
+                    return None
             if password:
                 cls._driver = GraphDatabase.driver(uri, auth=(user, password))
         return cls._driver
@@ -858,7 +862,7 @@ class CognitiveRouter:
             }
 
     def _get_applicable_patterns(self, request: Dict) -> List[Dict]:
-        """Consulta patrones L1 aplicables desde grafo Neo4j."""
+        """Consulta patrones L1 y relaciones Intent→Tool desde grafo Neo4j."""
         patterns = []
         intent = request.get("intent", "unknown")
         text = request.get("text", "")
@@ -867,13 +871,43 @@ class CognitiveRouter:
         try:
             driver = Neo4jClient.get_driver()
             with driver.session() as session:
+                # First: try Intent→Tool ACTIVATES path (grafocentric)
+                intent_result = session.run(
+                    """
+                    MATCH (i:Intent {name: $intent})-[a:ACTIVATES]->(t:Tool)
+                    RETURN 'intent_' + $intent as pattern_id,
+                           i.description as description,
+                           1.0 - (a.priority * 0.05) as confidence,
+                           collect(t.name) as tools
+                    ORDER BY a.priority
+                    LIMIT 5
+                """,
+                    intent=intent,
+                )
+
+                intent_patterns = [dict(record) for record in intent_result]
+                if intent_patterns:
+                    return [
+                        {
+                            "pattern_id": p["pattern_id"],
+                            "type": intent,
+                            "description": p["description"],
+                            "confidence": p["confidence"],
+                            "tools": p["tools"],
+                        }
+                        for p in intent_patterns
+                    ]
+
+                # Fallback: legacy Pattern nodes
                 result = session.run(
                     """
                     MATCH (p:Pattern)-[:APPLIES_TO]->(t:Tool)
-                    WHERE $wordCount <= 3 AND p.id CONTAINS 'fast'  // Heurística simple
-                       OR p.type = $intent  // Coincidencia directa
-                       OR p.type = 'generic'
-                    RETURN p.id as pattern_id, 
+                    WHERE (
+                        ($wordCount <= 3 AND p.id CONTAINS 'fast')
+                        OR p.type = $intent
+                        OR p.type = 'generic'
+                    )
+                    RETURN p.id as pattern_id,
                            p.description as description,
                            p.confidence as confidence,
                            collect(t.name) as tools
@@ -886,7 +920,6 @@ class CognitiveRouter:
 
                 patterns = [dict(record) for record in result]
 
-                # Transformar a estructura estándar
                 return [
                     {
                         "pattern_id": p["pattern_id"],
