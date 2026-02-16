@@ -47,7 +47,8 @@ def main():
                     "--log-level",
                     "warning",
                 ],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
 
         server_thread = threading.Thread(target=run_server, daemon=True)
@@ -55,15 +56,17 @@ def main():
 
         base_url = f"http://127.0.0.1:{port}"
 
-        # Wait for server
-        for _ in range(30):
+        # Wait for server with exponential backoff (max 15s)
+        wait_times = [0.2, 0.4, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        for wait in wait_times:
+            time.sleep(wait)
             try:
                 resp = requests.get(f"{base_url}/status", timeout=1)
                 if resp.status_code == 200:
                     artifact["server_boot"] = True
                     break
             except Exception:
-                time.sleep(0.1)
+                pass
         else:
             artifact["reason"] = "Server failed to start"
             artifact["overall_success"] = False

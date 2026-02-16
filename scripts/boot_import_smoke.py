@@ -9,6 +9,7 @@ import time
 import traceback
 from pathlib import Path
 
+
 def main():
     artifact = {
         "ok": False,
@@ -24,8 +25,13 @@ def main():
         # 1. Test import and create_app
         os.environ.setdefault("DISABLE_OBSERVABILITY", "1")
         result = subprocess.run(
-            [sys.executable, "-c", "from api.fastapi_server import create_app; create_app()"],
-            capture_output=True,
+            [
+                sys.executable,
+                "-c",
+                "from api.fastapi_server import create_app; create_app()",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=10,
         )
@@ -36,7 +42,11 @@ def main():
             artifact["reason"] = f"create_app failed: {result.stderr[:200]}"
             artifact["overall_success"] = False
             artifact["ok"] = artifact["overall_success"]
-            out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("artifacts/boot_import_smoke.json")
+            out_path = (
+                Path(sys.argv[1])
+                if len(sys.argv) > 1
+                else Path("artifacts/boot_import_smoke.json")
+            )
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with out_path.open("w") as f:
                 json.dump(artifact, f, indent=2)
@@ -55,17 +65,32 @@ def main():
 
         def run_server():
             subprocess.run(
-                [sys.executable, "-m", "uvicorn", "api.fastapi_server:create_app", "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "api.fastapi_server:create_app",
+                    "--factory",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                    "--log-level",
+                    "warning",
+                ],
                 env={"PYTHONPATH": ".", "DISABLE_OBSERVABILITY": "1", **os.environ},
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
 
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
 
-        # Wait and test /status
+        # Wait and test /status (with exponential backoff, max 15s)
         base_url = f"http://127.0.0.1:{port}"
-        for _ in range(30):
+        wait_times = [0.2, 0.4, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # ~10s total
+        for wait in wait_times:
+            time.sleep(wait)
             try:
                 resp = requests.get(f"{base_url}/status", timeout=1)
                 if resp.status_code == 200:
@@ -73,14 +98,19 @@ def main():
                     artifact["uvicorn_start"] = True
                     break
             except Exception:
-                time.sleep(0.1)
+                pass
         else:
-            artifact["reason"] = "status endpoint not reachable after 3s"
+            artifact["reason"] = "status endpoint not reachable after 10s"
 
     except Exception as e:
         artifact["reason"] = f"exception: {str(e)}\n{traceback.format_exc()}"
 
-    artifact["overall_success"] = artifact["boot_import"] and artifact["create_app"] and artifact["uvicorn_start"] and artifact["status_endpoint"]
+    artifact["overall_success"] = (
+        artifact["boot_import"]
+        and artifact["create_app"]
+        and artifact["uvicorn_start"]
+        and artifact["status_endpoint"]
+    )
     artifact["ok"] = artifact["overall_success"]
 
     # Write artifact

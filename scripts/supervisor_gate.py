@@ -46,7 +46,8 @@ def run_smoke(script_path: str, timeout: int = 60) -> dict:
     try:
         proc = subprocess.run(
             [sys.executable, script_path],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=timeout,
             cwd=Path.cwd(),
@@ -83,7 +84,8 @@ def check_duplicate_definitions() -> dict:
     try:
         proc = subprocess.run(
             ["rg", "^-def\\s+(\\w+)", "--type", "py", "-o", "--no-heading"],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=30,
         )
