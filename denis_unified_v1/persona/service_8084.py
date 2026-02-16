@@ -221,8 +221,22 @@ async def chat_ws(websocket: WebSocket):
 
                 async def run_pipeline():
                     nonlocal accumulated_text
+
+                    # Set narrative callback for personality
+                    narrative_events = []
+
+                    def emit_narrative(event):
+                        narrative_events.append(event)
+
+                    executor.set_emit_callback(emit_narrative)
+
                     result = await _chat(req)
                     accumulated_text = result.get("response", "")
+
+                    # Send narrative events from executor (personality)
+                    for ev in narrative_events:
+                        ev["request_id"] = request_id
+                        await websocket.send_json(ev)
 
                     if voice_enabled and delivery and accumulated_text:
                         text_delta = DeliveryTextDeltaV1(

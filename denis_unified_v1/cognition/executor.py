@@ -8,6 +8,7 @@ Provides:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
 
 from denis_unified_v1.actions.models import ActionPlanCandidate, ActionStep, StepStatus
+from denis_unified_v1.cognition.legacy_tools_v2 import build_tool_registry_v2
 
 
 @dataclass
@@ -75,15 +77,164 @@ class PlanExecutionResult:
 class Executor:
     """Evidence-based executor for action plans."""
 
+    # Persona: tono cálido pero irónico, spicy a veces, directo sin pudor
+    PERSONA_TONE = {
+        "prefixes": [
+            "Voy a",
+            "Dejame",
+            "A ver",
+            "Miro",
+            "Busco",
+            "Ejecuto",
+            "Esto... ",
+            "Uy, ",
+            "Anda, ",
+            "Vaya, ",
+        ],
+        "success_suffixes": [
+            "listo",
+            "hecho",
+            "tigre",
+            " OK",
+            " ✅",
+            "sin problemas",
+            "como un lujo",
+            "perfecto",
+        ],
+        "failure_suffixes": [
+            "ha petao",
+            "no ha podido",
+            "se ha resistencia",
+            "ha fallado",
+            "uff...",
+            "vaya... ",
+        ],
+        "spicy_chance": 0.15,  # 15% de probabilidad de ser spicy
+    }
+
     def __init__(
         self,
-        tool_registry: Optional[Dict[str, Callable]] = None,
+        tool_registry: Optional[Dict[str, Any]] = None,
         evidence_dir: Optional[Path] = None,
+        emit_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
-        self.tool_registry = tool_registry or {}
+        self.tool_registry = tool_registry or build_tool_registry_v2()
         self.evidence_dir = evidence_dir or Path(
             "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/denis_unified_v1/_reports"
         )
+        self._emit_callback = emit_callback
+
+    def set_emit_callback(self, callback: Callable[[Dict[str, Any]], None]):
+        """Set the emit callback for narrative events."""
+        self._emit_callback = callback
+
+    @property
+    def emit_callback(self):
+        return self._emit_callback
+
+    def _emit_narrative(self, text: str, request_id: str = "default"):
+        """Emit narrative text to frontend via callback."""
+        if self.emit_callback:
+            self.emit_callback(
+                {
+                    "request_id": request_id,
+                    "type": "render.text.delta",
+                    "payload": {"text": text},
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+    def _generate_narrative(self, tool_name: str, will_execute: bool = True) -> str:
+        """Generate persona narrative for tool execution."""
+        import random
+
+        prefixes = self.PERSONA_TONE["prefixes"]
+
+        # Tool-specific narratives
+        tool_narratives = {
+            "grep_search": [
+                "buscando en archivos...",
+                "a ver si aparece...",
+                "tiro grep a ver qué sale...",
+            ],
+            "read_file": [
+                "leyendo el archivo...",
+                "voy a échale un ojo...",
+                "a ver qué hay aquí...",
+            ],
+            "list_files": [
+                "listando...",
+                "a ver qué tenemos por aquí...",
+                "mirando estructura...",
+            ],
+            "run_command": [
+                "ejecutando comando...",
+                "tiro el comando a ver qué pasa...",
+                "a riesgos de todo...",
+            ],
+            "hass_entity": [
+                "tocando Home Assistant...",
+                "manipulando entidades...",
+                "un poco de domótica...",
+            ],
+            "default": ["ejecutando...", "haciendo cosas...", "trabajando en ello..."],
+        }
+
+        prefix = random.choice(prefixes)
+        narratives = tool_narratives.get(tool_name, tool_narratives["default"])
+        middle = random.choice(narratives)
+
+        # Sometimes be spicy
+        spicy = random.random() < self.PERSONA_TONE["spicy_chance"]
+        if spicy:
+            spicies = [
+                "... esto está más caliente que mi procesador.",
+                "... esto va a hacer que argon-18 se pone nervioso.",
+                "... prepárate para el show.",
+                "... esto es más interesante que una conversación de pub.",
+            ]
+            middle += random.choice(spicies)
+
+        return f"{prefix} {middle}"
+
+    def _generate_result_narrative(
+        self, tool_name: str, ok: bool, duration_ms: int
+    ) -> str:
+        """Generate result narrative."""
+        import random
+
+        suffixes = (
+            self.PERSONA_TONE["success_suffixes"]
+            if ok
+            else self.PERSONA_TONE["failure_suffixes"]
+        )
+        suffix = random.choice(suffixes)
+
+        if ok:
+            templates = [
+                f"Completado en {duration_ms}ms. {suffix}",
+                f"{suffix.capitalize()} ({duration_ms}ms)",
+                f"Finiquitado. {suffix}",
+            ]
+        else:
+            templates = [
+                f"No ha podido. {suffix}",
+                f"Ha petao. {suffix}",
+                f"uff... {suffix}",
+            ]
+
+        return random.choice(templates)
+
+    def _is_tool_allowed(self, tool_name: str, intent: str, band: str) -> bool:
+        """Belt filtering for speed and safety."""
+        if band == "low":
+            return False
+        if tool_name in ["list_files", "grep_search", "read_file"]:
+            return True  # ide.fs belt
+        if tool_name == "run_command":
+            return band == "high"  # ide.exec belt only high
+        # Hass tools: assume ro for now, add more logic if needed
+        return True
 
     def execute_step(
         self,
@@ -95,22 +246,55 @@ class Executor:
 
         start_time = time.perf_counter()
         result = StepExecutionResult(step_id=step.step_id, status=StepStatus.ok)
+        intent = context.get("intent", "")
+        band = context.get("confidence_band", "low")
+        request_id = context.get("request_id", "default")
 
         try:
             for tool_call in step.tool_calls:
-                tool_func = self.tool_registry.get(tool_call.name)
-                if not tool_func:
+                if not self._is_tool_allowed(tool_call.name, intent, band):
+                    result.status = StepStatus.failed
+                    result.error = f"Tool not allowed by belt: {tool_call.name}"
+                    result.reason_codes.append("belt_filtered")
+                    continue
+
+                tool_adapter = self.tool_registry.get(tool_call.name)
+                if not tool_adapter:
                     result.status = StepStatus.failed
                     result.error = f"Tool not found: {tool_call.name}"
                     continue
 
-                output = tool_func(**tool_call.args)
-                result.output = str(output)
+                # === NARRATIVE HOOK: Antes de ejecutar ===
+                if self.emit_callback:
+                    before_text = self._generate_narrative(
+                        tool_call.name, will_execute=True
+                    )
+                    self._emit_narrative(before_text, request_id)
 
-                self._extract_facts(output, result.facts)
+                # Run async tool in sync context
+                tool_result = asyncio.run(tool_adapter.run(context, tool_call.args))
+                if tool_result.ok:
+                    output = tool_result.data.get("text", "")
+                    result.output = str(output)
+                    self._extract_facts(output, result.facts)
+                    if step.evidence_required:
+                        self._capture_evidence(step.step_id, output, result)
+                else:
+                    result.status = StepStatus.failed
+                    result.error = (
+                        tool_result.error.get("message", str(tool_result.error))
+                        if tool_result.error
+                        else "tool_failed"
+                    )
+                    result.reason_codes.append("tool_policy_error")
 
-                if step.evidence_required:
-                    self._capture_evidence(step.step_id, output, result)
+                # === NARRATIVE HOOK: Después de ejecutar ===
+                duration_ms = int((time.perf_counter() - start_time) * 1000)
+                if self.emit_callback:
+                    after_text = self._generate_result_narrative(
+                        tool_call.name, tool_result.ok, duration_ms
+                    )
+                    self._emit_narrative(after_text, request_id)
 
         except Exception as e:
             result.status = StepStatus.failed
@@ -192,8 +376,7 @@ class Executor:
 
             # Block steps whose tools are missing from registry
             missing_tools = [
-                tc.name for tc in step.tool_calls
-                if tc.name not in self.tool_registry
+                tc.name for tc in step.tool_calls if tc.name not in self.tool_registry
             ]
             if step.tool_calls and missing_tools:
                 plan_result.step_results.append(
