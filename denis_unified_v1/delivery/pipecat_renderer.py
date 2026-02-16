@@ -266,12 +266,20 @@ class PipecatRendererNode:
             # Cancel server-side streams on nodo2 for each segment
             if self.piper_provider and hasattr(self.piper_provider, "cancel_request"):
                 try:
-                    # Cancel each segment
-                    for i in range(1, self.segment_counters.get(request_id, 0) + 1):
-                        segment_id = f"{request_id}:s{i}"
-                        await self.piper_provider.cancel_request(segment_id)
-                    # Also try cancel on main request_id
-                    await self.piper_provider.cancel_request(request_id)
+                    # Get known segments - use counter + also try s1 for first segment
+                    max_seg = self.segment_counters.get(request_id, 0)
+                    # Always try s1 at minimum (first segment)
+                    segments_to_cancel = set()
+                    for i in range(1, max(1, max_seg) + 1):
+                        segments_to_cancel.add(f"{request_id}:s{i}")
+                    # Also try the main request_id
+                    segments_to_cancel.add(request_id)
+
+                    for seg_id in segments_to_cancel:
+                        await self.piper_provider.cancel_request(seg_id)
+                    print(
+                        f"DEBUG: Cancelled {len(segments_to_cancel)} segments for {request_id}"
+                    )
                 except Exception as e:
                     print(f"Server-side cancel error: {e}")
                 self.voice_tasks[request_id] = []
