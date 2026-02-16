@@ -203,10 +203,21 @@ async def healthcheck_all_engines() -> dict[str, dict]:
 
 
 def select_engine_for_intent(intent: str) -> Optional[Engine]:
-    """Select best engine for an intent based on graph preferences."""
+    """
+    Select best engine for an intent based on graph preferences.
+
+    Model: Node -> Service -> Engine
+    Priority:
+    1. Local node (via DENIS_NODE_NAME env)
+    2. Intent preference (PREFERS_ENGINE)
+    3. Any active engine
+    4. Cloud fallback
+    """
+    import os
     from denis_unified_v1.feature_flags import load_feature_flags
 
     flags = load_feature_flags()
+    local_node = os.getenv("DENIS_NODE_NAME", "nodo1")
 
     driver = _get_neo4j_driver()
     if not driver:
@@ -214,19 +225,17 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
 
     try:
         with driver.session() as session:
-            # Check intent preferences
+            # 1. Try local node first (local-first routing)
             result = session.run(
                 """
-                MATCH (i:Intent {name: $intent})-[p:PREFERS_ENGINE]->(e:Engine)
+                MATCH (n:Node {name: $local})-[:HOSTS]->(:Service)-[:PROVIDES]->(e:Engine)
                 WHERE e.status = 'active'
                 RETURN e.name as name, e.endpoint as endpoint, e.model as model,
-                       e.status as status, e.node as node
-                ORDER BY p.reason
+                       e.status as status, n.name as node
                 LIMIT 1
             """,
-                intent=intent,
+                local=local_node,
             )
-
             record = result.single()
             if record:
                 return Engine(
@@ -237,24 +246,63 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
                     node=record.get("node"),
                 )
 
-            # Fallback: any active engine
-            if flags.engines_uses_graph:
-                result = session.run("""
-                    MATCH (e:Engine)
-                    WHERE e.status = 'active'
-                    RETURN e.name as name, e.endpoint as endpoint, e.model as model,
-                           e.status as status, e.node as node
-                    LIMIT 1
-                """)
-                record = result.single()
-                if record:
-                    return Engine(
-                        name=record["name"],
-                        endpoint=record["endpoint"] or "",
-                        model=record["model"] or "",
-                        status=record["status"],
-                        node=record.get("node"),
-                    )
+            # 2. Check intent preferences
+            result = session.run(
+                """
+                MATCH (i:Intent {name: $intent})-[p:PREFERS_ENGINE]->(e:Engine)
+                WHERE e.status = 'active'
+                RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                       e.status as status
+                ORDER BY p.reason
+                LIMIT 1
+            """,
+                intent=intent,
+            )
+            record = result.single()
+            if record:
+                return Engine(
+                    name=record["name"],
+                    endpoint=record["endpoint"] or "",
+                    model=record["model"] or "",
+                    status=record["status"],
+                )
+
+            # 3. Any active engine
+            result = session.run(
+                """
+                MATCH (e:Engine)
+                WHERE e.status = 'active'
+                RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                       e.status as status
+                LIMIT 1
+            """
+            )
+            record = result.single()
+            if record:
+                return Engine(
+                    name=record["name"],
+                    endpoint=record["endpoint"] or "",
+                    model=record["model"] or "",
+                    status=record["status"],
+                )
+
+            # 4. Cloud fallback
+            result = session.run(
+                """
+                MATCH (s:Service {type: 'cloud'})-[:PROVIDES]->(e:Engine)
+                RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                       e.status as status
+                LIMIT 1
+            """
+            )
+            record = result.single()
+            if record:
+                return Engine(
+                    name=record["name"],
+                    endpoint=record["endpoint"] or "",
+                    model=record["model"] or "",
+                    status=record["status"],
+                )
     except Exception as e:
         logger.warning(f"Failed to select engine: {e}")
 
