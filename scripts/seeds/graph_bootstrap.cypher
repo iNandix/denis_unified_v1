@@ -24,6 +24,90 @@ CREATE INDEX tool_type IF NOT EXISTS FOR (t:Tool) ON (t.type);
 CREATE INDEX engine_status IF NOT EXISTS FOR (e:Engine) ON (e.status);
 
 // =============================================================================
+// DECISION TRACE - Audit & Debugging
+// =============================================================================
+CREATE CONSTRAINT decisiontrace_id IF NOT EXISTS
+FOR (d:DecisionTrace) REQUIRE d.id IS UNIQUE;
+
+CREATE INDEX decisiontrace_ts IF NOT EXISTS
+FOR (d:DecisionTrace) ON (d.ts);
+
+CREATE INDEX decisiontrace_kind IF NOT EXISTS
+FOR (d:DecisionTrace) ON (d.kind);
+
+CREATE INDEX decisiontrace_turn IF NOT EXISTS
+FOR (d:DecisionTrace) ON (d.turn_id);
+
+CREATE INDEX decisiontrace_session IF NOT EXISTS
+FOR (d:DecisionTrace) ON (d.session_id);
+
+// =============================================================================
+// TOOL SCHEMA NORMALIZATION - Runtime defaults
+// =============================================================================
+// Set default values for all Tools to ensure complete schema
+// This makes the graph fully declarative for tool_approval
+
+// Default values for all tools (conservative defaults)
+MATCH (t:Tool)
+SET t.method = coalesce(t.method, 'POST'),
+    t.timeout_s = coalesce(t.timeout_s, 30),
+    t.retries = coalesce(t.retries, 1),
+    t.read_only = coalesce(t.read_only, true),
+    t.type = coalesce(t.type, 'bash');
+
+// High-risk tools (execution, system modification)
+MATCH (t:Tool)
+WHERE t.name IN [
+    'bash_execute', 'execute_bash', 'shell_exec', 'Run Shell Command',
+    'python_exec', 'python_execute', 'code_executor',
+    'Deploy Code', 'Reboot System', 'Restart Service',
+    'docker_exec', 'docker', 'ssh_exec', 'Execute SSH Command',
+    'git_exec', 'Git Commit', 'Write File', 'write_file', 'Edit File', 'edit_file'
+]
+SET t.read_only = false,
+    t.risk_level = coalesce(t.risk_level, 'high'),
+    t.requires_approval = true;
+
+// Medium-risk tools (file read, network read)
+MATCH (t:Tool)
+WHERE t.name IN [
+    'Read File', 'read_file', 'List UPnP Ports', 'Check Network Port',
+    'Router Status', 'Tailscale Status', 'Nmap Port Scan',
+    'List Directory', 'list_directory', 'glob_files', 'grep_search', 'code_search'
+]
+SET t.read_only = true,
+    t.risk_level = coalesce(t.risk_level, 'low'),
+    t.requires_approval = false;
+
+// HA/IoT tools - medium risk
+MATCH (t:Tool)
+WHERE t.name IN ['ha_control', 'ha_query', 'Add UPnP Port', 'Delete UPnP Port']
+SET t.risk_level = coalesce(t.risk_level, 'medium'),
+    t.requires_approval = true;
+
+// Web/network tools
+MATCH (t:Tool)
+WHERE t.name IN ['curl_http', 'web_fetch', 'search', 'searxng_search']
+SET t.read_only = true,
+    t.risk_level = coalesce(t.risk_level, 'low'),
+    t.type = 'http',
+    t.requires_approval = false;
+
+// Voice/AI tools - safe
+MATCH (t:Tool)
+WHERE t.name IN ['tts_synthesize', 'voice_synthesize', 'stt_transcribe', 'voice_transcribe', 'smx_response', 'smx_safety']
+SET t.read_only = true,
+    t.risk_level = coalesce(t.risk_level, 'low'),
+    t.requires_approval = false;
+
+// Denis core tools - default to requiring approval
+MATCH (t:Tool)
+WHERE t.category = 'denis-core' OR t.category IS NULL
+SET t.risk_level = coalesce(t.risk_level, 'medium'),
+    t.requires_approval = coalesce(t.requires_approval, true),
+    t.type = coalesce(t.type, 'bash');
+
+// =============================================================================
 // 1. NODES (physical hosts)
 // =============================================================================
 

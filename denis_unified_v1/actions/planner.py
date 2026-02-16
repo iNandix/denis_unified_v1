@@ -30,6 +30,17 @@ def generate_candidate_plans(intent_v1: Intent_v1) -> list[ActionPlanCandidate]:
 
             candidates = generate_candidate_plans_from_graph(intent_v1)
             if candidates:
+                # Trace plan selection
+                from denis_unified_v1.actions.decision_trace import trace_plan_selection
+
+                trace_plan_selection(
+                    intent=intent_v1.intent,
+                    candidate_id=candidates[0].candidate_id if candidates else None,
+                    mode="SELECTED",
+                    reason=f"graph_candidates_{len(candidates)}",
+                    confidence=intent_v1.confidence,
+                    confidence_band=intent_v1.confidence_band,
+                )
                 return candidates
         except Exception as e:
             logger.debug(f"Graph resolver unavailable, using legacy: {e}")
@@ -42,7 +53,21 @@ def generate_candidate_plans(intent_v1: Intent_v1) -> list[ActionPlanCandidate]:
         return []
 
     # Legacy hardcoded fallback
-    return _generate_candidate_plans_legacy(intent_v1)
+    legacy_candidates = _generate_candidate_plans_legacy(intent_v1)
+    if legacy_candidates:
+        from denis_unified_v1.actions.decision_trace import trace_plan_selection
+
+        trace_plan_selection(
+            intent=intent_v1.intent,
+            candidate_id=legacy_candidates[0].candidate_id
+            if legacy_candidates
+            else "unknown",
+            mode="FALLBACK",
+            reason="legacy_fallback",
+            confidence=intent_v1.confidence,
+            confidence_band=intent_v1.confidence_band,
+        )
+    return legacy_candidates
 
 
 def _generate_candidate_plans_legacy(intent_v1: Intent_v1) -> list[ActionPlanCandidate]:

@@ -87,15 +87,84 @@ def check_tool_approval(
 
                     # Explicit flag on tool
                     if requires_approval:
+                        from denis_unified_v1.actions.decision_trace import (
+                            trace_tool_approval,
+                            trace_policy_eval,
+                        )
+
+                        trace_tool_approval(
+                            tool=tool_name,
+                            decision="REQUIRES_HUMAN",
+                            reason="explicit_requires_approval_flag",
+                            risk_level=risk_level,
+                        )
+                        trace_policy_eval(
+                            policy_id="tool_approval_policy",
+                            decision="BLOCKED",
+                            reason="explicit_requires_approval_flag",
+                            policy_hits=["requires_approval=true"],
+                        )
                         return ApprovalDecision.REQUIRES_HUMAN
 
                     # Risk-based decision
                     if risk_level in ("high", "critical"):
+                        from denis_unified_v1.actions.decision_trace import (
+                            trace_tool_approval,
+                            trace_policy_eval,
+                        )
+
+                        trace_tool_approval(
+                            tool=tool_name,
+                            decision="REQUIRES_HUMAN",
+                            reason=f"risk_level_{risk_level}",
+                            risk_level=risk_level,
+                        )
+                        trace_policy_eval(
+                            policy_id="risk_policy",
+                            decision="BLOCKED",
+                            reason=f"high_risk_{risk_level}",
+                            policy_hits=["risk_policy"],
+                        )
                         return ApprovalDecision.REQUIRES_HUMAN
 
                     if risk_level == "medium":
                         if confidence_band in ("low", "medium"):
+                            from denis_unified_v1.actions.decision_trace import (
+                                trace_tool_approval,
+                                trace_policy_eval,
+                            )
+
+                            trace_tool_approval(
+                                tool=tool_name,
+                                decision="REQUIRES_HUMAN",
+                                reason=f"medium_risk_{confidence_band}_band",
+                                risk_level=risk_level,
+                            )
+                            trace_policy_eval(
+                                policy_id="risk_policy",
+                                decision="BLOCKED",
+                                reason=f"medium_risk_{confidence_band}_band",
+                                policy_hits=["risk_policy", "confidence_policy"],
+                            )
                             return ApprovalDecision.REQUIRES_HUMAN
+
+                    from denis_unified_v1.actions.decision_trace import (
+                        trace_tool_approval,
+                        trace_policy_eval,
+                    )
+
+                    trace_tool_approval(
+                        tool=tool_name,
+                        decision="APPROVED",
+                        reason=f"low_risk_{risk_level}",
+                        risk_level=risk_level,
+                    )
+                    trace_policy_eval(
+                        policy_id="risk_policy",
+                        decision="PASSED",
+                        reason=f"low_risk_{risk_level}",
+                        policy_hits=["risk_policy"],
+                    )
 
                     return ApprovalDecision.APPROVED
         except Exception as e:

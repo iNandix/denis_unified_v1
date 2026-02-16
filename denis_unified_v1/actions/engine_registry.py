@@ -213,16 +213,29 @@ async def healthcheck_all_engines() -> dict[str, dict]:
     return results
 
 
-def select_engine_for_intent(intent: str) -> Optional[Engine]:
+def select_engine_for_intent(
+    intent: str,
+    task_heavy: bool = False,
+    force_booster: bool = False,
+) -> Optional[Engine]:
     """
-    Select best engine for an intent based on graph preferences.
+    Select best engine based on role/tier policy.
 
-    Model: Node -> Service -> Engine
-    Priority:
-    1. Local node (via DENIS_NODE_NAME env)
-    2. Intent preference (PREFERS_ENGINE)
-    3. Any active engine
-    4. Cloud fallback
+    Policy:
+    1. If intent has PREFERS_ENGINE and active -> use it
+    2. If local primary engines healthy (>= 1 active):
+       - Heavy tasks -> prefer primary/heavy
+       - Light tasks -> prefer booster/free if available, else primary/light
+    3. If local unhealthy (no active primary):
+       - Use any active engine (degraded mode)
+    4. Booster usage:
+       - Only when local cluster is healthy (not degraded mode)
+       - Marked as 'offload' in telemetry
+
+    Args:
+        intent: The intent to select engine for
+        task_heavy: True if task requires heavy engine (coding, planning)
+        force_booster: Force using booster (for optimization, not failure)
     """
     import os
     from denis_unified_v1.feature_flags import load_feature_flags
@@ -236,34 +249,25 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
 
     try:
         with driver.session() as session:
-            # 1. Try local node first (local-first routing)
-            result = session.run(
-                """
-                MATCH (n:Node {name: $local})-[:HOSTS]->(:Service)-[:PROVIDES]->(e:Engine)
-                WHERE e.status = 'active'
-                RETURN e.name as name, e.endpoint as endpoint, e.model as model,
-                       e.status as status, n.name as node
-                LIMIT 1
-            """,
-                local=local_node,
-            )
-            record = result.single()
-            if record:
-                return Engine(
-                    name=record["name"],
-                    endpoint=record["endpoint"] or "",
-                    model=record["model"] or "",
-                    status=record["status"],
-                    node=record.get("node"),
-                )
+            # 0. Check if local cluster is healthy
+            result = session.run("""
+                MATCH (e:Engine)
+                WHERE coalesce(e.status, 'unknown') = 'active' 
+                  AND coalesce(e.role, 'primary') = 'primary' 
+                  AND coalesce(e.cost_class, 'local') = 'local'
+                RETURN count(e) as local_active
+            """)
+            rec = result.single()
+            local_active = rec["local_active"] if rec else 0
+            local_healthy = local_active >= 1
 
-            # 2. Check intent preferences
+            # 1. Intent preference (highest priority)
             result = session.run(
                 """
                 MATCH (i:Intent {name: $intent})-[p:PREFERS_ENGINE]->(e:Engine)
-                WHERE e.status = 'active'
+                WHERE coalesce(e.status, 'unknown') = 'active'
                 RETURN e.name as name, e.endpoint as endpoint, e.model as model,
-                       e.status as status
+                       e.status as status, e.role as role, e.tier as tier, e.cost_class as cost_class
                 ORDER BY p.reason
                 LIMIT 1
             """,
@@ -271,6 +275,39 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
             )
             record = result.single()
             if record:
+                from denis_unified_v1.actions.decision_trace import (
+                    trace_engine_selection,
+                )
+
+                trace_engine_selection(
+                    intent=intent,
+                    engine=record["name"],
+                    mode="PRIMARY",
+                    reason="intent_preference",
+                    local_ok=local_healthy,
+                    local_required_active=local_active,
+                )
+                # Trace routing for intent preference
+                endpoint = record["endpoint"] or ""
+                network_kind = "unknown"
+                if endpoint.startswith("http://10.10.10."):
+                    network_kind = "dedicated"
+                elif endpoint.startswith("http://192.168."):
+                    network_kind = "lan"
+                elif "tailscale" in endpoint.lower():
+                    network_kind = "tailscale"
+                elif endpoint.startswith("http://"):
+                    network_kind = "cloud"
+                from denis_unified_v1.actions.decision_trace import trace_routing
+
+                trace_routing(
+                    interface_kind=network_kind,
+                    service_name="intent_preferred",
+                    endpoint=endpoint,
+                    reason="intent_preference",
+                    intent=intent,
+                    engine=record["name"],
+                )
                 return Engine(
                     name=record["name"],
                     endpoint=record["endpoint"] or "",
@@ -278,18 +315,145 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
                     status=record["status"],
                 )
 
-            # 3. Any active engine
-            result = session.run(
-                """
+            # 2. Policy-based selection
+            if local_healthy:
+                if task_heavy:
+                    result = session.run("""
+                        MATCH (e:Engine)
+                        WHERE coalesce(e.status, 'unknown') = 'active' 
+                          AND coalesce(e.tier, 'light') = 'heavy' 
+                          AND coalesce(e.role, 'primary') = 'primary'
+                        RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                               e.status as status, e.role as role
+                        LIMIT 1
+                    """)
+                elif force_booster:
+                    result = session.run("""
+                        MATCH (e:Engine)
+                        WHERE coalesce(e.status, 'unknown') = 'active' 
+                          AND coalesce(e.role, 'primary') = 'booster'
+                        RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                               e.status as status, e.role as role
+                        LIMIT 1
+                    """)
+                else:
+                    result = session.run("""
+                        MATCH (e:Engine)
+                        WHERE coalesce(e.status, 'unknown') = 'active' 
+                          AND coalesce(e.cost_class, 'local') = 'free'
+                        RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                               e.status as status, e.role as role
+                        LIMIT 1
+                    """)
+                    record = result.single()
+                    if not record:
+                        result = session.run("""
+                            MATCH (e:Engine)
+                            WHERE coalesce(e.status, 'unknown') = 'active' 
+                              AND coalesce(e.tier, 'heavy') = 'light'
+                            RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                                   e.status as status, e.role as role
+                            LIMIT 1
+                        """)
+            else:
+                logger.warning(
+                    f"Local cluster unhealthy ({local_active} active), using degraded mode"
+                )
+                result = session.run("""
+                    MATCH (e:Engine)
+                    WHERE coalesce(e.status, 'unknown') = 'active'
+                    RETURN e.name as name, e.endpoint as endpoint, e.model as model,
+                           e.status as status, e.role as role
+                    LIMIT 1
+                """)
+
+            record = result.single()
+            if record:
+                engine_name = record["name"]
+                endpoint = record["endpoint"] or ""
+
+                # Determine network kind and trace routing
+                network_kind = "unknown"
+                service_name = "unknown"
+                if endpoint.startswith("http://10.10.10."):
+                    network_kind = "dedicated"
+                    service_name = "llama_cpp_local"
+                elif endpoint.startswith("http://192.168."):
+                    network_kind = "lan"
+                    service_name = "llama_cpp_lan"
+                elif "tailscale" in endpoint.lower():
+                    network_kind = "tailscale"
+                    service_name = "llama_cpp_tailscale"
+                elif endpoint.startswith("http://"):
+                    network_kind = "cloud"
+                    service_name = "cloud_inference"
+
+                from denis_unified_v1.actions.decision_trace import trace_routing
+
+                trace_routing(
+                    interface_kind=network_kind,
+                    service_name=service_name,
+                    endpoint=endpoint,
+                    reason="engine_selected",
+                    intent=intent,
+                    engine=engine_name,
+                )
+
+                mode = (
+                    "OFFLOAD"
+                    if force_booster
+                    else ("DEGRADED" if not local_healthy else "PRIMARY")
+                )
+                reason = (
+                    "heavy_task"
+                    if task_heavy
+                    else ("booster_requested" if force_booster else "light_task_free")
+                )
+                if not local_healthy:
+                    mode = "DEGRADED"
+                    reason = "local_cluster_unhealthy"
+
+                from denis_unified_v1.actions.decision_trace import (
+                    trace_engine_selection,
+                )
+
+                trace_engine_selection(
+                    intent=intent,
+                    engine=record["name"],
+                    mode=mode,
+                    reason=reason,
+                    local_ok=local_healthy,
+                    local_required_active=local_active,
+                )
+                return Engine(
+                    name=record["name"],
+                    endpoint=record["endpoint"] or "",
+                    model=record["model"] or "",
+                    status=record["status"],
+                )
+
+            # 3. Any active as last resort
+            result = session.run("""
                 MATCH (e:Engine)
-                WHERE e.status = 'active'
+                WHERE coalesce(e.status, 'unknown') = 'active'
                 RETURN e.name as name, e.endpoint as endpoint, e.model as model,
                        e.status as status
                 LIMIT 1
-            """
-            )
+            """)
             record = result.single()
             if record:
+                from denis_unified_v1.actions.decision_trace import (
+                    trace_engine_selection,
+                )
+
+                trace_engine_selection(
+                    intent=intent,
+                    engine=record["name"],
+                    mode="FALLBACK",
+                    reason="no_active_engines",
+                    local_ok=False,
+                    local_required_active=0,
+                )
                 return Engine(
                     name=record["name"],
                     endpoint=record["endpoint"] or "",
@@ -297,37 +461,10 @@ def select_engine_for_intent(intent: str) -> Optional[Engine]:
                     status=record["status"],
                 )
 
-            # 4. Cloud fallback
-            result = session.run(
-                """
-                MATCH (s:Service {type: 'cloud'})-[:PROVIDES]->(e:Engine)
-                RETURN e.name as name, e.endpoint as endpoint, e.model as model,
-                       e.status as status
-                LIMIT 1
-            """
-            )
-            record = result.single()
-            if record:
-                return Engine(
-                    name=record["name"],
-                    endpoint=record["endpoint"] or "",
-                    model=record["model"] or "",
-                    status=record["status"],
-                )
     except Exception as e:
         logger.warning(f"Failed to select engine: {e}")
 
     return None
-
-
-# Network priority (lower = better)
-NETWORK_PRIORITY = {
-    "dedicated": 1,
-    "lan": 2,
-    "tailscale": 3,
-    "cloud": 4,
-    "unknown": 5,
-}
 
 
 def get_engine_network_kind(engine_name: str) -> str:
