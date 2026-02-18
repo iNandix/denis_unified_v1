@@ -59,29 +59,38 @@ class ApprovalPopup:
     def _format_cp_text(self, cp: ContextPack) -> str:
         """Format ContextPack details for zenity display."""
         lines = []
-        lines.append(f"🎯 Intent:   {cp.intent}")
+        status_icon = "✅" if cp.success else "❌"
+        lines.append(f"🎯 Intent:   {cp.intent} {status_icon}")
         lines.append(f"📋 Misión:   {cp.mission[:80]}")
         lines.append(f"🤖 Modelo:   {cp.model}")
         lines.append(f"🌿 Repo:     {cp.repo_name} · {cp.branch}")
         lines.append(f"🔑 CP ID:    {cp.cp_id}")
         lines.append("")
-        lines.append(f"📁 Archivos ({len(cp.files_to_read)}):")
-        for f in cp.files_to_read[:6]:
-            lines.append(f"   · {f}")
-        if len(cp.files_to_read) > 6:
-            lines.append(f"   · ... +{len(cp.files_to_read) - 6} más")
-        if cp.implicit_tasks:
+        if cp.files_touched:
+            lines.append(f"✋ Archivos tocados ({len(cp.files_touched)}):")
+            for f in cp.files_touched[:6]:
+                lines.append(f"   · {f}")
+            if len(cp.files_touched) > 6:
+                lines.append(f"   · ... +{len(cp.files_touched) - 6} más")
             lines.append("")
+        if cp.files_to_read:
+            lines.append(f"📖 Archivos a leer ({len(cp.files_to_read)}):")
+            for f in cp.files_to_read[:4]:
+                lines.append(f"   · {f}")
+            if len(cp.files_to_read) > 4:
+                lines.append(f"   · ... +{len(cp.files_to_read) - 4} más")
+            lines.append("")
+        if cp.implicit_tasks:
             lines.append(f"⚙️  Tareas implícitas:")
             for t in cp.implicit_tasks[:4]:
                 lines.append(f"   · {t}")
+            lines.append("")
         if cp.constraints:
-            lines.append("")
             lines.append(f"🔒 Constraints: {', '.join(cp.constraints)}")
-        if cp.notes:
             lines.append("")
+        if cp.notes:
             lines.append(f"💬 Nota: {cp.notes[:100]}")
-        lines.append("")
+            lines.append("")
         lines.append(
             f"⏱️  Expira en 120s · {'✅ validado' if cp.human_validated else '⏳ pendiente'}"
         )
