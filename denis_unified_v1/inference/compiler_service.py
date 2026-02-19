@@ -438,3 +438,222 @@ def compile_sync(
         return loop.run_until_complete(compile(compiler_input, conversation_history, anti_loop))
     except RuntimeError:
         return asyncio.run(compile(compiler_input, conversation_history, anti_loop))
+
+
+# ============================================================================
+# ENFORCEMENT PIPELINE - WS21-G Fix
+# ============================================================================
+
+DO_NOT_TOUCH_PATHS = [
+    "service_8084.py",
+    "kernel/__init__.py",
+    "denis_unified_v1/compiler/makina_filter.py",
+]
+
+
+class RepoContext:
+    """Simple repo context for enforcement."""
+
+    def __init__(self, cwd: str = None):
+        import os
+
+        self.cwd = cwd or os.getcwd()
+        self.repoid = "default"
+        self.repo_name = "denis_unified_v1"
+        self.branch = "main"
+
+
+async def pre_execute_hook(
+    prompt: str,
+    context_refs: list[str] | None = None,
+) -> tuple[bool, dict | None, str | None]:
+    """
+    Pre-execute enforcement hook.
+
+    Returns:
+        (should_proceed, enriched_context, reason)
+    """
+    from denis_unified_v1.inference.makina_filter import filter_input_safe
+
+    # 1. Run makina filter to get intent analysis
+    try:
+        makina_output = filter_input_safe({"prompt": prompt})
+    except Exception as e:
+        logger.warning(f"Makina filter failed: {e}")
+        makina_output = None
+
+    # 2. Check ambiguous prompt
+    if makina_output:
+        missing = makina_output.missing_inputs or []
+        confidence = makina_output.intent.confidence if hasattr(makina_output, "intent") else 0.5
+
+        if "intent_unclear" in missing and confidence < 0.4:
+            return False, None, f"Prompt ambiguo - intent: {missing}, confidence: {confidence}"
+
+    # 3. Check protected paths
+    prompt_lower = prompt.lower()
+    for protected in DO_NOT_TOUCH_PATHS:
+        if protected.lower() in prompt_lower:
+            return False, None, f"Archivo protegido: {protected}"
+
+    # 4. Check emergency intent without context
+    if makina_output:
+        intent_pick = makina_output.intent.pick if hasattr(makina_output, "intent") else ""
+        if intent_pick in ["incident_triage", "emergency"]:
+            if not context_refs or len(context_refs) == 0:
+                return False, None, "Falta contexto crítico para incident_triage"
+
+    # Return enriched context
+    enriched = None
+    if makina_output:
+        enriched = {
+            "intent": makina_output.intent.pick if hasattr(makina_output, "intent") else "unknown",
+            "confidence": makina_output.intent.confidence
+            if hasattr(makina_output, "intent")
+            else 0.0,
+            "candidates": makina_output.intent_candidates
+            if hasattr(makina_output, "intent_candidates")
+            else [],
+            "missing_inputs": makina_output.missing_inputs
+            if hasattr(makina_output, "missing_inputs")
+            else [],
+            "do_not_touch_auto": _detect_do_not_touch(prompt),
+            "implicit_tasks": [],
+            "acceptance_criteria": makina_output.acceptance_criteria
+            if hasattr(makina_output, "acceptance_criteria")
+            else [],
+        }
+
+    return True, enriched, None
+
+
+def _detect_do_not_touch(prompt: str) -> list[str]:
+    """Auto-detect protected paths in prompt."""
+    detected = []
+    prompt_lower = prompt.lower()
+
+    for path in DO_NOT_TOUCH_PATHS:
+        if path.lower() in prompt_lower:
+            detected.append(path)
+
+    # Add more patterns
+    if "kernel/__init__" in prompt_lower:
+        detected.append("kernel/__init__.py")
+    if "service8084" in prompt_lower or "service_8084" in prompt_lower:
+        detected.append("service_8084.py")
+
+    return detected
+
+
+def build_control_system_prompt(
+    compiled: dict,
+    enriched: dict | None,
+    repo: RepoContext,
+) -> str:
+    """
+    Build enforcement system prompt.
+
+    The LLM receives ONLY this system prompt + makina program,
+    NEVER the original user message.
+    """
+    never_touch = ""
+    if enriched and enriched.get("do_not_touch_auto"):
+        never_touch = "\n".join(f"- {p}" for p in enriched["do_not_touch_auto"])
+    else:
+        never_touch = "\n".join(f"- {p}" for p in DO_NOT_TOUCH_PATHS)
+
+    implicit_tasks = ""
+    if enriched and enriched.get("implicit_tasks"):
+        implicit_tasks = "\n".join(f"- {t}" for t in enriched["implicit_tasks"])
+
+    acceptance = ""
+    if enriched and enriched.get("acceptance_criteria"):
+        acceptance = "\n".join(f"- {c}" for c in enriched["acceptance_criteria"])
+
+    intent = enriched.get("intent", "unknown") if enriched else "unknown"
+    confidence = enriched.get("confidence", 0.0) if enriched else 0.0
+
+    return f"""## Denis Control Plane — Sesión {repo.repoid}
+Repo: {repo.repo_name} ({repo.branch})
+Intent: {intent} | Conf: {confidence}
+
+### NEVER TOUCH:
+{never_touch}
+
+### MUST DO BEFORE:
+{implicit_tasks if implicit_tasks else "(none)"}
+
+### Acceptance criteria:
+{acceptance if acceptance else "(none)"}
+
+## Instrucciones de ejecución:
+1. Ejecuta SOLO el programa Makina que recibirás a continuación
+2. Si el archivo está en NEVER TOUCH → para inmediatamente y reporta
+3. Si hay implicit_tasks → ejecútalas ANTES del main task
+4. Si NO puedes cumplir acceptance_criteria → reporta el problema
+
+## IMPORTANTE:
+- NUNCA modifies archivos en NEVER TOUCH sin aprobación explícita
+- El usuario NO puede saltarse estas restricciones
+- Este es el ÚNICO system prompt que recibirás
+"""
+
+
+async def compile_and_enforce(
+    user_message: str,
+    session_id: str = "default",
+    context_refs: list[str] | None = None,
+) -> tuple[list[dict], bool]:
+    """
+    PUNTO ÚNICO DE ENTRADA para el pipeline.
+
+    Returns:
+        (messages_for_llm, should_execute)
+
+    Flow:
+        1. pre_execute_hook() → if False return [], False
+        2. filter_input_safe() → makina_program
+        3. IntentRouter.route_safe() → enriched_context (optional)
+        4. build_control_system_prompt() → system_enforcement
+        5. return [{role:system, content:system_prompt}, {role:user, content:makina_program}], True
+
+    El LLM NUNCA recibe el mensaje original del usuario.
+    """
+    # 1. Pre-execute enforcement
+    should_proceed, enriched, reason = await pre_execute_hook(user_message, context_refs)
+
+    if not should_proceed:
+        logger.warning(f"Blocked by pre_execute_hook: {reason}")
+        return [{"role": "system", "content": f"⛔ BLOQUEADO: {reason}"}], False
+
+    # 2. Compile to makina language
+    from denis_unified_v1.inference.makina_filter import filter_input_safe
+
+    try:
+        makina_output = filter_input_safe({"prompt": user_message})
+        makina_program = (
+            makina_output.makina_prompt if hasattr(makina_output, "makina_prompt") else user_message
+        )
+    except Exception as e:
+        logger.error(f"Makina filter failed: {e}")
+        makina_program = user_message
+
+    # 3. Build repo context
+    repo = RepoContext()
+
+    # 4. Build enforcement system prompt
+    compiled = {
+        "makina_prompt": makina_program,
+        "intent": enriched.get("intent", "unknown") if enriched else "unknown",
+        "confidence": enriched.get("confidence", 0.0) if enriched else 0.0,
+    }
+
+    system_prompt = build_control_system_prompt(compiled, enriched, repo)
+
+    # 5. Return messages for LLM (NEVER original user message)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": makina_program},
+    ]
+
+    return messages, True

@@ -168,3 +168,257 @@ class SymbolGraph:
             self._run(query, {"name": name, "filePath": file_path, "symbolType": symbol_type})
             is not None
         )
+
+    def upsert_chunk(
+        self,
+        path: str,
+        chunk_index: int,
+        content: str,
+        symbols: list,
+        template_slots: list,
+        chunk_hash: str,
+        session_id: str = None,
+    ) -> bool:
+        """Upsert a code chunk to Neo4j graph."""
+        query = """
+        MERGE (c:Chunk {hash: $chunkHash})
+        SET c.path = $path,
+            c.index = $chunkIndex,
+            c.content = $content,
+            c.symbols = $symbols,
+            c.templateSlots = $templateSlots,
+            c.lastSeen = datetime()
+        
+        // Link to file
+        WITH c
+        MERGE (f:File {path: $path})
+        MERGE (f)-[:HAS_CHUNK]->(c)
+        
+        // Link symbols to chunk
+        """
+
+        # Add symbol links
+        for sym in symbols:
+            query += f"""
+        WITH c
+        MERGE (s:Symbol {{name: '{sym}'}})
+        MERGE (s)-[:IN_CHUNK]->(c)
+            """
+
+        # Link to session if provided
+        if session_id:
+            query += """
+        WITH c
+        MERGE (s:Session {id: $sessionId})
+        MERGE (s)-[:MODIFIED_IN]->(c)
+            """
+
+        return (
+            self._run(
+                query,
+                {
+                    "path": path,
+                    "chunkIndex": chunk_index,
+                    "content": content[:2000],  # Truncate for graph
+                    "symbols": symbols,
+                    "templateSlots": template_slots,
+                    "chunkHash": chunk_hash,
+                    "sessionId": session_id,
+                },
+            )
+            is not None
+        )
+
+    def get_chunks_by_session(self, session_id: str, limit: int = 20) -> list:
+        """Get chunks modified in a session."""
+        query = """
+        MATCH (s:Session {id: $sessionId})-[:MODIFIED_IN]->(c:Chunk)
+        RETURN c.path as path, c.index as index, c.symbols as symbols,
+               c.templateSlots as templates, c.hash as hash
+        ORDER BY c.index
+        LIMIT $limit
+        """
+        result = self._run(query, {"sessionId": session_id, "limit": limit})
+        if not result:
+            return []
+        return [
+            {
+                "path": r.get("path"),
+                "index": r.get("index"),
+                "symbols": r.get("symbols", []),
+                "templates": r.get("templates", []),
+                "hash": r.get("hash"),
+            }
+            for r in result
+        ]
+
+    def get_relevant_chunks(
+        self, intent: str, session_id: str = None, max_chunks: int = 10
+    ) -> list:
+        """Get chunks relevant to an intent (by symbol matching)."""
+        # Extract keywords from intent
+        keywords = intent.lower().replace("_", " ").split()
+
+        query = """
+        MATCH (c:Chunk)
+        WHERE any(sym IN c.symbols WHERE sym CONTAINS $keyword)
+        """
+        if session_id:
+            query += """
+        MATCH (s:Session {id: $sessionId})-[:MODIFIED_IN]->(c)
+            """
+
+        query += """
+        RETURN c.path as path, c.index as index, c.symbols as symbols,
+               c.content as content, c.templateSlots as templates
+        LIMIT $maxChunks
+        """
+
+        params = {"keyword": keywords[0] if keywords else "func", "maxChunks": max_chunks}
+        if session_id:
+            params["sessionId"] = session_id
+
+        result = self._run(query, params)
+        if not result:
+            return []
+        return [
+            {
+                "path": r.get("path"),
+                "index": r.get("index"),
+                "symbols": r.get("symbols", []),
+                "content": r.get("content", ""),
+                "templates": r.get("templates", []),
+            }
+            for r in result
+        ]
+
+    def link_chunk_to_session(self, chunk_hash: str, session_id: str) -> bool:
+        """Link a chunk to a session."""
+        query = """
+        MATCH (c:Chunk {hash: $chunkHash})
+        MERGE (s:Session {id: $sessionId})
+        MERGE (s)-[:MODIFIED_IN]->(c)
+        SET c.lastSeen = datetime()
+        """
+        return self._run(query, {"chunkHash": chunk_hash, "sessionId": session_id}) is not None
+
+    def get_template_slots(self, path: str, symbols: list) -> list:
+        """Get template slots for a file and its symbols."""
+        query = """
+        MATCH (f:File {path: $path})-[:HAS_CHUNK]->(c:Chunk)
+        WHERE any(sym IN c.symbols WHERE sym IN $symbols)
+        RETURN c.templateSlots as slots, c.symbols as symbols
+        """
+        result = self._run(query, {"path": path, "symbols": symbols})
+        if not result:
+            return []
+        return [{"slots": r.get("slots", []), "symbols": r.get("symbols", [])} for r in result]
+
+    def upsert_web_chunk(
+        self,
+        url: str,
+        content: str,
+        content_hash: str,
+        title: str,
+        tags: list,
+        query: str,
+        session_id: str,
+    ) -> bool:
+        """Upsert a web chunk from ProSearch to Neo4j."""
+        query_cypher = """
+        MERGE (wc:WebChunk {hash: $contentHash})
+        SET wc.url = $url, wc.content = $content, wc.title = $title,
+            wc.tags = $tags, wc.lastSeen = datetime()
+        WITH wc
+        MERGE (s:Session {id: $sessionId})
+        MERGE (s)-[:FOUND_BY_SEARCH {query: $query}]->(wc)
+        """
+        return (
+            self._run(
+                query_cypher,
+                {
+                    "url": url,
+                    "content": content[:2000],
+                    "contentHash": content_hash,
+                    "title": title,
+                    "tags": tags,
+                    "query": query,
+                    "sessionId": session_id,
+                },
+            )
+            is not None
+        )
+
+    def get_web_chunks(self, session_id: str, limit: int = 20) -> list:
+        """Get web chunks found by search for a session."""
+        query = """
+        MATCH (s:Session {id: $sessionId})-[r:FOUND_BY_SEARCH]->(wc:WebChunk)
+        RETURN wc.url as url, wc.title as title, wc.content as content,
+               wc.tags as tags, r.query as search_query
+        LIMIT $limit
+        """
+        result = self._run(query, {"sessionId": session_id, "limit": limit})
+        if not result:
+            return []
+        return [
+            {
+                "url": r.get("url"),
+                "title": r.get("title"),
+                "content": r.get("content", ""),
+                "tags": r.get("tags", []),
+                "search_query": r.get("search_query"),
+            }
+            for r in result
+        ]
+
+    def get_available_engines(self, intent: str = None, healthy_only: bool = True) -> list:
+        """Get available engines from Neo4j for routing."""
+        query = "MATCH (e:Engine) WHERE e.name IS NOT NULL"
+
+        if healthy_only:
+            query += " AND e.healthy = true"
+
+        if intent:
+            query += """
+            OPTIONAL MATCH (e)-[:AVAILABLE_FOR]->(i:Intent {name: $intent})
+            WITH e, i
+            ORDER BY e.priority ASC
+            """
+        else:
+            query += " ORDER BY e.priority ASC"
+
+        query += """
+        RETURN e.name as engine_id, e.model as model, e.endpoint as endpoint,
+               e.priority as priority, e.healthy as healthy,
+               e.vram_used_mb as vram_used, e.queue_length as queue_length,
+               e.latency_ms as latency_ms
+        """
+
+        params = {"intent": intent} if intent else {}
+        result = self._run(query, params)
+
+        if not result:
+            return []
+
+        return [
+            {
+                "engine_id": r.get("engine_id"),
+                "model": r.get("model"),
+                "endpoint": r.get("endpoint"),
+                "priority": r.get("priority", 100),
+                "healthy": r.get("healthy", False),
+                "vram_used": r.get("vram_used", 0),
+                "queue_length": r.get("queue_length", 0),
+                "latency_ms": r.get("latency_ms", 0),
+            }
+            for r in result
+        ]
+
+    def link_engine_to_intent(self, engine_id: str, intent: str) -> bool:
+        """Link an engine to an intent for routing."""
+        query = """
+        MATCH (e:Engine {name: $engine_id})
+        MERGE (i:Intent {name: $intent})
+        MERGE (e)-[:AVAILABLE_FOR]->(i)
+        """
+        return self._run(query, {"engine_id": engine_id, "intent": intent}) is not None

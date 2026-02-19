@@ -3,29 +3,62 @@
 
 import json
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 sys.path.insert(0, "/media/jotah/SSD_denis/denis_unified_v1")
 sys.path.insert(0, "/media/jotah/SSD_denis")
 
 
+def _get_git_root(cwd: str) -> str:
+    """Find git root from current working directory."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return cwd
+
+
+def _get_workspace_base() -> dict:
+    """Dynamic workspace paths based on actual cwd."""
+    cwd = os.getcwd()
+    git_root = _get_git_root(cwd)
+
+    return {
+        "workspace": git_root,
+        "pythonpath": str(Path(git_root).parent),
+        "venv": "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
+        "frontend": "/media/jotah/SSD_denis/FrontDenisACTUAL",
+        "ssd_root": "/media/jotah/SSD_denis",
+        "node": "nodo1",
+    }
+
+
 def _read_session_parts() -> tuple:
     try:
-        raw = open("/tmp/denis/sessionid.txt").read().strip()
+        raw = open("/tmp/denis/session_id.txt").read().strip()
         parts = (raw + "||||").split("|")
         return parts[0], parts[1], parts[2] or "unknown", parts[3] or "main"
     except Exception:
-        return "default", "", "unknown", "main"
+        try:
+            from control_plane.repo_context import RepoContext
+
+            repo = RepoContext()
+            return repo.get_session_id(), repo.repo_id, repo.repo_name, repo.branch
+        except Exception:
+            return "default", "", "unknown", "main"
 
 
-WORKSPACE_BASE = {
-    "workspace": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
-    "pythonpath": "/media/jotah/SSD_denis/home_jotah",
-    "venv": "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
-    "frontend": "/media/jotah/SSD_denis/FrontDenisACTUAL",
-    "ssd_root": "/media/jotah/SSD_denis",
-    "node": "nodo1",
-}
+WORKSPACE_BASE = _get_workspace_base()
 
 DO_NOT_TOUCH = [
     "service_8084.py",
@@ -231,6 +264,34 @@ def handle_jsonrpc(request: dict) -> dict:
                                 },
                             },
                             "required": ["cp_id"],
+                        },
+                    },
+                    {
+                        "name": "get_graph_analytics",
+                        "description": "GETS analytics from Neo4j graph: CP approval rates, intent patterns, session stats. Returns stats for the last N days.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "days": {
+                                    "type": "integer",
+                                    "description": "Number of days to look back (default 7)",
+                                    "default": 7,
+                                }
+                            },
+                        },
+                    },
+                    {
+                        "name": "get_learned_patterns",
+                        "description": "GETS learned task patterns from the graph for a specific intent. Returns tasks that Denis has learned to associate with this intent.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "intent": {
+                                    "type": "string",
+                                    "description": "Intent to get patterns for (e.g., 'implement_feature', 'debug_repo')",
+                                },
+                            },
+                            "required": ["intent"],
                         },
                     },
                 ]

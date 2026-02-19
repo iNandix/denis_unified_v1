@@ -38,6 +38,92 @@ def _neo4j_write(query: str, params: Dict[str, Any]) -> bool:
         return False
 
 
+def sync_engine_to_graph(
+    engine_id: str,
+    vram_used_mb: float = 0,
+    queue_length: int = 0,
+    latency_ms: float = 0,
+    healthy: bool = True,
+    intent: str = None,
+) -> bool:
+    """
+    Sync engine runtime metrics to Neo4j.
+
+    This is called by CapacityView when engines update.
+
+    Args:
+        engine_id: Engine identifier
+        vram_used_mb: VRAM used in MB
+        queue_length: Number of queued requests
+        latency_ms: Average latency in ms
+        healthy: Engine health status
+        intent: Primary intent (chat/coder/fast/intent)
+    """
+    ok = _neo4j_write(
+        """
+        MERGE (e:Engine {name: $engine_id})
+        SET e.vram_used_mb = $vram,
+            e.queue_length = $queue,
+            e.latency_ms = $latency,
+            e.healthy = $healthy,
+            e.last_update = datetime()
+        """,
+        {
+            "engine_id": engine_id,
+            "vram": vram_used_mb,
+            "queue": queue_length,
+            "latency": latency_ms,
+            "healthy": healthy,
+        },
+    )
+
+    # Link to intent if provided
+    if intent and ok:
+        _neo4j_write(
+            """
+            MATCH (e:Engine {name: $engine_id})
+            MERGE (i:Intent {name: $intent})
+            MERGE (e)-[:AVAILABLE_FOR]->(i)
+            """,
+            {"engine_id": engine_id, "intent": intent},
+        )
+
+    return ok
+
+
+def sync_all_engines_from_registry() -> int:
+    """
+    Sync all engines from registry to Neo4j.
+
+    Called at startup or on-demand.
+    """
+    try:
+        from denis_unified_v1.kernel.engine_registry import get_engine_registry
+
+        registry = get_engine_registry()
+    except Exception as e:
+        logger.warning(f"Cannot load engine_registry: {e}")
+        return 0
+
+    synced = 0
+    for engine_id, config in registry.items():
+        intent = config.get("role", "unknown")
+
+        ok = sync_engine_to_graph(
+            engine_id=engine_id,
+            vram_used_mb=0,
+            queue_length=0,
+            latency_ms=0,
+            healthy=True,
+            intent=intent,
+        )
+        if ok:
+            synced += 1
+
+    logger.info(f"Synced {synced} engines to Neo4j")
+    return synced
+
+
 class VoiceGraphProjection:
     """Projects voice pipeline events to Neo4j."""
 
