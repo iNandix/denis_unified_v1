@@ -57,14 +57,24 @@ def generate_context_pack(agent_result: dict) -> dict:
 
 
 def trigger_approval_popup(cp_dict: dict) -> bool:
-    """Trigger zenity approval popup."""
+    """Trigger zenity approval popup or auto-approve based on risk level."""
     from control_plane.approval_popup import ApprovalPopup
     from control_plane.cp_generator import ContextPack
 
     cp = ContextPack.from_dict(cp_dict)
     popup = ApprovalPopup()
 
-    logger.info(f"Showing approval popup for CP {cp.cp_id}")
+    if cp.risk_level in ["LOW", "MEDIUM"] and not cp.is_checkpoint:
+        logger.info(
+            f"Auto-approving CP {cp.cp_id} (risk={cp.risk_level}, checkpoint={cp.is_checkpoint})"
+        )
+        cp.human_validated = True
+        cp.validated_by = "auto_approve"
+        cp_dict["human_validated"] = True
+        cp_dict["validated_by"] = "auto_approve"
+        return True
+
+    logger.info(f"Showing approval popup for CP {cp.cp_id} (risk={cp.risk_level})")
     result, consult = popup.show_cp_approval(cp)
 
     if result == "approved":

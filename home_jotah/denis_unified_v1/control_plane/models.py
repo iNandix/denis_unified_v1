@@ -21,6 +21,8 @@ class ContextPack:
     intent: str = ""
     confidence: int = 0
     success: bool = False
+    risk_level: str = "MEDIUM"
+    is_checkpoint: bool = False
     constraints: List[str] = field(default_factory=list)
     repo_id: str = ""
     repo_name: str = "unknown"

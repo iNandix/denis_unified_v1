@@ -107,6 +107,10 @@ class CPGenerator:
         qr = self._get_quota_registry()
         model = qr.get_best_model_for(intent) if qr else "groq"
 
+        risk_level = self._infer_risk_level(
+            intent, files_touched, result.get("is_checkpoint", False)
+        )
+
         return ContextPack(
             cp_id=cp_id,
             mission=mission,
@@ -114,6 +118,8 @@ class CPGenerator:
             files_to_read=related_files,
             files_touched=files_touched,
             success=result.get("success", False),
+            risk_level=risk_level,
+            is_checkpoint=result.get("is_checkpoint", False),
             do_not_touch=["kernel/__init__.py", "public/"],
             implicit_tasks=result.get("implicit_tasks", []),
             acceptance_criteria=result.get("acceptance_criteria", []),
@@ -123,6 +129,18 @@ class CPGenerator:
             repo_name=repo_ctx.repo_name,
             branch=repo_ctx.branch,
         )
+
+    def _infer_risk_level(self, intent: str, files_touched: List[str], is_checkpoint: bool) -> str:
+        """Infer risk level based on intent and files touched."""
+        if is_checkpoint:
+            return "HIGH"
+        if intent in ["add_test", "add_doc", "fix_typo", "refactor_readme"]:
+            return "LOW"
+        if any(f in str(files_touched) for f in ["inference/", "kernel/", "sandbox/"]):
+            return "CRITICAL"
+        if any(f in str(files_touched) for f in ["compiler/", "persona/", "graph/"]):
+            return "HIGH"
+        return "MEDIUM"
 
     def from_manual(self, mission: str, cwd: str = None) -> ContextPack:
         """Para CPs manuales — enriquece con RepoContext(cwd)."""
