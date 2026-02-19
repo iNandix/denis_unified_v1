@@ -1,20 +1,80 @@
-"""SLM Router - Fast local intent classification.
+"""SLM Router - Rasa NLU + ParLAI + Local SLM intent classification.
 
-Uses nodo1's small local models (llama-3.2-3b, qwen2.5-3b) for intent classification
-before deciding whether to escalate to Groq or use local heuristics.
+Uses:
+- Rasa NLU for intent classification (trained model)
+- ParLAI action templates for response generation
+- nodo1 local SLM (llama-3.2-3b) as fallback
 
-Goal: 80% of requests handled locally, NO Groq unless necessary.
+Goal: 100% local intent classification, NO external APIs.
 """
 
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Threshold for escalation - below this, clarify with user
 CONFIDENCE_THRESHOLD = 0.55
+
+# Rasa NLU model path
+RASA_MODEL_PATH = os.getenv("RASA_MODEL_PATH", "models/rasa_nlu")
+
+
+# ParLAI action templates - mapped from Rasa intents
+PARLAI_ACTIONS: Dict[str, Dict[str, Any]] = {
+    "implement_feature": {
+        "action": "utter_ask_details",
+        "template": "Para crear {feature}, necesito saber: technology stack, scope",
+        "slots": ["tech_stack", "scope"],
+    },
+    "debug_repo": {
+        "action": "utter_ask_error",
+        "template": "Para debuggear, necesito: error message, file path, reproduction steps",
+        "slots": ["error_msg", "file_path", "steps"],
+    },
+    "refactor_migration": {
+        "action": "utter_ask_target",
+        "template": "Refactorizando, necesito: target architecture, files affected",
+        "slots": ["target", "files"],
+    },
+    "run_tests_ci": {
+        "action": "utter_run_tests",
+        "template": "Ejecutando tests en {test_suite}...",
+        "slots": ["test_suite"],
+    },
+    "explain_concept": {
+        "action": "utter_explain",
+        "template": "Explicando {concept}...",
+        "slots": ["concept"],
+    },
+    "design_architecture": {
+        "action": "utter_ask_requirements",
+        "template": "Para diseñar, necesito: requirements, constraints, scale",
+        "slots": ["requirements", "constraints", "scale"],
+    },
+    "toolchain_task": {
+        "action": "utter_toolchain",
+        "template": "Ejecutando toolchain: {tool}...",
+        "slots": ["tool"],
+    },
+    "ops_health_check": {
+        "action": "utter_health_check",
+        "template": "Ejecutando health check de {component}...",
+        "slots": ["component"],
+    },
+    "incident_triage": {
+        "action": "utter_incident",
+        "template": "Triaging incidente: {incident_id}",
+        "slots": ["incident_id"],
+    },
+    "greeting": {
+        "action": "utter_greet",
+        "template": "¡Hola! Soy Denis. ¿En qué puedo ayudarte?",
+        "slots": [],
+    },
+}
 
 
 @dataclass
@@ -27,24 +87,54 @@ class SLMClassification:
     should_clarify: bool
     local_routing: str  # "local", "heuristic", "groq"
     reasoning: str
+    # Rasa/ParLAI fields
+    rasa_intent: str = ""
+    parlai_action: str = ""
+    action_template: str = ""
+    slots_needed: list[str] = field(default_factory=list)
 
 
 class SLMRouter:
     """
-    SLM-first intent classifier.
+    SLM-first intent classifier with Rasa NLU + ParLAI integration.
 
     Flow:
-    1. nodo1 llama-3.2-3b classifies intent + confidence
-    2. If confidence >= 0.55 → route locally/heuristic
-    3. If confidence < 0.55 → clarify() prompt, NO Groq yet
-    4. Only escalate to Groq if clarification fails
+    1. Try Rasa NLU first (trained model)
+    2. Fallback to local SLM (nodo1)
+    3. Last fallback: keyword heuristics
+    4. Map to ParLAI action template
 
-    Target: 80% handled locally
+    Target: 100% local, NO external APIs
     """
 
     def __init__(self):
         self._client = None
+        self._rasa_agent = None
         self._endpoint = os.getenv("SLM_ENDPOINT", "http://127.0.0.1:9997")
+
+    def _get_rasa(self):
+        """Lazy load Rasa NLU agent."""
+        if self._rasa_agent is None:
+            try:
+                from rasa.core.agent import Agent
+
+                self._rasa_agent = Agent.load(RASA_MODEL_PATH)
+                logger.info("Rasa NLU loaded")
+            except Exception as e:
+                logger.warning(f"Rasa NLU init failed: {e}")
+                self._rasa_agent = False  # Mark as failed
+        return self._rasa_agent if self._rasa_agent else None
+
+    def _get_parlai_action(self, intent: str) -> Dict[str, str]:
+        """Get ParLAI action template for intent."""
+        return PARLAI_ACTIONS.get(
+            intent,
+            {
+                "action": "utter_unknown",
+                "template": "No entiendo, ¿puedes reformular?",
+                "slots": [],
+            },
+        )
 
     def _get_client(self):
         """Lazy load local LLM client."""
@@ -59,29 +149,64 @@ class SLMRouter:
 
     async def classify(self, user_prompt: str) -> SLMClassification:
         """
-        Classify user intent using local SLM.
+        Classify user intent: Rasa NLU → Local SLM → Fallback.
 
-        Returns classification with confidence and routing decision.
+        Priority:
+        1. Rasa NLU (trained model) - highest confidence
+        2. Local SLM (nodo1)
+        3. Keyword heuristics (fallback)
+
+        Always maps to ParLAI action template.
         """
-        system_prompt = """Eres un clasificador de intents. Analiza el mensaje del usuario.
+        # 1. Try Rasa NLU first
+        rasa_result = self._try_rasa(user_prompt)
+        if rasa_result:
+            return rasa_result
 
-Intents válidos:
-- implement_feature: crear algo nuevo, añadir funcionalidad
-- debug_repo: arreglar bugs, errores, problemas
-- refactor_migration: refactorizar, migrar código
-- run_tests_ci: ejecutar tests, CI/CD
-- explain_concept: explicar, documentar
-- design_architecture: diseño, arquitectura
-- toolchain_task: tareas de herramientas
-- ops_health_check: проверка здоровья системы
-- incident_triage: incidentes, emergencias
-- greeting: saludo simple
-- unknown: no se puede determinar
+        # 2. Try local SLM
+        slm_result = await self._try_slm(user_prompt)
+        if slm_result:
+            return slm_result
 
-Responde SOLO en JSON:
-{"intent": "...", "confidence": 0.0-1.0, "missing_inputs": [], "reasoning": "..."}
+        # 3. Fallback to heuristics
+        return self._fallback_classify(user_prompt)
 
-Si confidence < 0.6, especifica qué falta en missing_inputs."""
+    def _try_rasa(self, user_prompt: str) -> Optional[SLMClassification]:
+        """Try Rasa NLU classification."""
+        try:
+            rasa = self._get_rasa()
+            if not rasa:
+                return None
+
+            parse_result = rasa.parse_message(user_prompt)
+            intent = parse_result.get("intent", {}).get("name", "unknown")
+            confidence = parse_result.get("intent", {}).get("confidence", 0.0)
+
+            if intent and confidence > 0.5:
+                parlai = self._get_parlai_action(intent)
+                return SLMClassification(
+                    intent=intent,
+                    confidence=confidence,
+                    missing_inputs=[],
+                    should_clarify=False,
+                    local_routing="local",
+                    reasoning=f"rasa_nlu:{confidence:.2f}",
+                    rasa_intent=intent,
+                    parlai_action=parlai["action"],
+                    action_template=parlai["template"],
+                    slots_needed=parlai.get("slots", []),
+                )
+        except Exception as e:
+            logger.debug(f"Rasa parse failed: {e}")
+        return None
+
+    async def _try_slm(self, user_prompt: str) -> Optional[SLMClassification]:
+        """Try local SLM classification."""
+        system_prompt = """Eres un clasificador de intents.
+
+Intents: implement_feature, debug_repo, refactor_migration, run_tests_ci, explain_concept, design_architecture, toolchain_task, ops_health_check, incident_triage, greeting, unknown
+
+Responde JSON: {"intent": "...", "confidence": 0.0-1.0, "missing_inputs": []}"""
 
         try:
             client = self._get_client()
