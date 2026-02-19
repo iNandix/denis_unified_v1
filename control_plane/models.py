@@ -1,9 +1,40 @@
 """Denis Control Plane — Standalone bricks for CP-G."""
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+
+
+def _get_auto_repo_context() -> Dict[str, str]:
+    """Auto-detect repo context from session file or git."""
+    try:
+        with open("/tmp/denis/session_id.txt") as f:
+            content = f.read().strip()
+            if "|" in content:
+                parts = content.split("|")
+                return {
+                    "repo_id": parts[1] if len(parts) > 1 else "",
+                    "repo_name": parts[2] if len(parts) > 2 else "",
+                    "branch": parts[3] if len(parts) > 3 else "main",
+                }
+    except Exception:
+        pass
+
+    try:
+        from .repo_context import RepoContext
+
+        repo = RepoContext()
+        return {
+            "repo_id": repo.repo_id,
+            "repo_name": repo.repo_name,
+            "branch": repo.branch,
+        }
+    except Exception:
+        pass
+
+    return {"repo_id": "", "repo_name": "", "branch": "main"}
 
 
 @dataclass
@@ -24,9 +55,9 @@ class ContextPack:
     risk_level: str = "MEDIUM"
     is_checkpoint: bool = False
     constraints: List[str] = field(default_factory=list)
-    repo_id: str = ""
-    repo_name: str = "unknown"
-    branch: str = "unknown"
+    repo_id: str = field(default_factory=lambda: _get_auto_repo_context()["repo_id"])
+    repo_name: str = field(default_factory=lambda: _get_auto_repo_context()["repo_name"])
+    branch: str = field(default_factory=lambda: _get_auto_repo_context()["branch"])
     notes: str = ""
     extra_context: Dict[str, Any] = field(default_factory=dict)
     human_validated: bool = False
@@ -37,6 +68,17 @@ class ContextPack:
     expires_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc) + timedelta(seconds=120)
     )
+
+    def __post_init__(self):
+        """Auto-populate repo context if empty."""
+        if not self.repo_id or not self.repo_name:
+            ctx = _get_auto_repo_context()
+            if not self.repo_id:
+                self.repo_id = ctx["repo_id"]
+            if not self.repo_name:
+                self.repo_name = ctx["repo_name"] or "unknown"
+            if self.branch == "main" or not self.branch:
+                self.branch = ctx["branch"] or "main"
 
     def is_expired(self) -> bool:
         """Check if the context pack has expired."""

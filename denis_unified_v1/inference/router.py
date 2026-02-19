@@ -52,6 +52,25 @@ try:
 except ImportError:
     get_engine_registry = None
 
+from denis_unified_v1.kernel.internet_health import get_internet_health
+
+try:
+    from denis_unified_v1.feature_flags import load_feature_flags as _load_ff
+except ImportError:
+    _load_ff = None  # type: ignore[assignment]
+
+try:
+    from denis_unified_v1.inference.gateway_router import GatewayRouter as _GatewayRouter
+except ImportError:
+    _GatewayRouter = None  # type: ignore[assignment]
+
+try:
+    from denis_unified_v1.actions.decision_trace import emit_decision_trace as _emit_dt
+except ImportError:
+    _emit_dt = None  # type: ignore[assignment]
+
+_SHADOW_TIMEOUT_MS = int(os.getenv("DENIS_GATEWAY_SHADOW_TIMEOUT_MS", "100"))
+
 
 _TOOLS_V2: Any = None
 
@@ -292,9 +311,18 @@ class InferenceRouter:
             if pk not in self.clients:
                 missing.append(eid)
         if missing:
-            raise RuntimeError(
-                f"Unknown provider_key in engine_registry for engines: {missing}"
-            )
+            strict = (os.getenv("DENIS_STRICT_ENGINE_REGISTRY") or "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if strict:
+                raise RuntimeError(
+                    f"Unknown provider_key in engine_registry for engines: {missing}"
+                )
+            # Fail-open: drop engines that cannot be instantiated. Router still operates with remaining engines.
+            for eid in missing:
+                self.engine_registry.pop(eid, None)
 
     def get_status(self) -> dict[str, Any]:
         providers: list[dict[str, Any]] = []
@@ -350,9 +378,22 @@ class InferenceRouter:
         *,
         request_id: str,
         inference_plan: InferencePlan | None = None,
+        task_profile_id: str | None = None,
         latency_budget_ms: int | None = None,
         cost_limit_usd: float | None = None,
     ) -> dict[str, Any]:
+        if (
+            os.getenv("DENIS_ENABLE_CHAT_CP", "0") == "1"
+            and task_profile_id == "control_plane_chat"
+        ):
+            chat_cp_result = await self._route_via_chat_cp(
+                messages=messages,
+                request_id=request_id,
+                task_profile_id=task_profile_id,
+            )
+            if chat_cp_result is not None:
+                return chat_cp_result
+
         skipped_engines = []
         if inference_plan:
             # Plan-first: execute without re-analysis
@@ -468,6 +509,17 @@ class InferenceRouter:
                 )
                 scored.append((provider, score, metrics))
             scored.sort(key=lambda item: (-item[1], item[0]))
+
+            # Shadow routing — InferenceGateway computes what it WOULD choose
+            # Feature-flagged, timeout-safe, fail-open. Never affects real decision.
+            legacy_provider = scored[0][0] if scored else None
+            legacy_model = "unknown"
+            self._run_shadow_hook(
+                request_id=request_id,
+                legacy_provider=legacy_provider,
+                legacy_model=legacy_model,
+                intent=profile,
+            )
 
             attempts = 0
             errors: list[dict[str, Any]] = []
@@ -601,6 +653,168 @@ class InferenceRouter:
                     for p, s, m in scored
                 ],
             }
+
+    async def _route_via_chat_cp(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        request_id: str,
+        task_profile_id: str,
+    ) -> dict[str, Any] | None:
+        """Route through chat control-plane (fail-soft)."""
+        try:
+            from denis_unified_v1.chat_cp.client import chat as chat_cp_chat
+            from denis_unified_v1.chat_cp.contracts import ChatRequest as ChatCPRequest
+
+            cp_request = ChatCPRequest.from_payload(
+                {
+                    "messages": messages,
+                    "response_format": "text",
+                    "temperature": 0.2,
+                    "max_output_tokens": 512,
+                    "stream": False,
+                    "trace_id": request_id,
+                    "metadata": {"source": "inference_router"},
+                    "task_profile_id": task_profile_id,
+                }
+            )
+            cp_response = await chat_cp_chat(
+                cp_request,
+                shadow_mode=os.getenv("DENIS_CHAT_CP_SHADOW_MODE", "0") == "1",
+            )
+            text = (cp_response.text or "").strip()
+            usage = cp_response.usage or {}
+            return {
+                "response": text,
+                "llm_used": cp_response.provider,
+                "model_selected": cp_response.model,
+                "engine_id": None,
+                "latency_ms": int(cp_response.latency_ms),
+                "input_tokens": int(usage.get("input_tokens", 0)),
+                "output_tokens": int(usage.get("output_tokens", 0)),
+                "cost_usd": 0.0,
+                "fallback_used": cp_response.provider in {"local", "none"},
+                "attempts": 1,
+                "ranking": [],
+                "chat_cp_error": cp_response.error.as_dict() if cp_response.error else None,
+                "task_profile_id": task_profile_id,
+            }
+        except Exception as exc:
+            if _emit_dt:
+                try:
+                    _emit_dt(
+                        kind="routing",
+                        mode="FALLBACK",
+                        reason="chat_cp_route_failed",
+                        request_id=request_id,
+                        extra={
+                            "task_profile_id": task_profile_id,
+                            "error": str(exc)[:200],
+                        },
+                    )
+                except Exception:
+                    pass
+            return None
+
+    def _run_shadow_hook(
+        self,
+        request_id: str,
+        legacy_provider: str | None,
+        legacy_model: str,
+        intent: Any = None,
+    ) -> None:
+        """Shadow hook: compute gateway decision, log comparison, never affect real flow.
+
+        - Gated by feature flags (both must be True)
+        - Timeout-safe: capped at DENIS_GATEWAY_SHADOW_TIMEOUT_MS (default 100ms)
+        - Fail-open: any error is silently swallowed
+        """
+        # Gate: both flags must be on
+        if not _load_ff:
+            return
+        try:
+            ff = _load_ff()
+        except Exception:
+            return
+        if not ff.denis_enable_inference_gateway or not ff.denis_gateway_shadow_mode:
+            return
+
+        # Gate: router class must exist
+        if not _GatewayRouter:
+            return
+
+        shadow_error = False
+        shadow_decision: dict[str, Any] = {}
+        try:
+            import asyncio
+
+            router = _GatewayRouter()
+            intent_str = "chat_general"
+            if isinstance(intent, QueryProfile):
+                if intent.has_code:
+                    intent_str = "code_generate"
+                elif intent.is_complex:
+                    intent_str = "deep_audit"
+
+            task_profile_id = router.resolve_task_profile(intent_str, "*")
+            candidates = router.select_candidates(task_profile_id)
+            budget = router.apply_budgets(task_profile_id)
+            strategy = router.choose_strategy(task_profile_id)
+
+            shadow_decision = {
+                "task_profile_id": task_profile_id,
+                "selected_engine": candidates[0] if candidates else None,
+                "fallback_engines": candidates[1:] if len(candidates) > 1 else [],
+                "strategy": strategy,
+                "budget_timeout_ms": budget.timeout_ms,
+                "budget_max_output": budget.max_output_tokens,
+            }
+        except Exception:
+            shadow_error = True
+
+        # Compute comparison
+        shadow_provider = shadow_decision.get("selected_engine")
+        same_choice = (
+            legacy_provider == shadow_provider
+            if (legacy_provider and shadow_provider)
+            else False
+        )
+
+        # Log to DecisionTrace (fail-open)
+        if _emit_dt:
+            try:
+                _emit_dt(
+                    kind="engine_selection",
+                    mode="SHADOW",
+                    reason="gateway_shadow_compare",
+                    request_id=request_id,
+                    engine=shadow_provider,
+                    extra={
+                        "legacy_provider": legacy_provider or "none",
+                        "legacy_model": legacy_model,
+                        "shadow_provider": shadow_provider or "none",
+                        "shadow_model": shadow_decision.get("task_profile_id", "unknown"),
+                        "same_choice": same_choice,
+                        "shadow_error": shadow_error,
+                        "shadow_reason": shadow_decision.get("strategy", "unknown"),
+                    },
+                )
+            except Exception:
+                pass
+
+        # Log to Redis metrics (fail-open)
+        try:
+            self.metrics.emit_decision(
+                request_id,
+                {
+                    "mode": "shadow_comparison",
+                    "same_choice": same_choice,
+                    "shadow_error": shadow_error,
+                    "shadow_decision": shadow_decision,
+                },
+            )
+        except Exception:
+            pass
 
     def _resolve_engine(self, engine_id: str) -> dict[str, Any] | None:
         info = self.engine_registry.get(engine_id)

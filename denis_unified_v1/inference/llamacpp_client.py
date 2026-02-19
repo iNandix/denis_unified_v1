@@ -7,6 +7,8 @@ from typing import Any
 
 import aiohttp
 
+from denis_unified_v1.inference.hop import next_hop_header
+
 
 class LlamaCppClient:
     provider = "llamacpp"
@@ -41,7 +43,9 @@ class LlamaCppClient:
 
         timeout = aiohttp.ClientTimeout(total=max(0.5, timeout_sec))
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=payload) as resp:
+            # Propagate hop counter to prevent Denis -> Denis loops when endpoints
+            # are misconfigured to point back at this server.
+            async with session.post(url, json=payload, headers=next_hop_header()) as resp:
                 data = await resp.json(content_type=None)
                 if resp.status >= 400:
                     raise RuntimeError(f"llamacpp_http_{resp.status}:{str(data)[:300]}")
