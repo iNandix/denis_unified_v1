@@ -113,37 +113,81 @@ def clear_agent_result() -> None:
 
 def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
     """Main daemon loop."""
+    import json
+
     logger.info("Denis Control Plane Daemon started")
-    logger.info(f"Monitoring: {AGENT_RESULT_FILE}")
-    logger.info(f"Output: {CP_OUTPUT_FILE}")
+    logger.info("Monitoring: /tmp/denis/cp_received.json, /tmp/denis/phase_complete.json")
 
     while True:
-        agent_result = wait_for_agent_result(timeout=max_wait)
+        CP_RECEIVED_FILE = "/tmp/denis/cp_received.json"
+        PHASE_COMPLETE_FILE = "/tmp/denis/phase_complete.json"
 
-        if not agent_result:
-            logger.warning("No agent result, continuing to poll...")
-            time.sleep(poll_interval)
-            continue
+        if os.path.exists(CP_RECEIVED_FILE):
+            try:
+                with open(CP_RECEIVED_FILE) as f:
+                    data = json.load(f)
+                os.remove(CP_RECEIVED_FILE)
 
-        try:
-            cp_dict = generate_context_pack(agent_result)
-            approved = trigger_approval_popup(cp_dict)
-            write_approved_cp(cp_dict, approved)
-            clear_agent_result()
+                from control_plane.approval_popup import show_plan_review
+                from control_plane.models import ContextPack
 
-            if approved:
-                logger.info("✅ Approval flow completed successfully")
-            else:
-                logger.info("❌ Approval flow rejected or cancelled")
+                cp = ContextPack(**data["cp"])
+                phases = data.get("phases", [])
+                risks = data.get("risks", [])
 
-        except Exception as e:
-            logger.error(f"Error in approval flow: {e}")
-            import traceback
+                decision, correction = show_plan_review(cp, phases, risks)
+                logger.info(f"Plan review: {decision}")
 
-            traceback.print_exc()
-            time.sleep(poll_interval)
+                if decision == "correction" and correction:
+                    from control_plane.human_input_processor import process_human_input
 
-        time.sleep(poll_interval)
+                    delta = process_human_input(correction, cp)
+                    if delta["mission_delta"]:
+                        cp.mission += f"\nAJUSTE HUMANO: {delta['mission_delta']}"
+                    cp.do_not_touch.extend(delta["new_do_not_touch"])
+                    os.makedirs("/tmp/denis", exist_ok=True)
+                    with open("/tmp/denis/next_cp.json", "w") as f:
+                        json.dump(cp.to_dict(), f, indent=2)
+                    logger.info(
+                        f"Human input processed: {delta['new_constraints']}, dnt: {delta['new_do_not_touch']}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Error in cp_received: {e}")
+
+        elif os.path.exists(PHASE_COMPLETE_FILE):
+            try:
+                with open(PHASE_COMPLETE_FILE) as f:
+                    data = json.load(f)
+                os.remove(PHASE_COMPLETE_FILE)
+
+                from control_plane.approval_popup import show_phase_complete
+
+                decision, adj = show_phase_complete(
+                    data["phase_num"], data["completed"], data["failed"], data["next_phase_summary"]
+                )
+                logger.info(f"Phase {data['phase_num']} decision: {decision}")
+
+                if decision == "adjust" and adj:
+                    from control_plane.human_input_processor import process_human_input
+                    from control_plane.models import ContextPack
+
+                    current_cp_data = data.get("current_cp", {})
+                    if current_cp_data:
+                        cp = ContextPack(**current_cp_data)
+                        delta = process_human_input(adj, cp)
+                        if delta["mission_delta"]:
+                            cp.mission += f"\nAJUSTE HUMANO: {delta['mission_delta']}"
+                        cp.do_not_touch.extend(delta["new_do_not_touch"])
+                        os.makedirs("/tmp/denis", exist_ok=True)
+                        with open("/tmp/denis/next_cp.json", "w") as f:
+                            json.dump(cp.to_dict(), f, indent=2)
+                        logger.info(f"Phase adjust processed: {delta['new_constraints']}")
+
+            except Exception as e:
+                logger.error(f"Error in phase_complete: {e}")
+
+        time.sleep(5)
 
 
 def main():

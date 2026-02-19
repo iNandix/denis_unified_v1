@@ -249,6 +249,12 @@ class ApprovalPopup:
 
 def show_cp_approval(cp: ContextPack) -> Tuple[str, Optional[ConsultResult]]:
     """Convenience function."""
+    if not getattr(cp, "is_checkpoint", False):
+        os.makedirs("/tmp/denis", exist_ok=True)
+        with open(f"/tmp/denis/cp_{cp.cp_id}_decision.txt", "w") as f:
+            f.write("approved")
+        return ("approved", None)
+
     popup = ApprovalPopup()
     return popup.show_cp_approval(cp)
 
@@ -320,4 +326,208 @@ def load_cp_from_file(initial_dir: str = "/tmp") -> Optional[ContextPack]:
         return None
 
 
-__all__ = ["ApprovalPopup", "show_cp_approval", "load_cp_from_file"]
+__all__ = [
+    "ApprovalPopup",
+    "show_cp_approval",
+    "load_cp_from_file",
+    "show_plan_review",
+    "show_phase_complete",
+]
+
+
+def show_plan_review(cp: ContextPack, phases: list, risks: list) -> tuple:
+    """
+    Popup shown ONCE when Denis receives a new CP.
+    Blocks until user approves the plan or writes a correction.
+
+    Returns: (decision, correction_text)
+    decision: 'approved' | 'correction' | 'timeout'
+    correction_text: texto escrito por el usuario, '' si aprobó directo
+    """
+    import os
+    import subprocess
+
+    phases_text = (
+        "\n".join([f"  {i + 1}. {p}" for i, p in enumerate(phases)]) if phases else "  (ninguna)"
+    )
+    risks_text = "\n".join([f"  • {r}" for r in risks]) if risks else "  (ninguno)"
+
+    text = f"📋 MISIÓN:\n{cp.mission}\n\n📐 FASES PROPUESTAS:\n{phases_text}\n\n⚠️  RIESGOS:\n{risks_text}"
+
+    args = [
+        "zenity",
+        "--forms",
+        '--title=f"Denis · {cp.repo_name} · {cp.branch} · Plan"',
+        f"--text={text}",
+        "--add-entry=✏️ Corrección opcional (dejar vacío para aprobar tal cual)",
+        "--ok-label=✅ Correcto, arranca Fase 1",
+        "--cancel-label=⏹️ Cancelar",
+        "--width=580",
+        "--timeout=300",
+    ]
+
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+        )
+    except subprocess.TimeoutExpired:
+        decision_data = {"decision": "timeout", "correction": "", "cpid": cp.cp_id}
+        with open("/tmp/denis/plan_review_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("timeout", "")
+
+    if result.returncode == 1:
+        decision_data = {"decision": "timeout", "correction": "", "cpid": cp.cp_id}
+        with open("/tmp/denis/plan_review_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("timeout", "")
+
+    correction = result.stdout.strip()
+
+    if not correction:
+        decision_data = {"decision": "approved", "correction": "", "cpid": cp.cp_id}
+        with open("/tmp/denis/plan_review_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("approved", "")
+
+    args2 = [
+        "zenity",
+        "--forms",
+        "--title=Denis · Tu corrección",
+        "--text=✏️ Describe la corrección que quieres hacer:",
+        "--add-entry=Corrección:",
+        "--ok-label=Continuar",
+        "--cancel-label=Atrás",
+        "--width=500",
+    ]
+
+    try:
+        result2 = subprocess.run(
+            args2,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+        )
+    except:
+        return ("correction", correction)
+
+    if result2.returncode == 0:
+        final_correction = result2.stdout.strip()
+        decision_data = {
+            "decision": "correction",
+            "correction": final_correction or correction,
+            "cpid": cp.cp_id,
+        }
+        with open("/tmp/denis/plan_review_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("correction", final_correction or correction)
+
+    return ("correction", correction)
+
+
+def show_phase_complete(
+    phase_num: int, completed: list, failed: list, next_phase_summary: str
+) -> tuple:
+    """
+    Popup shown when each phase ends.
+    Lists what completed and what failed. Proposes next phase. Blocks until decision.
+
+    Returns: (decision, adjustment_text)
+    decision: 'continue' | 'adjust' | 'stop' | 'timeout'
+    """
+    import os
+    import subprocess
+
+    completed_text = "\n".join([f"  ✅ {c}" for c in completed]) if completed else "  (nada)"
+    failed_text = "\n".join([f"  ❌ {f}" for f in failed]) if failed else "  (nada)"
+
+    text = f"RESULTADOS FASE {phase_num}:\n\n{completed_text}\n{failed_text}\n\nSIGUIENTE PROPUESTA:\n{next_phase_summary}"
+
+    args = [
+        "zenity",
+        "--question",
+        '--title=f"Denis · Fase {phase_num} completada"',
+        f"--text={text}",
+        "--ok-label=▶️ Continuar",
+        "--cancel-label=⏹️ Parar aquí",
+        "--extra-button=✏️ Ajuste antes de continuar",
+        "--width=600",
+        "--timeout=600",
+    ]
+
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+        )
+    except subprocess.TimeoutExpired:
+        decision_data = {
+            "decision": "timeout",
+            "adjustment": "",
+            "phase": phase_num,
+            "failed": failed,
+        }
+        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("timeout", "")
+
+    if result.returncode == 0:
+        decision_data = {
+            "decision": "continue",
+            "adjustment": "",
+            "phase": phase_num,
+            "failed": failed,
+        }
+        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("continue", "")
+
+    if result.returncode == 1:
+        decision_data = {"decision": "stop", "adjustment": "", "phase": phase_num, "failed": failed}
+        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("stop", "")
+
+    args2 = [
+        "zenity",
+        "--forms",
+        "--title=Denis · Ajuste antes de continuar",
+        "--text=✏️ Describe el ajuste que quieres hacer:",
+        "--add-entry=Ajuste:",
+        "--ok-label=Continuar",
+        "--cancel-label=Atrás",
+        "--width=500",
+    ]
+
+    try:
+        result2 = subprocess.run(
+            args2,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+        )
+    except:
+        return ("adjust", "")
+
+    if result2.returncode == 0:
+        adjustment = result2.stdout.strip()
+        decision_data = {
+            "decision": "adjust",
+            "adjustment": adjustment,
+            "phase": phase_num,
+            "failed": failed,
+        }
+        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
+            json.dump(decision_data, f)
+        return ("adjust", adjustment)
+
+    return ("continue", "")

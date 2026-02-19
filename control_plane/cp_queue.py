@@ -64,6 +64,7 @@ class CPQueue:
                 cp.human_validated = True
                 cp.notes = notes
                 self._save()
+                self._persist_to_neo4j(cp, "approved")
                 return True
         return False
 
@@ -73,8 +74,52 @@ class CPQueue:
             if cp.cp_id == cp_id:
                 self._queue.pop(i)
                 self._save()
+                self._persist_to_neo4j(cp, "rejected")
                 return True
         return False
+
+    def _persist_to_neo4j(self, cp: ContextPack, decision: str) -> None:
+        """Persist ContextPack to Neo4j."""
+        try:
+            from neo4j import GraphDatabase
+
+            driver = GraphDatabase.driver("bolt://127.0.0.1:7687", auth=("neo4j", "Leon1234$"))
+            with driver.session() as session:
+                session.run(
+                    "MERGE (c:ContextPack {id: $cpid}) SET c.mission = $mission, c.decision = $decision, c.risk = $risk, c.intent = $intent, c.repo = $repo, c.timestamp = datetime()",
+                    cpid=cp.cp_id,
+                    mission=cp.mission[:200],
+                    decision=decision,
+                    risk=cp.risk_level,
+                    intent=cp.intent,
+                    repo=cp.repo_name,
+                )
+            driver.close()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _persist_human_input(delta: dict, cpid: str) -> None:
+        """Persist human input to Neo4j."""
+        try:
+            from neo4j import GraphDatabase
+
+            driver = GraphDatabase.driver("bolt://127.0.0.1:7687", auth=("neo4j", "Leon1234$"))
+            with driver.session() as session:
+                session.run(
+                    "MERGE (h:HumanInput {cpid: $cpid, timestamp: datetime()}) SET h.raw = $raw, h.constraints = $constraints, h.do_not_touch = $dnt, h.mission_delta = $delta",
+                    cpid=cpid,
+                    raw=delta.get("raw_preserved", ""),
+                    constraints=str(delta.get("new_constraints", [])),
+                    dnt=str(delta.get("new_do_not_touch", [])),
+                    delta=delta.get("mission_delta", ""),
+                )
+                session.run(
+                    "MATCH (cp:ContextPack {id: $cpid}) MERGE (cp)-[:ENRICHED_BY]->(h)", cpid=cpid
+                )
+            driver.close()
+        except Exception:
+            pass
 
     def purge_expired(self) -> int:
         """Remove expired ContextPacks."""

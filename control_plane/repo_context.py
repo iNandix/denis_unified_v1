@@ -7,7 +7,28 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-SESSION_FILE = "/tmp/denis_session_id.txt"
+SESSION_FILE = "/tmp/denis/session_id.txt"
+
+
+def write_session_id(node_id: str = "nodo1") -> str:
+    """Write session ID to file and return it."""
+    import hashlib
+    from datetime import date
+
+    repo = RepoContext()
+    sid = hashlib.sha256(f"{date.today()}{node_id}{repo.repo_id}".encode()).hexdigest()[:12]
+    os.makedirs("/tmp/denis", exist_ok=True)
+    with open("/tmp/denis/session_id.txt", "w") as f:
+        f.write(sid)
+    return sid
+
+
+def read_session_id() -> str:
+    """Read session ID from file."""
+    try:
+        return open("/tmp/denis/session_id.txt").read().strip()
+    except FileNotFoundError:
+        return "default-session"
 
 
 def get_or_create_session_id(node_id: str = "nodo1") -> str:
@@ -122,4 +143,11 @@ class RepoContext:
         }
 
 
-__all__ = ["RepoContext", "get_or_create_session_id", "clear_session_id", "SESSION_FILE"]
+__all__ = [
+    "RepoContext",
+    "get_or_create_session_id",
+    "clear_session_id",
+    "write_session_id",
+    "read_session_id",
+    "SESSION_FILE",
+]
