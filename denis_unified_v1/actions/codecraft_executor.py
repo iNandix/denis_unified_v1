@@ -16,7 +16,7 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 from denis_unified_v1.actions.graph_intent_resolver import _get_neo4j_driver
 from denis_unified_v1.actions.decision_trace import (
@@ -28,6 +28,10 @@ from denis_unified_v1.actions.decision_trace import (
     trace_codecraft_apply,
     trace_codecraft_verify,
     trace_codecraft_reuse,
+)
+from denis_unified_v1.actions.chunk_classifier import (
+    retrieve_code_chunks,
+    CodeChunkCandidate,
 )
 
 logger = logging.getLogger(__name__)
@@ -142,7 +146,82 @@ class CodecraftExecutor:
         request: CodeCraftRequest,
         specialty: str,
     ) -> list[dict]:
-        """Retrieve candidate chunks/snippets from graph."""
+        """Retrieve candidate chunks/snippets using new chunk retrieval system."""
+        import asyncio
+
+        # Try to use new chunk retrieval system
+        try:
+            # Get language from context
+            language = request.context.get("language", "")
+
+            # Call the new retrieve_code_chunks function
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If already in async context, create new task
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        retrieve_code_chunks(
+                            query=request.description,
+                            language=language,
+                            intent=request.intent,
+                            k=10,
+                        ),
+                    )
+                    chunk_candidates = future.result()
+            else:
+                chunk_candidates = loop.run_until_complete(
+                    retrieve_code_chunks(
+                        query=request.description,
+                        language=language,
+                        intent=request.intent,
+                        k=10,
+                    )
+                )
+
+            # Convert to old format for compatibility
+            candidates = []
+            for cc in chunk_candidates:
+                candidates.append(
+                    {
+                        "chunk_id": cc.chunk_id,
+                        "name": cc.text[:50],
+                        "kind": "code",
+                        "quality": cc.quality,
+                        "risk": cc.risk_flags[0] if cc.risk_flags else "none",
+                        "tags": [cc.language],
+                        "source": cc.source,
+                        "score": cc.utility_score,
+                        # New fields for reuse_first_policy
+                        "license": cc.license,
+                        "reliability": cc.reliability,
+                        "freshness": cc.freshness,
+                        "verification": cc.verification,
+                        "risk_flags": cc.risk_flags,
+                        "url": cc.url,
+                        "text": cc.text,
+                    }
+                )
+
+            # Trace retrieval with new system
+            trace_codecraft_retrieve(
+                sources=["chunk_store", "vector_db"],
+                candidates_found=len(candidates),
+                intent=request.intent,
+                session_id=self.session_id,
+                turn_id=request.turn_id,
+            )
+
+            return candidates
+
+        except Exception as e:
+            logger.warning(f"Failed to retrieve candidates from new system: {e}")
+            # Fallback to old Neo4j-based retrieval
+            pass
+
+        # Fallback: Neo4j-based retrieval (original code)
         if not self.driver:
             return []
 
@@ -191,12 +270,74 @@ class CodecraftExecutor:
 
         return candidates
 
+    def _apply_reuse_first_policy(
+        self,
+        candidate: dict,
+        request: CodeCraftRequest,
+    ) -> tuple[bool, str]:
+        """
+        Apply reuse_first_policy as HARD GATE.
+
+        Returns: (allowed, reason)
+
+        Rules:
+        - If license is missing or incompatible → BLOCK
+        - If risk_flags contain unsafe_code/malware_risk → BLOCK
+        - If verification == unverified → WARN (allow but trace)
+        - If freshness < 0.3 → WARN
+        - If ALL checks pass → ALLOW
+        """
+        allowed = True
+        reason = "all_checks_passed"
+
+        # Check license
+        license = candidate.get("license")
+        allowed_licenses = {
+            "MIT",
+            "Apache-2.0",
+            "BSD-3-Clause",
+            "GPL-3.0",
+            "LGPL-3.0",
+            "ISC",
+            "Python-2.0",
+        }
+
+        if license is None:
+            allowed = False
+            reason = "license_missing"
+        elif license not in allowed_licenses:
+            allowed = False
+            reason = f"license_incompatible:{license}"
+
+        # Check risk flags (hard block)
+        risk_flags = candidate.get("risk_flags", [])
+        blocked_risks = {"unsafe_code", "malware_risk", "security_risk"}
+
+        if any(r in risk_flags for r in blocked_risks):
+            allowed = False
+            reason = f"risk_blocked:{','.join(risk_flags)}"
+
+        # Log the policy decision
+        logger.info(
+            f"reuse_first_policy: candidate={candidate.get('chunk_id')}, "
+            f"allowed={allowed}, reason={reason}, license={license}, risks={risk_flags}"
+        )
+
+        return allowed, reason
+
     def _rank_and_select(
         self,
         candidates: list[dict],
         request: CodeCraftRequest,
     ) -> tuple[str, Optional[dict]]:
-        """Rank candidates and select best approach."""
+        """
+        Rank candidates and select best approach with REUSE_FIRST_POLICY.
+
+        REUSE_FIRST_POLICY (hard gate):
+        - If valid candidate exists (passes all checks) → REUSE (forced)
+        - If candidate fails license/risk checks → BLOCK and fall through
+        - Only GENERATE if no valid candidates exist
+        """
         if not candidates:
             return "GENERATE", None
 
@@ -204,28 +345,61 @@ class CodecraftExecutor:
         sorted_candidates = sorted(
             candidates, key=lambda x: x.get("score", 0), reverse=True
         )
-        best = sorted_candidates[0]
 
-        threshold = 0.72  # From reuse_first_v1 policy
+        # Apply reuse_first_policy to each candidate
+        reuse_candidate = None
+        blocked_candidates = []
 
-        if best.get("score", 0) >= threshold:
+        for candidate in sorted_candidates:
+            allowed, reason = self._apply_reuse_first_policy(candidate, request)
+
+            if allowed:
+                reuse_candidate = candidate
+                break
+            else:
+                blocked_candidates.append(
+                    {
+                        "chunk_id": candidate.get("chunk_id"),
+                        "reason": reason,
+                        "score": candidate.get("score", 0),
+                    }
+                )
+
+        # Determine mode based on reuse_first_policy result
+        if reuse_candidate:
             mode = "REUSE"
-        elif sorted_candidates:
-            mode = "CHUNKS"
+            logger.info(
+                f"REUSE_FIRST_POLICY: Selected {reuse_candidate.get('chunk_id')} for reuse"
+            )
+        elif blocked_candidates:
+            # Candidates exist but all blocked by policy
+            logger.info(
+                f"REUSE_FIRST_POLICY: {len(blocked_candidates)} candidates blocked, falling back to GENERATE"
+            )
+            mode = "GENERATE"
+            reuse_candidate = None
         else:
             mode = "GENERATE"
+            reuse_candidate = None
 
-        # Trace selection
-        trace_codecraft_rank_select(
-            selection_mode=mode,
-            best_score=best.get("score", 0),
-            best_candidate_id=best.get("chunk_id"),
-            intent=request.intent,
-            session_id=self.session_id,
-            turn_id=request.turn_id,
-        )
+        # Trace selection with full details
+        try:
+            trace_codecraft_rank_select(
+                selection_mode=mode,
+                best_score=reuse_candidate.get("score", 0) if reuse_candidate else 0,
+                best_candidate_id=reuse_candidate.get("chunk_id")
+                if reuse_candidate
+                else None,
+                intent=request.intent,
+                session_id=self.session_id,
+                turn_id=request.turn_id,
+                blocked_count=len(blocked_candidates),
+                blocked_reasons=[b["reason"] for b in blocked_candidates],
+            )
+        except:
+            pass  # Tracing is best-effort
 
-        return mode, best if mode == "REUSE" else None
+        return mode, reuse_candidate
 
     def _plan_decompose(
         self,

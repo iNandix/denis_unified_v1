@@ -238,9 +238,7 @@ def _analyze_query(text: str) -> QueryProfile:
         r"\breason\b",
     ]
     has_code = any(re.search(pattern, lowered) for pattern in code_markers)
-    is_complex = token_count > 80 or any(
-        re.search(pattern, lowered) for pattern in complex_markers
-    )
+    is_complex = token_count > 80 or any(re.search(pattern, lowered) for pattern in complex_markers)
     is_general = not has_code and not is_complex
     return QueryProfile(
         token_count=token_count,
@@ -280,6 +278,19 @@ class InferenceRouter:
             self.clients["openrouter"] = OpenRouterClient()
         if LegacyCoreClient is not None:
             self.clients["legacy_core"] = LegacyCoreClient()
+
+        # Piper TTS - no client needed, use a dummy that implements protocol
+        class PiperDummy:
+            provider = "piper"
+            cost_factor = 0.0
+
+            def is_available(self):
+                return True
+
+            async def generate(self, messages, timeout_sec):
+                return {"audio": "dummy", "text": "piper dummy"}
+
+        self.clients["piper"] = PiperDummy()
 
         # Deep-copy so test mutations don't leak back into the global singleton
         # If no registry, degrade gracefully
@@ -400,9 +411,7 @@ class InferenceRouter:
             engine_ids = [inference_plan.primary_engine_id] + list(
                 inference_plan.fallback_engine_ids
             )
-            max_attempts = inference_plan.attempt_policy.get(
-                "max_attempts", len(engine_ids)
-            )
+            max_attempts = inference_plan.attempt_policy.get("max_attempts", len(engine_ids))
 
             for attempt_idx, engine_id in enumerate(engine_ids[:max_attempts]):
                 info = self._resolve_engine(engine_id)
@@ -420,9 +429,7 @@ class InferenceRouter:
 
                 internet_ok = get_internet_health().check() == "OK"
                 if "internet_required" in info.get("tags", []) and not internet_ok:
-                    skipped_engines.append(
-                        {"engine_id": engine_id, "reason": "no_internet"}
-                    )
+                    skipped_engines.append({"engine_id": engine_id, "reason": "no_internet"})
                     continue
 
                 provider_key = info["provider_key"]
@@ -448,9 +455,7 @@ class InferenceRouter:
                         messages=messages, timeout_sec=timeout_s, **params
                     )
                     latency_ms = (time.perf_counter() - started) * 1000.0
-                    self.metrics.record_call(
-                        provider_key, latency_ms=latency_ms, success=True
-                    )
+                    self.metrics.record_call(provider_key, latency_ms=latency_ms, success=True)
                     return self._format_result(
                         result,
                         provider_key=provider_key,
@@ -464,9 +469,7 @@ class InferenceRouter:
                     )
                 except Exception as exc:
                     latency_ms = (time.perf_counter() - started) * 1000.0
-                    self.metrics.record_call(
-                        provider_key, latency_ms=latency_ms, success=False
-                    )
+                    self.metrics.record_call(provider_key, latency_ms=latency_ms, success=False)
                     # Continue to fallback
                     continue
 
@@ -535,13 +538,9 @@ class InferenceRouter:
                 )
                 started = time.perf_counter()
                 try:
-                    result = await client.generate(
-                        messages=messages, timeout_sec=timeout_sec
-                    )
+                    result = await client.generate(messages=messages, timeout_sec=timeout_sec)
                     latency_ms = (time.perf_counter() - started) * 1000.0
-                    self.metrics.record_call(
-                        provider, latency_ms=latency_ms, success=True
-                    )
+                    self.metrics.record_call(provider, latency_ms=latency_ms, success=True)
                     payload = {
                         "request_id": request_id,
                         "llm_used": provider,
@@ -568,9 +567,7 @@ class InferenceRouter:
                     except Exception:
                         pass
                     output_tokens = int(result.get("output_tokens") or 0)
-                    input_tokens = int(
-                        result.get("input_tokens") or max(1, len(user_text.split()))
-                    )
+                    input_tokens = int(result.get("input_tokens") or max(1, len(user_text.split())))
                     cost_usd = self._estimate_cost_usd(
                         provider=provider,
                         input_tokens=input_tokens,
@@ -593,9 +590,7 @@ class InferenceRouter:
                     }
                 except Exception as exc:
                     latency_ms = (time.perf_counter() - started) * 1000.0
-                    self.metrics.record_call(
-                        provider, latency_ms=latency_ms, success=False
-                    )
+                    self.metrics.record_call(provider, latency_ms=latency_ms, success=False)
                     errors.append(
                         {
                             "provider": provider,
@@ -775,9 +770,7 @@ class InferenceRouter:
         # Compute comparison
         shadow_provider = shadow_decision.get("selected_engine")
         same_choice = (
-            legacy_provider == shadow_provider
-            if (legacy_provider and shadow_provider)
-            else False
+            legacy_provider == shadow_provider if (legacy_provider and shadow_provider) else False
         )
 
         # Log to DecisionTrace (fail-open)
@@ -879,9 +872,7 @@ class InferenceRouter:
             "degraded": True,
         }
 
-    def _estimate_cost_usd(
-        self, provider: str, input_tokens: int, output_tokens: int
-    ) -> float:
+    def _estimate_cost_usd(self, provider: str, input_tokens: int, output_tokens: int) -> float:
         rates_per_1k = {
             "vllm": 0.0001,
             "llamacpp": 0.0001,
@@ -897,10 +888,7 @@ def build_inference_router() -> InferenceRouter:
     # Check if SMX local pipeline should be used
     if os.getenv("USE_SMX_LOCAL") == "true":
         # Guard-rail: fail loud if SMX modules couldn't be imported
-        if any(
-            cls is None
-            for cls in (SMXClient, NLUClient, SMXOrchestrator, CognitiveRouter)
-        ):
+        if any(cls is None for cls in (SMXClient, NLUClient, SMXOrchestrator, CognitiveRouter)):
             raise RuntimeError(
                 "USE_SMX_LOCAL=true but SMX modules could not be imported. "
                 "Check denis_unified_v1/smx/ layout and imports."

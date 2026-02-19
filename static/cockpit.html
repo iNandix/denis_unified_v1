@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Denis Cockpit</title>
+    <style>
+      :root{
+        --bg0:#0b0f14; --bg1:#0f1722; --panel:#111a26; --panel2:#0f1620;
+        --text:#e6edf3; --muted:#93a4b5; --line:#243245;
+        --ok:#37d67a; --warn:#ffcc66; --bad:#ff5c5c; --accent:#6aa8ff;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --serif: Georgia, "Times New Roman", Times, serif;
+      }
+      html,body{height:100%}
+      body{
+        margin:0;
+        color:var(--text);
+        background:
+          radial-gradient(1200px 800px at 10% 10%, #14233a 0%, rgba(20,35,58,0.1) 50%, rgba(0,0,0,0) 70%),
+          radial-gradient(900px 600px at 90% 15%, rgba(106,168,255,0.18) 0%, rgba(0,0,0,0) 60%),
+          linear-gradient(180deg, var(--bg0), var(--bg1));
+        font-family: var(--mono);
+      }
+      header{
+        display:flex; align-items:center; justify-content:space-between;
+        padding:14px 16px; border-bottom:1px solid var(--line);
+        background: rgba(17,26,38,0.55);
+        backdrop-filter: blur(6px);
+        position: sticky; top:0; z-index:10;
+      }
+      header h1{
+        margin:0; font: 700 18px/1.1 var(--serif); letter-spacing: 0.02em;
+      }
+      header .meta{display:flex; gap:10px; align-items:center; color:var(--muted); font-size:12px}
+      header code{color:var(--text); background: rgba(0,0,0,0.25); padding:2px 6px; border:1px solid var(--line); border-radius:8px}
+
+      .layout{
+        display:grid;
+        grid-template-columns: 360px 1fr 420px;
+        gap:12px;
+        padding:12px;
+      }
+      @media (max-width: 1180px){
+        .layout{grid-template-columns: 1fr; }
+      }
+      .panel{
+        background: rgba(17,26,38,0.65);
+        border:1px solid var(--line);
+        border-radius:14px;
+        overflow:hidden;
+      }
+      .panel .hd{
+        padding:10px 12px;
+        background: rgba(15,22,32,0.8);
+        border-bottom:1px solid var(--line);
+        display:flex; align-items:center; justify-content:space-between;
+      }
+      .panel .hd .title{font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted)}
+      .panel .bd{padding:12px}
+      .row{display:flex; gap:8px; align-items:center}
+      .btn{
+        cursor:pointer;
+        border:1px solid var(--line);
+        background: rgba(0,0,0,0.25);
+        color: var(--text);
+        padding:8px 10px;
+        border-radius:12px;
+        font-size:12px;
+      }
+      .btn:hover{border-color:#3a4a62}
+      .input{
+        width:100%;
+        border:1px solid var(--line);
+        background: rgba(0,0,0,0.22);
+        color:var(--text);
+        padding:10px 12px;
+        border-radius:12px;
+        font-size:13px;
+        outline:none;
+      }
+      .input:focus{border-color: rgba(106,168,255,0.65); box-shadow: 0 0 0 3px rgba(106,168,255,0.12)}
+      .pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:2px 10px; border:1px solid var(--line); border-radius:999px; color:var(--muted)}
+      .dot{width:8px; height:8px; border-radius:999px; background: var(--muted)}
+      .dot.ok{background: var(--ok)} .dot.warn{background: var(--warn)} .dot.bad{background: var(--bad)}
+      .kv{display:grid; grid-template-columns: 170px 1fr; gap:6px 10px; font-size:12px; color:var(--muted)}
+      .kv b{color:var(--text); font-weight:600}
+
+      .chatlog{display:flex; flex-direction:column; gap:10px; max-height: calc(100vh - 220px); overflow:auto; padding-right:4px}
+      .bubble{
+        border:1px solid var(--line);
+        border-radius:14px;
+        padding:10px 12px;
+        background: rgba(0,0,0,0.18);
+      }
+      .bubble .who{font-size:11px; color:var(--muted); margin-bottom:6px}
+      .bubble .txt{white-space:pre-wrap; font-size:13px; line-height:1.35}
+
+      .list{display:flex; flex-direction:column; gap:8px}
+      .item{
+        border:1px solid var(--line);
+        border-radius:12px;
+        padding:8px 10px;
+        background: rgba(0,0,0,0.16);
+      }
+      .item .top{display:flex; justify-content:space-between; align-items:center; gap:10px}
+      .item .id{font-size:12px; color:var(--text)}
+      .item .sub{font-size:11px; color:var(--muted); margin-top:6px}
+      .badge{font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted)}
+      .badge.ok{border-color: rgba(55,214,122,0.35); color: rgba(55,214,122,0.9)}
+      .badge.warn{border-color: rgba(255,204,102,0.4); color: rgba(255,204,102,0.95)}
+      .badge.bad{border-color: rgba(255,92,92,0.4); color: rgba(255,92,92,0.95)}
+
+      .events{max-height: calc(100vh - 210px); overflow:auto; padding-right:4px}
+      .evt{border-bottom:1px solid rgba(36,50,69,0.65); padding:10px 10px}
+      .evt:last-child{border-bottom:none}
+      .evt .h{display:flex; justify-content:space-between; gap:10px; align-items:center}
+      .evt .t{font-size:12px; color:var(--text)}
+      .evt .m{font-size:11px; color:var(--muted)}
+      .evt details{margin-top:6px}
+      .evt pre{
+        margin:8px 0 0 0; padding:10px;
+        background: rgba(0,0,0,0.22);
+        border:1px solid rgba(36,50,69,0.8);
+        border-radius:12px;
+        overflow:auto;
+        font-size:11px;
+        color: #cfe3ff;
+      }
+      .split{display:grid; grid-template-columns: 1fr 1fr; gap:10px}
+      @media (max-width: 1180px){ .split{grid-template-columns:1fr} }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Denis Cockpit</h1>
+      <div class="meta">
+        <span class="pill"><span id="wsDot" class="dot warn"></span><span id="wsState">ws:connecting</span></span>
+        <span class="pill">conversation <code id="convId"></code></span>
+        <button class="btn" id="newConvBtn">new conversation</button>
+        <a class="btn" href="/" style="text-decoration:none; display:inline-block">home</a>
+      </div>
+    </header>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="hd"><div class="title">Ops</div><button class="btn" id="refreshOpsBtn">refresh</button></div>
+        <div class="bd">
+          <div class="split">
+            <div>
+              <div class="pill" style="margin-bottom:10px">health</div>
+              <div id="healthKV" class="kv"></div>
+            </div>
+            <div>
+              <div class="pill" style="margin-bottom:10px">telemetry.async + graph</div>
+              <div id="telemetryKV" class="kv"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="hd"><div class="title">Chat</div><button class="btn" id="reloadTasksBtn">reload tasks</button></div>
+        <div class="bd">
+          <div id="chatlog" class="chatlog"></div>
+          <div style="height:10px"></div>
+          <div class="row">
+            <input id="chatInput" class="input" placeholder="Escribe… (envía a /v1/chat/completions)" />
+            <button class="btn" id="sendBtn">send</button>
+          </div>
+          <div style="height:10px"></div>
+          <div class="split">
+            <div class="panel" style="border-radius:12px">
+              <div class="hd"><div class="title">Control Room Tasks</div><span class="pill"><span class="dot ok"></span><span id="taskCount">0</span></span></div>
+              <div class="bd">
+                <div id="tasks" class="list"></div>
+              </div>
+            </div>
+            <div class="panel" style="border-radius:12px">
+              <div class="hd"><div class="title">Graph Reads</div><button class="btn" id="graphFetchBtn">fetch</button></div>
+              <div class="bd">
+                <div class="row">
+                  <input id="intentId" class="input" placeholder="Intent id (GET /graph/intent/{id})" />
+                </div>
+                <div style="height:8px"></div>
+                <div class="row">
+                  <input id="planId" class="input" placeholder="Plan id (GET /graph/plan/{id})" />
+                </div>
+                <div style="height:8px"></div>
+                <details open>
+                  <summary class="pill">result</summary>
+                  <pre id="graphOut">{}</pre>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="hd"><div class="title">Timeline (WS-first)</div><button class="btn" id="clearEventsBtn">clear</button></div>
+        <div class="bd" style="padding:0">
+          <div id="events" class="events"></div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const LS_CONV = "denis.cockpit.conversation_id";
+      const LS_LAST = "denis.cockpit.last_event_id";
+      const convEl = document.getElementById("convId");
+      const wsStateEl = document.getElementById("wsState");
+      const wsDot = document.getElementById("wsDot");
+      const chatlog = document.getElementById("chatlog");
+      const tasksEl = document.getElementById("tasks");
+      const taskCountEl = document.getElementById("taskCount");
+      const eventsEl = document.getElementById("events");
+      const healthKV = document.getElementById("healthKV");
+      const telemetryKV = document.getElementById("telemetryKV");
+      const graphOut = document.getElementById("graphOut");
+
+      function nowIso(){ return new Date().toISOString(); }
+      function randId(){ return Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2); }
+      function getConv(){
+        let c = localStorage.getItem(LS_CONV);
+        if(!c){ c = "conv_" + randId(); localStorage.setItem(LS_CONV, c); }
+        return c;
+      }
+      function setConv(c){
+        localStorage.setItem(LS_CONV, c);
+        localStorage.setItem(LS_LAST, "0");
+      }
+      function getLast(){ return parseInt(localStorage.getItem(LS_LAST) || "0", 10) || 0; }
+      function setLast(n){ localStorage.setItem(LS_LAST, String(n||0)); }
+
+      function setWsState(state, level){
+        wsStateEl.textContent = "ws:" + state;
+        wsDot.className = "dot " + (level || "warn");
+      }
+
+      function addBubble(who, txt){
+        const d = document.createElement("div");
+        d.className = "bubble";
+        const h = document.createElement("div");
+        h.className = "who";
+        h.textContent = who + " · " + nowIso();
+        const t = document.createElement("div");
+        t.className = "txt";
+        t.textContent = (txt || "").toString();
+        d.appendChild(h); d.appendChild(t);
+        chatlog.appendChild(d);
+        chatlog.scrollTop = chatlog.scrollHeight;
+      }
+
+      function badgeForStatus(st){
+        const s = (st||"").toLowerCase();
+        if(s === "done" || s === "success" || s === "approved") return ["ok","ok"];
+        if(s === "failed" || s === "rejected") return ["bad","bad"];
+        if(s === "waiting_approval" || s === "queued" || s === "running") return ["warn","warn"];
+        return ["",""];
+      }
+
+      async function fetchJson(path, opts){
+        const r = await fetch(path, Object.assign({headers:{
+          "x-denis-conversation-id": getConv(),
+          "x-denis-trace-id": "ui_" + randId(),
+          "x-denis-requester": "cockpit"
+        }}, opts||{}));
+        let j = null;
+        try { j = await r.json(); } catch(e){ j = {"_error":"non_json","status":r.status}; }
+        return {status:r.status, json:j};
+      }
+
+      function renderKV(el, obj, prefix){
+        el.textContent = "";
+        const rows = [];
+        function push(k,v){ rows.push([k, v]); }
+        Object.keys(obj||{}).forEach(k => push(k, obj[k]));
+        rows.slice(0, 24).forEach(([k,v]) => {
+          const kk = document.createElement("div"); kk.innerHTML = "<b>" + (prefix?prefix+".":"") + k + "</b>";
+          const vv = document.createElement("div"); vv.textContent = (v === null || v === undefined) ? "null" : (typeof v === "object" ? JSON.stringify(v) : String(v));
+          el.appendChild(kk); el.appendChild(vv);
+        });
+      }
+
+      async function refreshOps(){
+        try{
+          const h = await fetchJson("/health");
+          renderKV(healthKV, h.json && h.json.async ? h.json.async : (h.json||{}), "health");
+        }catch(e){
+          renderKV(healthKV, {"warning":"unreachable"}, "health");
+        }
+        try{
+          const t = await fetchJson("/telemetry");
+          const out = {};
+          const a = (t.json && t.json.async) ? t.json.async : {};
+          const g = (t.json && t.json.graph) ? t.json.graph : {};
+          out.async_enabled = a.async_enabled ?? null;
+          out.worker_seen = a.worker_seen ?? null;
+          out.materializer_stale = a.materializer_stale ?? null;
+          out.queue_depth = a.queue_depth ?? null;
+          out.graph_integrity_degraded = (g.summary && g.summary.integrity_degraded) ? true : false;
+          out.graph_unknown_layers = (g.summary && (g.summary.unknown_count ?? null));
+          out.graph_materializer_errors = (g.materializer && (g.materializer.errors_window ?? null));
+          renderKV(telemetryKV, out, "telemetry");
+        }catch(e){
+          renderKV(telemetryKV, {"warning":"unreachable"}, "telemetry");
+        }
+      }
+
+      function renderTasks(tasks){
+        tasksEl.textContent = "";
+        const list = Array.isArray(tasks) ? tasks : [];
+        taskCountEl.textContent = String(list.length);
+        list.slice(0, 50).forEach(t => {
+          const it = document.createElement("div");
+          it.className = "item";
+          const top = document.createElement("div");
+          top.className = "top";
+          const id = document.createElement("div");
+          id.className = "id";
+          id.textContent = (t.id || t.task_id || "").slice(0, 16) + " · " + (t.type || t.task_type || "unknown");
+          const st = document.createElement("div");
+          const [cls] = badgeForStatus(t.status);
+          st.className = "badge " + cls;
+          st.textContent = (t.status || "unknown");
+          top.appendChild(id); top.appendChild(st);
+          const sub = document.createElement("div");
+          sub.className = "sub";
+          const sp = t.specialty ? (" · " + t.specialty) : "";
+          const cl = t.claimed_by ? (" · claimed:" + String(t.claimed_by).slice(0,8)) : "";
+          sub.textContent = "prio:" + (t.priority || "normal") + sp + cl;
+          it.appendChild(top); it.appendChild(sub);
+          tasksEl.appendChild(it);
+        });
+      }
+
+      async function refreshTasks(){
+        try{
+          const r = await fetchJson("/control_room/tasks?limit=50");
+          renderTasks((r.json && r.json.tasks) ? r.json.tasks : []);
+        }catch(e){
+          renderTasks([]);
+        }
+      }
+
+      async function graphFetch(){
+        const intentId = document.getElementById("intentId").value.trim();
+        const planId = document.getElementById("planId").value.trim();
+        const out = {};
+        if(intentId){
+          try{ out.intent = (await fetchJson("/graph/intent/" + encodeURIComponent(intentId))).json; }catch(e){ out.intent = {"warning":"unreachable"}; }
+        }
+        if(planId){
+          try{ out.plan = (await fetchJson("/graph/plan/" + encodeURIComponent(planId))).json; }catch(e){ out.plan = {"warning":"unreachable"}; }
+        }
+        graphOut.textContent = JSON.stringify(out, null, 2);
+      }
+
+      function addEventRow(evt){
+        const wrap = document.createElement("div");
+        wrap.className = "evt";
+        const h = document.createElement("div");
+        h.className = "h";
+        const t = document.createElement("div");
+        t.className = "t";
+        t.textContent = "#" + evt.event_id + " · " + evt.type;
+        const m = document.createElement("div");
+        m.className = "m";
+        m.textContent = evt.severity + " · " + evt.ts;
+        h.appendChild(t); h.appendChild(m);
+        const det = document.createElement("details");
+        det.open = false;
+        const sum = document.createElement("summary");
+        sum.className = "pill";
+        sum.textContent = "payload";
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(evt.payload || {}, null, 2);
+        det.appendChild(sum); det.appendChild(pre);
+        wrap.appendChild(h); wrap.appendChild(det);
+
+        // Voice events: best-effort playback if an URL pointer is present (no sensitive content).
+        try{
+          const p = evt.payload || {};
+          const audioUrl = (p && typeof p.audio_url === "string") ? p.audio_url : "";
+          if(audioUrl && audioUrl.startsWith("http")){
+            const a = document.createElement("audio");
+            a.controls = true;
+            a.preload = "none";
+            a.src = audioUrl;
+            a.style.width = "100%";
+            a.style.marginTop = "8px";
+            wrap.appendChild(a);
+          }
+        }catch(e){}
+
+        eventsEl.prepend(wrap);
+      }
+
+      function handleEvent(evt){
+        if(!evt || typeof evt !== "object") return;
+        if(typeof evt.event_id === "number"){
+          if(evt.event_id > getLast()) setLast(evt.event_id);
+        }
+        // Update panels from event stream (WS-first).
+        if(evt.type === "control_room.task.created" || evt.type === "control_room.task.updated"){
+          refreshTasks();
+        }
+        if(evt.type === "ops.metric"){
+          // lightweight refresh when metrics land.
+          refreshOps();
+        }
+        addEventRow(evt);
+      }
+
+      let ws = null;
+      let httpPollTimer = null;
+
+      async function httpReplayOnce(){
+        const after = getLast();
+        const url = "/v1/events?conversation_id=" + encodeURIComponent(getConv()) + "&after=" + encodeURIComponent(after);
+        try{
+          const r = await fetchJson(url);
+          const evts = (r.json && r.json.events) ? r.json.events : [];
+          evts.forEach(handleEvent);
+        }catch(e){}
+      }
+
+      function startHttpFallback(){
+        if(httpPollTimer) return;
+        httpPollTimer = setInterval(() => { httpReplayOnce(); }, 1500);
+      }
+      function stopHttpFallback(){
+        if(httpPollTimer){ clearInterval(httpPollTimer); httpPollTimer = null; }
+      }
+
+      function connectWS(){
+        stopHttpFallback();
+        const conv = getConv();
+        convEl.textContent = conv;
+        const proto = (location.protocol === "https:") ? "wss:" : "ws:";
+        const wsUrl = proto + "//" + location.host + "/v1/ws?conversation_id=" + encodeURIComponent(conv);
+        setWsState("connecting","warn");
+        try{
+          ws = new WebSocket(wsUrl);
+        }catch(e){
+          setWsState("down","bad");
+          startHttpFallback();
+          return;
+        }
+        ws.onopen = () => {
+          setWsState("up","ok");
+          const last = getLast();
+          try{
+            ws.send(JSON.stringify({type:"subscribe", conversation_id: conv, last_event_id: last}));
+          }catch(e){}
+        };
+        ws.onmessage = (msg) => {
+          let data = null;
+          try{ data = JSON.parse(msg.data); }catch(e){ return; }
+          // hello message
+          if(data && data.type === "hello"){ return; }
+          // event
+          if(data && data.schema_version === "1.0" && typeof data.event_id === "number"){
+            handleEvent(data);
+          }
+        };
+        ws.onclose = () => {
+          setWsState("down","bad");
+          startHttpFallback();
+          // best-effort reconnect
+          setTimeout(() => connectWS(), 1800);
+        };
+        ws.onerror = () => {
+          setWsState("error","bad");
+          startHttpFallback();
+        };
+      }
+
+      async function sendChat(){
+        const input = document.getElementById("chatInput");
+        const txt = (input.value || "").trim();
+        if(!txt) return;
+        input.value = "";
+        addBubble("user", txt);
+        const payload = {model:"denis-cognitive", messages:[{role:"user", content: txt}]};
+        try{
+          const r = await fetchJson("/v1/chat/completions", {method:"POST", headers:{"Content-Type":"application/json","x-denis-conversation-id": getConv(), "x-denis-trace-id":"ui_"+randId(), "x-denis-requester":"cockpit"}, body: JSON.stringify(payload)});
+          const msg = (((r.json||{}).choices||[])[0]||{}).message || {};
+          addBubble("assistant", msg.content || JSON.stringify(r.json));
+        }catch(e){
+          addBubble("assistant", "UNREACHABLE: /v1/chat/completions");
+        }
+      }
+
+      document.getElementById("sendBtn").addEventListener("click", sendChat);
+      document.getElementById("chatInput").addEventListener("keydown", (e) => { if(e.key === "Enter"){ sendChat(); } });
+      document.getElementById("refreshOpsBtn").addEventListener("click", refreshOps);
+      document.getElementById("reloadTasksBtn").addEventListener("click", refreshTasks);
+      document.getElementById("graphFetchBtn").addEventListener("click", graphFetch);
+      document.getElementById("clearEventsBtn").addEventListener("click", () => { eventsEl.textContent = ""; });
+      document.getElementById("newConvBtn").addEventListener("click", () => { setConv("conv_" + randId()); location.reload(); });
+
+      // Boot
+      convEl.textContent = getConv();
+      refreshOps();
+      refreshTasks();
+      connectWS();
+      httpReplayOnce();
+    </script>
+  </body>
+</html>

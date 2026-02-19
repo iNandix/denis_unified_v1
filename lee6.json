@@ -1,0 +1,15 @@
+
+***
+
+Esto es el CP-G definitivo — todo dentro, un solo agente, un solo commit. Cuando el smoke test muestre el popup con el campo de consulta y puedas escribir una pregunta y ver la respuesta de Perplexity sin salir de Denis — el capítulo 1 está **realmente** cerrado. Lánzalo.
+
+---
+
+# solo ha faltado una cosa pero la podemos meter como anexo,... perdona ha sido mi despiste.... falta un boton para poder subir un archivo directamente de context pack... imagina que ya lo tengo en disco...
+
+No te preocupes — es un anexo limpio, una sola función nueva. El flujo es obvio:
+
+```
+ANTES:  agente genera CP → daemon lo detecta → popup
+AHORA:  tú tienes CP en disco → botón → popup lo carga → mismo flow
+```

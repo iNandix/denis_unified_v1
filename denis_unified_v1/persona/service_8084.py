@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -57,6 +57,9 @@ from denis_unified_v1.delivery.events_v1 import (
     DeliveryInterruptV1,
 )
 from denis_unified_v1.delivery.graph_projection import get_voice_projection
+from denis_unified_v1.chat_cp.client import chat as chat_cp_chat
+from denis_unified_v1.chat_cp.contracts import ChatRequest as ChatCPRequest
+from denis_unified_v1.chat_cp.graph_trace import get_trace as get_chat_cp_trace
 
 
 MAX_REENTRY = 2
@@ -75,6 +78,22 @@ class ChatRequest(BaseModel):
     group_id: str = "default"
     session_id: str | None = None
     voice_enabled: bool = False
+
+
+class ChatCPMessageRequest(BaseModel):
+    role: str
+    content: str
+
+
+class ChatCPInternalRequest(BaseModel):
+    messages: list[ChatCPMessageRequest]
+    response_format: str = "text"
+    temperature: float = 0.2
+    max_output_tokens: int = 512
+    stream: bool = False
+    trace_id: str | None = None
+    metadata: dict[str, Any] | None = None
+    task_profile_id: str = "control_plane_chat"
 
 
 router = InferenceRouter()
@@ -147,6 +166,43 @@ async def chat_v1(req: ChatRequest) -> dict[str, Any]:
     return await _chat(req)
 
 
+@app.post("/internal/chat_cp")
+async def internal_chat_cp(req: ChatCPInternalRequest) -> dict[str, Any]:
+    """Internal control-plane chat endpoint (feature-flagged)."""
+    if os.getenv("DENIS_ENABLE_CHAT_CP", "0") != "1":
+        raise HTTPException(status_code=404, detail="chat_cp_disabled")
+
+    cp_request = ChatCPRequest.from_payload(
+        {
+            "messages": [{"role": msg.role, "content": msg.content} for msg in req.messages],
+            "response_format": req.response_format,
+            "temperature": req.temperature,
+            "max_output_tokens": req.max_output_tokens,
+            "stream": req.stream,
+            "trace_id": req.trace_id,
+            "metadata": req.metadata,
+            "task_profile_id": req.task_profile_id,
+        }
+    )
+    response = await chat_cp_chat(
+        cp_request,
+        shadow_mode=os.getenv("DENIS_CHAT_CP_SHADOW_MODE", "0") == "1",
+    )
+    return response.as_dict()
+
+
+@app.get("/internal/chat_cp/trace/{run_id}")
+async def internal_chat_cp_trace(run_id: str) -> dict[str, Any]:
+    """Return internal trace for a chat_cp run_id."""
+    if os.getenv("DENIS_ENABLE_CHAT_CP", "0") != "1":
+        raise HTTPException(status_code=404, detail="chat_cp_disabled")
+
+    trace = get_chat_cp_trace(run_id)
+    if trace is None:
+        return {"run_id": run_id, "status": "not_found"}
+    return trace
+
+
 @app.websocket("/chat")
 async def chat_ws(websocket: WebSocket):
     """WS: single output stream via DeliverySubgraph with voice support."""
@@ -211,6 +267,9 @@ async def chat_ws(websocket: WebSocket):
             # Get voice_enabled from client if present
             voice_enabled = data.get("voice_enabled", False)
 
+            # TEMP: disable voice to reduce CPU spikes
+            voice_enabled = False
+
             request_id = (
                 data.get("request_id")
                 or f"req_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
@@ -258,6 +317,11 @@ async def chat_ws(websocket: WebSocket):
             task_seq = seq
             cancel_event = cancel_events.get(request_id)
             interrupted = False
+
+            # Add global timeout to prevent infinite hanging
+            import time
+            task_start_time = time.time()
+            global_timeout = 300  # 5 minutes
 
             try:
                 req = ChatRequest(
@@ -310,6 +374,13 @@ async def chat_ws(websocket: WebSocket):
                 # WS loop: keep reading messages while pipeline runs
                 # This allows receiving client.interrupt at any time
                 while not voice_task.done():
+                    # Check global timeout
+                    if time.time() - task_start_time > global_timeout:
+                        print(f"[TIMEOUT] Global timeout exceeded, cancelling task")
+                        voice_task.cancel()
+                        interrupted = True
+                        break
+
                     try:
                         # Wait for next message with timeout to check task periodically
                         msg_data = await asyncio.wait_for(
@@ -694,6 +765,15 @@ async def _execute_actions_plan(
         "user_message": text,
         "session_id": f"persona_{req.user_id}_{req.group_id}",
     }
+    # WS23-G: inject consciousness state into executor context (fail-open)
+    try:
+        from denis_unified_v1.neuro.sequences import _read_consciousness
+        from denis_unified_v1.graph.graph_client import get_graph_client
+        _cs_dict = _read_consciousness(get_graph_client())
+        if _cs_dict:
+            context["consciousness"] = _cs_dict
+    except Exception:
+        pass
 
     execution_result = executor.execute_plan(selected_plan, context)
 

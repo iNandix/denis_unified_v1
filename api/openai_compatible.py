@@ -9,13 +9,16 @@ import os
 import time
 import uuid
 from typing import Any
+import logging
 
 import aiohttp
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from denis_unified_v1.kernel.scheduler import get_model_scheduler, InferenceRequest
+from denis_unified_v1.inference.hop import parse_hop, set_current_hop, reset as reset_hop
+from .sse_handler import sse_event
 
 
 # Canary switch for unified kernel migration
@@ -28,13 +31,38 @@ def _utc_now() -> int:
     return int(datetime.now(timezone.utc).timestamp())
 
 
+def _openai_chunk(
+    *,
+    completion_id: str,
+    created: int,
+    model: str,
+    delta: dict[str, Any],
+    finish_reason: str | None,
+) -> dict[str, Any]:
+    return {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": int(created),
+        "model": str(model),
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+    }
+
+
+def _iter_text_chunks(text: str, *, chunk_chars: int = 64):
+    raw = text or ""
+    n = max(1, int(chunk_chars))
+    for i in range(0, len(raw), n):
+        yield raw[i : i + n]
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str | None = None
 
 
 class ChatCompletionRequest(BaseModel):
-    model: str = "denis-cognitive"
+    # Default to persona for external clients (e.g., OpenCode).
+    model: str = "denis-persona"
     messages: list[ChatMessage] = Field(default_factory=list)
     stream: bool = False
     tools: list[dict[str, Any]] | None = None
@@ -77,9 +105,41 @@ class _ChatHandler:
                 return msg.content.strip()
         return ""
 
-    def _maybe_tool_call(
-        self, req: ChatCompletionRequest, user_text: str
-    ) -> dict[str, Any] | None:
+    def _inject_persona_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Prepend Denis persona + developer policy system blocks (best-effort)."""
+        enabled = (os.getenv("DENIS_OPENAI_COMPAT_PERSONA") or "1").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if not enabled:
+            return messages
+
+        system_blob = "\n".join(
+            str(m.get("content") or "") for m in messages if m.get("role") == "system"
+        )
+
+        persona_text = "Eres DENIS, un asistente de IA útil y directo."
+        policy_text = "POLÍTICAS DE DESARROLLO: no inventes resultados ni ejecuciones."
+        try:
+            from denis_unified_v1.persona.message_composer import MessageComposer
+
+            persona_text = MessageComposer.SYSTEM_PERSONA
+            policy_text = MessageComposer.DEVELOPER_POLICY
+        except Exception:
+            pass  # fail-open: keep lightweight defaults
+
+        blocks: list[dict[str, Any]] = []
+        if "Eres DENIS" not in system_blob and "DENIS, un asistente" not in system_blob:
+            blocks.append({"role": "system", "content": persona_text})
+        if "POLÍTICAS DE DESARROLLO" not in system_blob and "POLITICAS DE DESARROLLO" not in system_blob:
+            blocks.append({"role": "system", "content": policy_text})
+
+        return blocks + messages if blocks else messages
+
+    def _maybe_tool_call(self, req: ChatCompletionRequest, user_text: str) -> dict[str, Any] | None:
         if not req.tools:
             return None
         lowered = user_text.lower()
@@ -141,9 +201,7 @@ class _ChatHandler:
                     gate_output_blocked.labels(reason="secret_pattern").inc()
                 except Exception:
                     pass
-                safe_msg = (
-                    "El modelo generó contenido que parece incluir secretos o claves."
-                )
+                safe_msg = "El modelo generó contenido que parece incluir secretos o claves."
                 return safe_msg, meta
 
         return text, meta
@@ -203,14 +261,10 @@ class _ChatHandler:
         if not _USE_UNIFIED_KERNEL:
             try:
                 # Try to use legacy handler if available
-                return await self._generate_legacy(
-                    req, completion_id, user_text, prompt_tokens
-                )
+                return await self._generate_legacy(req, completion_id, user_text, prompt_tokens)
             except Exception as e:
                 # Log fallback and continue with unified kernel
-                print(
-                    f"WARN: Legacy handler failed ({e}), falling back to unified kernel"
-                )
+                print(f"WARN: Legacy handler failed ({e}), falling back to unified kernel")
 
         # Prompt injection guard
         risk, risk_reasons = self._classify_prompt_injection(user_text)
@@ -296,11 +350,12 @@ class _ChatHandler:
             self.inference_router = InferenceRouter()
 
         try:
+            messages_payload: list[dict[str, Any]] = [
+                {"role": msg.role, "content": str(msg.content or "")} for msg in req.messages
+            ]
+            messages_payload = self._inject_persona_messages(messages_payload)
             routed = await self.inference_router.route_chat(
-                messages=[
-                    {"role": msg.role, "content": str(msg.content or "")}
-                    for msg in req.messages
-                ],
+                messages=messages_payload,
                 request_id=completion_id,
                 inference_plan=inference_plan,
             )
@@ -398,7 +453,10 @@ class DenisRuntime:
                 },
             )()
 
-        self.models = [{"id": "denis-cognitive", "object": "model"}]
+        self.models = [
+            {"id": "denis-persona", "object": "model"},
+            {"id": "denis-cognitive", "object": "model"},
+        ]
         self.budget_manager = None
 
     async def generate(self, req: ChatCompletionRequest) -> dict[str, Any]:
@@ -406,11 +464,9 @@ class DenisRuntime:
         # Check for deterministic test mode - ONLY in non-production environments
         env = os.getenv("ENV", "production")  # Default to production for safety
 
-        is_contract_mode = (
-            req.model == "denis-contract-test"
-            and env != "production"  # Never active in production
-            and os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
-        )
+        # Contract test mode: avoid external calls and return deterministic output.
+        # Triggered by env-var in non-production; model override still allowed.
+        is_contract_mode = env != "production" and os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
 
         # Additional safety: never activate via headers/query params in production
         if env == "production":
@@ -431,14 +487,10 @@ class DenisRuntime:
                     return str(message.content)
         return "test message"
 
-    def _generate_deterministic_response(
-        self, req: ChatCompletionRequest
-    ) -> dict[str, Any]:
+    def _generate_deterministic_response(self, req: ChatCompletionRequest) -> dict[str, Any]:
         """Generate deterministic response for contract testing."""
         completion_id = "chatcmpl-deterministic-test"
-        user_text = (
-            self._extract_user_text(req.messages) if req.messages else "test message"
-        )
+        user_text = self._extract_user_text(req.messages) if req.messages else "test message"
         prompt_tokens = max(1, len(user_text.split()))
 
         # Deterministic content based on request
@@ -487,6 +539,7 @@ class DenisRuntime:
 
 def build_openai_router(runtime: DenisRuntime) -> APIRouter:
     router = APIRouter(prefix="/v1", tags=["openai"])
+    logger = logging.getLogger("denis.chat")
 
     @router.get("/models")
     async def list_models() -> dict[str, Any]:
@@ -503,12 +556,900 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
     async def chat_completions(req: ChatCompletionRequest, request: Request):
         ip = request.client.host if request.client else "unknown"
         user = ip
+        # Event bus identifiers (fail-open; do not persist raw prompts).
+        conv_id = (
+            (request.headers.get("x-denis-conversation-id") or "").strip()
+            or (request.query_params.get("conversation_id") or "").strip()
+            or "default"
+        )
+        trace_id = (request.headers.get("x-denis-trace-id") or "").strip() or str(uuid.uuid4())
+
+        # Best-effort: materialize selected event_v1 into Graph (SSoT). Must never break /chat.
+        def _materialize_event(ev: dict[str, Any] | None) -> None:
+            if not isinstance(ev, dict):
+                return
+            try:
+                from denis_unified_v1.graph.materializers.event_materializer import (
+                    maybe_materialize_event,
+                )
+
+                maybe_materialize_event(ev)
+            except Exception:
+                return
+
+        # Extract user text once for safe hashing + RAG.
+        user_text_for_hash = ""
+        try:
+            for msg in reversed(req.messages or []):
+                if msg.role == "user" and isinstance(msg.content, str):
+                    user_text_for_hash = msg.content
+                    break
+        except Exception:
+            user_text_for_hash = ""
+
+        # WS10-G: Graph-first Intent/Plan/Tasks (fail-open, never blocks chat).
+        # WS15/WS10-G: align graph turn_id with persona/event trace_id for correlation.
+        turn_id = (trace_id or "").strip() or str(uuid.uuid4())
+        ws10g_result: dict[str, Any] = {"success": False, "warning": None}
+        try:
+            from denis_unified_v1.graph.graph_intent_plan import create_intent_plan_tasks
+
+            ws10g_result = create_intent_plan_tasks(
+                conversation_id=conv_id,
+                turn_id=turn_id,
+                user_text=user_text_for_hash,
+                modality="text",
+            )
+        except Exception:
+            pass  # fail-open: never block chat
+
+        # Emit WS events for timeline (mirrors graph state).
+        if ws10g_result.get("success"):
+            try:
+                from api.persona.event_router import persona_emit as emit_event
+
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="plan.created",
+                    severity="info",
+                    ui_hint={"render": "plan_created", "icon": "checklist"},
+                    payload={
+                        "intent_id": ws10g_result.get("intent_id"),
+                        "plan_id": ws10g_result.get("plan_id"),
+                        "task_count": len(ws10g_result.get("task_ids", [])),
+                    },
+                )
+                for task_id in ws10g_result.get("task_ids", []):
+                    emit_event(
+                        conversation_id=conv_id,
+                        trace_id=trace_id,
+                        type="plan.task.created",
+                        severity="info",
+                        ui_hint={"render": "task_created", "icon": "task"},
+                        payload={
+                            "task_id": task_id,
+                            "plan_id": ws10g_result.get("plan_id"),
+                        },
+                    )
+            except Exception:
+                pass  # fail-open
+
+        # RAG (fail-open; optional). Emits WS events, can optionally inject a system context block.
+        rag_chunk_ids: list[str] = []
+        try:
+            rag_enabled = (os.getenv("RAG_ENABLED") or "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if not rag_enabled:
+                raise RuntimeError("rag_disabled")
+
+            from api.persona.event_router import persona_emit as emit_event
+            from api.telemetry_store import sha256_text
+            from denis_unified_v1.rag.context_builder import build_rag_context_pack
+
+            rag_pack = build_rag_context_pack(
+                user_text=user_text_for_hash, trace_id=trace_id, conversation_id=conv_id
+            )
+            if rag_pack.query:
+                k = int(os.getenv("RAG_TOPK", "8"))
+                ev = emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="rag.search.start",
+                    severity="info",
+                    ui_hint={
+                        "render": "rag_search",
+                        "icon": "search",
+                        "collapsible": True,
+                    },
+                    payload={
+                        "query_sha256": sha256_text(rag_pack.query),
+                        "query_len": len(rag_pack.query or ""),
+                        "k": k,
+                        "filters": {"kind": os.getenv("RAG_KIND_FILTER") or None},
+                    },
+                )
+                _materialize_event(ev)
+
+                rag_chunk_ids = [
+                    c.get("chunk_id")
+                    for c in (rag_pack.chunks or [])
+                    if isinstance(c, dict) and c.get("chunk_id")
+                ]
+
+                ev = emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="rag.search.result",
+                    severity="info",
+                    ui_hint={"render": "rag_results", "icon": "list", "collapsible": True},
+                    payload={
+                        "selected": [
+                            {
+                                "chunk_id": c.get("chunk_id"),
+                                "score": c.get("score"),
+                                "source": (c.get("provenance") or {}).get("source")
+                                if isinstance(c.get("provenance"), dict)
+                                else None,
+                                "hash_sha256": (c.get("provenance") or {}).get("hash_sha256")
+                                if isinstance(c.get("provenance"), dict)
+                                else None,
+                            }
+                            for c in (rag_pack.chunks or [])
+                            if isinstance(c, dict)
+                        ],
+                        "warning": rag_pack.warning,
+                    },
+                )
+                _materialize_event(ev)
+
+                ev = emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="rag.context.compiled",
+                    severity="info",
+                    ui_hint={"render": "rag_context", "icon": "stack", "collapsible": True},
+                    payload={
+                        "chunks_count": int(len(rag_pack.chunks or [])),
+                        "citations": list(rag_pack.citations or []),
+                    },
+                )
+                _materialize_event(ev)
+
+                if (os.getenv("RAG_INJECT") or "").strip().lower() in {"1", "true", "yes"}:
+                    # Safe system block (redacted snippets only).
+                    lines = ["RAG_CONTEXT (redacted snippets):"]
+                    for c in (rag_pack.chunks or [])[:8]:
+                        if not isinstance(c, dict):
+                            continue
+                        snippet = (c.get("snippet_redacted") or "").strip()
+                        cid = c.get("chunk_id")
+                        if cid and snippet:
+                            lines.append(f"- [{cid}] {snippet}")
+                    context_msg = "\n".join(lines)[:4000]  # hard cap
+                    try:
+                        req.messages.insert(0, ChatMessage(role="system", content=context_msg))
+                    except Exception:
+                        pass
+        except Exception:
+            rag_chunk_ids = []
+
+        # Anti-loop protection: if Denis calls an endpoint that points back to Denis,
+        # the request will re-enter with X-Denis-Hop already set. Default policy:
+        # reject any re-entry (hop > 0) with a fail-soft degraded response.
+        hop = parse_hop(request.headers.get("x-denis-hop"))
+        try:
+            max_hop = int(os.getenv("DENIS_OPENAI_COMPAT_MAX_HOP", "0"))
+        except Exception:
+            max_hop = 0
 
         try:
-            result = await runtime.generate(req)
+            if hop > max_hop:
+                # Emit minimal events (blocked).
+                try:
+                    from api.telemetry_store import sha256_text
+                    from api.persona.event_router import persona_emit as emit_event
+
+                    user_text = ""
+                    for msg in reversed(req.messages or []):
+                        if msg.role == "user" and isinstance(msg.content, str):
+                            user_text = msg.content
+                            break
+                    emit_event(
+                        conversation_id=conv_id,
+                        trace_id=trace_id,
+                        type="chat.message",
+                        severity="info",
+                        ui_hint={"render": "chat_bubble", "icon": "message"},
+                        payload={
+                            "role": "user",
+                            "content_sha256": sha256_text(user_text),
+                            "content_len": len(user_text or ""),
+                        },
+                    )
+                    emit_event(
+                        conversation_id=conv_id,
+                        trace_id=trace_id,
+                        type="agent.reasoning.summary",
+                        severity="warning",
+                        ui_hint={
+                            "render": "reasoning_summary",
+                            "icon": "brain",
+                            "collapsible": True,
+                        },
+                        payload={
+                            "adaptive_reasoning": {
+                                "goal_sha256": sha256_text(user_text),
+                                "goal_len": len(user_text or ""),
+                                "constraints_hit": ["anti_loop_x_denis_hop"],
+                                "tools_used": [],
+                                "retrieval": {"chunk_ids": rag_chunk_ids},
+                                "next_action": None,
+                            }
+                        },
+                    )
+                    ev = emit_event(
+                        conversation_id=conv_id,
+                        trace_id=trace_id,
+                        type="agent.decision_trace_summary",
+                        severity="warning",
+                        ui_hint={"render": "decision_trace", "icon": "route"},
+                        payload={"blocked": True, "x_denis_hop": hop, "path": "blocked_hop"},
+                    )
+                    _materialize_event(ev)
+                except Exception:
+                    pass
+                try:
+                    from api.telemetry_store import get_telemetry_store, sha256_text
+
+                    user_text = ""
+                    for msg in reversed(req.messages or []):
+                        if msg.role == "user" and isinstance(msg.content, str):
+                            user_text = msg.content
+                            break
+                    get_telemetry_store().record_chat_decision(
+                        {
+                            "request_id": None,
+                            "model": req.model,
+                            "x_denis_hop": hop,
+                            "blocked": True,
+                            "path": "blocked_hop",
+                            "prompt_sha256": sha256_text(user_text),
+                            "prompt_chars": len(user_text or ""),
+                        }
+                    )
+                except Exception:
+                    pass
+                try:
+                    logger.warning(
+                        "chat_blocked_hop hop=%s max_hop=%s model=%s",
+                        hop,
+                        max_hop,
+                        req.model,
+                    )
+                except Exception:
+                    pass
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "id": f"chatcmpl-{uuid.uuid4().hex[:16]}",
+                        "object": "chat.completion",
+                        "created": _utc_now(),
+                        "model": req.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "Degraded response: loop protection (X-Denis-Hop) blocked request.",
+                                },
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1,
+                            "total_tokens": 2,
+                        },
+                        "meta": {
+                            "path": "blocked_hop",
+                            "x_denis_hop": hop,
+                            "max_hop": max_hop,
+                        },
+                    },
+                )
+
+            # Emit user message event (redacted) on accept.
+            try:
+                from api.telemetry_store import sha256_text
+                from api.persona.event_router import persona_emit as emit_event
+
+                user_text = ""
+                for msg in reversed(req.messages or []):
+                    if msg.role == "user" and isinstance(msg.content, str):
+                        user_text = msg.content
+                        break
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="chat.message",
+                    severity="info",
+                    ui_hint={"render": "chat_bubble", "icon": "message"},
+                    payload={
+                        "role": "user",
+                        "content_sha256": sha256_text(user_text),
+                        "content_len": len(user_text or ""),
+                    },
+                )
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="run.step",
+                    severity="info",
+                    ui_hint={"render": "step", "icon": "list", "collapsible": True},
+                    payload={"step_id": "chat_completions", "state": "RUNNING"},
+                )
+            except Exception:
+                pass
+
+            if req.stream:
+                completion_id = f"chatcmpl-{uuid.uuid4().hex[:16]}"
+                created = _utc_now()
+
+                async def event_stream():
+                    # Start chunk: declare assistant role early.
+                    yield sse_event(
+                        _openai_chunk(
+                            completion_id=completion_id,
+                            created=created,
+                            model=req.model,
+                            delta={"role": "assistant"},
+                            finish_reason=None,
+                        )
+                    )
+
+                    try:
+                        hop_token = set_current_hop(hop)
+                        try:
+                            result = await runtime.generate(req)
+                        finally:
+                            reset_hop(hop_token)
+
+                        # Best-effort telemetry + WS events (redacted). Keep same semantics as non-streaming.
+                        try:
+                            from api.telemetry_store import get_telemetry_store, sha256_text
+
+                            meta = (result or {}).get("meta") if isinstance(result, dict) else {}
+                            router_meta = (
+                                (meta or {}).get("router") if isinstance(meta, dict) else {}
+                            )
+                            get_telemetry_store().record_chat_decision(
+                                {
+                                    "request_id": completion_id,
+                                    "model": req.model,
+                                    "x_denis_hop": hop,
+                                    "blocked": False,
+                                    "path": (meta or {}).get("path")
+                                    if isinstance(meta, dict)
+                                    else None,
+                                    "llm_used": router_meta.get("llm_used")
+                                    if isinstance(router_meta, dict)
+                                    else None,
+                                    "engine_id": router_meta.get("engine_id")
+                                    if isinstance(router_meta, dict)
+                                    else None,
+                                    "latency_ms": router_meta.get("latency_ms")
+                                    if isinstance(router_meta, dict)
+                                    else None,
+                                    "prompt_sha256": sha256_text(user_text_for_hash),
+                                    "prompt_chars": len(user_text_for_hash or ""),
+                                }
+                            )
+                        except Exception:
+                            pass
+
+                        # Emit decision trace summary + assistant message + latency metric (all redacted).
+                        try:
+                            from api.persona.event_router import persona_emit as emit_event
+                            from api.telemetry_store import sha256_text
+
+                            meta = result.get("meta") if isinstance(result, dict) else {}
+                            router_meta = (
+                                (meta or {}).get("router") if isinstance(meta, dict) else {}
+                            )
+
+                            assistant_text_for_hash = ""
+                            try:
+                                assistant_text_for_hash = (
+                                    (result.get("choices") or [{}])[0]
+                                    .get("message", {})
+                                    .get("content")
+                                ) or ""
+                            except Exception:
+                                assistant_text_for_hash = ""
+
+                            adaptive_reasoning = {
+                                "goal_sha256": sha256_text(user_text_for_hash),
+                                "goal_len": len(user_text_for_hash or ""),
+                                "constraints_hit": [],
+                                "tools_used": [],
+                                "retrieval": {"chunk_ids": rag_chunk_ids},
+                                "why_picked": "router_meta" if router_meta else "degraded_or_local",
+                                "next_action": None,
+                            }
+                            emit_event(
+                                conversation_id=conv_id,
+                                trace_id=trace_id,
+                                type="agent.reasoning.summary",
+                                severity="info",
+                                ui_hint={
+                                    "render": "reasoning_summary",
+                                    "icon": "brain",
+                                    "collapsible": True,
+                                },
+                                payload={"adaptive_reasoning": adaptive_reasoning},
+                            )
+                            ev = emit_event(
+                                conversation_id=conv_id,
+                                trace_id=trace_id,
+                                type="agent.decision_trace_summary",
+                                severity="info",
+                                ui_hint={"render": "decision_trace", "icon": "route"},
+                                payload={
+                                    "blocked": False,
+                                    "x_denis_hop": hop,
+                                    "path": (meta or {}).get("path")
+                                    if isinstance(meta, dict)
+                                    else None,
+                                    "engine_id": router_meta.get("engine_id")
+                                    if isinstance(router_meta, dict)
+                                    else None,
+                                    "llm_used": router_meta.get("llm_used")
+                                    if isinstance(router_meta, dict)
+                                    else None,
+                                    "latency_ms": router_meta.get("latency_ms")
+                                    if isinstance(router_meta, dict)
+                                    else None,
+                                },
+                            )
+                            _materialize_event(ev)
+
+                            emit_event(
+                                conversation_id=conv_id,
+                                trace_id=trace_id,
+                                type="chat.message",
+                                severity="info",
+                                ui_hint={"render": "chat_bubble", "icon": "message"},
+                                payload={
+                                    "role": "assistant",
+                                    "content_sha256": sha256_text(assistant_text_for_hash),
+                                    "content_len": len(assistant_text_for_hash or ""),
+                                },
+                            )
+
+                            emit_event(
+                                conversation_id=conv_id,
+                                trace_id=trace_id,
+                                type="run.step",
+                                severity="info",
+                                ui_hint={
+                                    "render": "step",
+                                    "icon": "list",
+                                    "collapsible": True,
+                                },
+                                payload={"step_id": "chat_completions", "state": "SUCCESS"},
+                            )
+                        except Exception:
+                            pass
+
+                        assistant_text = ""
+                        tool_calls: list[dict[str, Any]] | None = None
+                        finish_reason = "stop"
+                        try:
+                            choices = (
+                                result.get("choices") if isinstance(result, dict) else None
+                            )
+                            choice0 = (choices or [{}])[0] if isinstance(choices, list) else {}
+                            msg0 = (
+                                (choice0.get("message") or {})
+                                if isinstance(choice0, dict)
+                                else {}
+                            )
+                            assistant_text = str(msg0.get("content") or "")
+                            tc = msg0.get("tool_calls")
+                            if isinstance(tc, list) and tc:
+                                tool_calls = tc
+                                finish_reason = "tool_calls"
+                        except Exception:
+                            assistant_text = ""
+                            tool_calls = None
+                            finish_reason = "stop"
+
+                        if tool_calls:
+                            yield sse_event(
+                                _openai_chunk(
+                                    completion_id=completion_id,
+                                    created=created,
+                                    model=req.model,
+                                    delta={"tool_calls": tool_calls},
+                                    finish_reason=None,
+                                )
+                            )
+                            yield sse_event(
+                                _openai_chunk(
+                                    completion_id=completion_id,
+                                    created=created,
+                                    model=req.model,
+                                    delta={},
+                                    finish_reason="tool_calls",
+                                )
+                            )
+                            yield "data: [DONE]\n\n"
+                            return
+
+                        for chunk in _iter_text_chunks(assistant_text, chunk_chars=64):
+                            if not chunk:
+                                continue
+                            yield sse_event(
+                                _openai_chunk(
+                                    completion_id=completion_id,
+                                    created=created,
+                                    model=req.model,
+                                    delta={"content": chunk},
+                                    finish_reason=None,
+                                )
+                            )
+
+                        yield sse_event(
+                            _openai_chunk(
+                                completion_id=completion_id,
+                                created=created,
+                                model=req.model,
+                                delta={},
+                                finish_reason=finish_reason,
+                            )
+                        )
+                        yield "data: [DONE]\n\n"
+                    except Exception as e:
+                        # Fail-open: convert stream failure to a small degraded stream.
+                        degraded = f"Degraded response: {type(e).__name__}: {str(e)[:200]}"
+                        for chunk in _iter_text_chunks(degraded, chunk_chars=64):
+                            yield sse_event(
+                                _openai_chunk(
+                                    completion_id=completion_id,
+                                    created=created,
+                                    model=req.model,
+                                    delta={"content": chunk},
+                                    finish_reason=None,
+                                )
+                            )
+                        yield sse_event(
+                            _openai_chunk(
+                                completion_id=completion_id,
+                                created=created,
+                                model=req.model,
+                                delta={},
+                                finish_reason="stop",
+                            )
+                        )
+                        yield "data: [DONE]\n\n"
+
+                return StreamingResponse(
+                    event_stream(),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache"},
+                )
+
+            hop_token = set_current_hop(hop)
+            try:
+                result = await runtime.generate(req)
+            finally:
+                reset_hop(hop_token)
+            try:
+                from api.telemetry_store import get_telemetry_store, sha256_text
+
+                user_text = ""
+                for msg in reversed(req.messages or []):
+                    if msg.role == "user" and isinstance(msg.content, str):
+                        user_text = msg.content
+                        break
+                meta = (result or {}).get("meta") if isinstance(result, dict) else {}
+                router_meta = (meta or {}).get("router") if isinstance(meta, dict) else {}
+                get_telemetry_store().record_chat_decision(
+                    {
+                        "request_id": (result or {}).get("id")
+                        if isinstance(result, dict)
+                        else None,
+                        "model": req.model,
+                        "x_denis_hop": hop,
+                        "blocked": False,
+                        "path": (meta or {}).get("path") if isinstance(meta, dict) else None,
+                        "llm_used": router_meta.get("llm_used")
+                        if isinstance(router_meta, dict)
+                        else None,
+                        "engine_id": router_meta.get("engine_id")
+                        if isinstance(router_meta, dict)
+                        else None,
+                        "latency_ms": router_meta.get("latency_ms")
+                        if isinstance(router_meta, dict)
+                        else None,
+                        "prompt_sha256": sha256_text(user_text),
+                        "prompt_chars": len(user_text or ""),
+                    }
+                )
+            except Exception:
+                pass
+
+            # Emit decision trace summary + assistant message + latency metric (all redacted).
+            try:
+                from api.persona.event_router import persona_emit as emit_event
+                from api.telemetry_store import sha256_text
+
+                meta = result.get("meta") if isinstance(result, dict) else {}
+                router_meta = (meta or {}).get("router") if isinstance(meta, dict) else {}
+
+                assistant_text = ""
+                try:
+                    assistant_text = (
+                        (result.get("choices") or [{}])[0]
+                        .get("message", {})
+                        .get("content")
+                    ) or ""
+                except Exception:
+                    assistant_text = ""
+
+                adaptive_reasoning = {
+                    "goal_sha256": sha256_text(user_text_for_hash),
+                    "goal_len": len(user_text_for_hash or ""),
+                    "constraints_hit": [],
+                    "tools_used": [],
+                    "retrieval": {"chunk_ids": rag_chunk_ids},
+                    "why_picked": "router_meta" if router_meta else "degraded_or_local",
+                    "next_action": None,
+                }
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="agent.reasoning.summary",
+                    severity="info",
+                    ui_hint={"render": "reasoning_summary", "icon": "brain", "collapsible": True},
+                    payload={"adaptive_reasoning": adaptive_reasoning},
+                )
+                ev = emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="agent.decision_trace_summary",
+                    severity="info",
+                    ui_hint={"render": "decision_trace", "icon": "route"},
+                    payload={
+                        "blocked": False,
+                        "x_denis_hop": hop,
+                        "path": (meta or {}).get("path") if isinstance(meta, dict) else None,
+                        "engine_id": router_meta.get("engine_id")
+                        if isinstance(router_meta, dict)
+                        else None,
+                        "llm_used": router_meta.get("llm_used") if isinstance(router_meta, dict) else None,
+                        "latency_ms": router_meta.get("latency_ms")
+                        if isinstance(router_meta, dict)
+                        else None,
+                    },
+                )
+                _materialize_event(ev)
+
+                # Link to DecisionTrace (Graph SSoT) with safe summary only (fail-open).
+                try:
+                    from denis_unified_v1.actions.decision_trace import emit_decision_trace
+
+                    emit_decision_trace(
+                        kind="policy_eval",
+                        mode="PASSED",
+                        reason="adaptive_reasoning_record",
+                        request_id=(result.get("id") if isinstance(result, dict) else None),
+                        extra={"adaptive_reasoning": adaptive_reasoning},
+                    )
+                except Exception:
+                    pass
+
+                # Auto-index safe record (optional; fail-open).
+                try:
+                    indexing_enabled = (os.getenv("INDEXING_ENABLED") or "").strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                    }
+                    if indexing_enabled:
+                        from denis_unified_v1.indexing.indexing_bus import (
+                            get_indexing_bus,
+                            IndexPiece,
+                        )
+
+                        bus = get_indexing_bus()
+                        idx_status = bus.upsert_piece(
+                            IndexPiece(
+                                kind="decision_summary",
+                                title="Adaptive reasoning record",
+                                content=str(adaptive_reasoning),
+                                tags=["adaptive_reasoning"],
+                                source="agent",
+                                trace_id=trace_id,
+                                conversation_id=conv_id,
+                                provider=router_meta.get("llm_used")
+                                if isinstance(router_meta, dict)
+                                else None,
+                                extra={
+                                    "request_id": (
+                                        result.get("id") if isinstance(result, dict) else None
+                                    )
+                                },
+                            )
+                        )
+                        if isinstance(idx_status, dict) and idx_status.get("hash_sha256"):
+                            emit_event(
+                                conversation_id=conv_id,
+                                trace_id=trace_id,
+                                type="indexing.upsert",
+                                severity="info",
+                                ui_hint={
+                                    "render": "indexing",
+                                    "icon": "database",
+                                    "collapsible": True,
+                                },
+                                payload={
+                                    "kind": "decision_summary",
+                                    "hash_sha256": idx_status.get("hash_sha256"),
+                                    "status": idx_status.get("status"),
+                                },
+                            )
+                except Exception:
+                    pass
+
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="chat.message",
+                    severity="info",
+                    ui_hint={"render": "chat_bubble", "icon": "message"},
+                    payload={
+                        "role": "assistant",
+                        "content_sha256": sha256_text(assistant_text),
+                        "content_len": len(assistant_text or ""),
+                    },
+                )
+                latency_ms = (
+                    router_meta.get("latency_ms") if isinstance(router_meta, dict) else None
+                )
+                if latency_ms is not None:
+                    emit_event(
+                        conversation_id=conv_id,
+                        trace_id=trace_id,
+                        type="ops.metric",
+                        severity="info",
+                        ui_hint={"render": "metric", "icon": "gauge", "collapsible": True},
+                        payload={
+                            "name": "chat.latency_ms",
+                            "value": float(latency_ms),
+                            "unit": "ms",
+                            "labels": {"endpoint": "/v1/chat/completions"},
+                        },
+                    )
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="run.step",
+                    severity="info",
+                    ui_hint={"render": "step", "icon": "list", "collapsible": True},
+                    payload={"step_id": "chat_completions", "state": "SUCCESS"},
+                )
+            except Exception:
+                pass
+            try:
+                meta = result.get("meta") if isinstance(result, dict) else {}
+                logger.info(
+                    "chat_ok model=%s hop=%s path=%s",
+                    req.model,
+                    hop,
+                    (meta or {}).get("path") if isinstance(meta, dict) else None,
+                )
+            except Exception:
+                pass
             return JSONResponse(status_code=200, content=result)
         except Exception as e:
             # Fail-open degraded response
+            try:
+                logger.exception("chat_failed model=%s hop=%s", req.model, hop)
+            except Exception:
+                pass
+
+            degraded_content = f"Degraded response: {str(e)}"
+            try:
+                from api.persona.event_router import persona_emit as emit_event
+                from api.telemetry_store import sha256_text
+
+                adaptive_reasoning = {
+                    "goal_sha256": sha256_text(user_text_for_hash),
+                    "goal_len": len(user_text_for_hash or ""),
+                    "constraints_hit": ["degraded"],
+                    "tools_used": [],
+                    "retrieval": {"chunk_ids": rag_chunk_ids},
+                    "why_picked": "degraded_exception",
+                    "next_action": None,
+                }
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="agent.reasoning.summary",
+                    severity="warning",
+                    ui_hint={"render": "reasoning_summary", "icon": "brain", "collapsible": True},
+                    payload={"adaptive_reasoning": adaptive_reasoning},
+                )
+                ev = emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="agent.decision_trace_summary",
+                    severity="warning",
+                    ui_hint={"render": "decision_trace", "icon": "route"},
+                    payload={
+                        "blocked": False,
+                        "x_denis_hop": hop,
+                        "path": "degraded",
+                        "engine_id": None,
+                        "llm_used": None,
+                        "latency_ms": None,
+                    },
+                )
+                _materialize_event(ev)
+
+                # Optional: link to DecisionTrace (Graph SSoT), fail-open.
+                try:
+                    from denis_unified_v1.actions.decision_trace import emit_decision_trace
+
+                    emit_decision_trace(
+                        kind="policy_eval",
+                        mode="SKIPPED",
+                        reason="adaptive_reasoning_record_degraded",
+                        request_id=None,
+                        extra={
+                            "adaptive_reasoning": adaptive_reasoning,
+                            "error": type(e).__name__,
+                        },
+                    )
+                except Exception:
+                    pass
+
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="chat.message",
+                    severity="info",
+                    ui_hint={"render": "chat_bubble", "icon": "message"},
+                    payload={
+                        "role": "assistant",
+                        "content_sha256": sha256_text(degraded_content),
+                        "content_len": len(degraded_content),
+                    },
+                )
+                emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="run.step",
+                    severity="warning",
+                    ui_hint={"render": "step", "icon": "list", "collapsible": True},
+                    payload={"step_id": "chat_completions", "state": "FAILED"},
+                )
+                ev = emit_event(
+                    conversation_id=conv_id,
+                    trace_id=trace_id,
+                    type="error",
+                    severity="warning",
+                    ui_hint={"render": "error", "icon": "alert", "collapsible": True},
+                    payload={"code": "chat_failed", "msg": type(e).__name__},
+                )
+                _materialize_event(ev)
+            except Exception:
+                pass
             return JSONResponse(
                 status_code=200,
                 content={
@@ -521,7 +1462,7 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
                             "index": 0,
                             "message": {
                                 "role": "assistant",
-                                "content": f"Degraded response: {str(e)}",
+                                "content": degraded_content,
                             },
                             "finish_reason": "stop",
                         }
@@ -533,5 +1474,192 @@ def build_openai_router(runtime: DenisRuntime) -> APIRouter:
                     },
                 },
             )
+        finally:
+            # WS23-G: Neuro WAKE + UPDATE (fail-open, never blocks chat).
+            try:
+                from denis_unified_v1.feature_flags import load_feature_flags as _load_ff
+                _ff = _load_ff()
+                if getattr(_ff, "neuro_enabled", True):
+                    from denis_unified_v1.neuro.sequences import (
+                        wake_sequence,
+                        update_sequence,
+                        _read_consciousness,
+                    )
+                    from denis_unified_v1.graph.graph_client import get_graph_client
+                    from api.persona.event_router import persona_emit as _neuro_emit
+
+                    _neuro_graph = get_graph_client()
+
+                    # First turn detection: if no ConsciousnessState exists,
+                    # run WAKE_SEQUENCE to bootstrap 12 layers.
+                    _existing_cs = _read_consciousness(_neuro_graph)
+                    if _existing_cs is None:
+                        wake_sequence(
+                            emit_fn=_neuro_emit,
+                            conversation_id=conv_id,
+                            graph=_neuro_graph,
+                        )
+
+                    _neuro_turn_meta = {
+                        "input_sha256": sha256_text(user_text_for_hash)
+                        if "sha256_text" in dir()
+                        else "",
+                        "input_len": len(user_text_for_hash or ""),
+                        "modality": "text",
+                        "retrieval_count": len(rag_chunk_ids),
+                        "chunk_ids_count": len(rag_chunk_ids),
+                        "turns_in_session": 1,
+                        "errors_count": 0,
+                    }
+                    update_sequence(
+                        emit_fn=_neuro_emit,
+                        conversation_id=conv_id,
+                        turn_meta=_neuro_turn_meta,
+                        graph=_neuro_graph,
+                    )
+            except Exception:
+                pass  # fail-open
+
+    @router.websocket("/chat/completions/ws")
+    async def chat_completions_ws(websocket: WebSocket):
+        """
+        WebSocket streaming endpoint (non-OpenAI standard).
+
+        Protocol:
+        - Client sends a ChatCompletionRequest JSON payload.
+        - Server streams OpenAI chunk objects as JSON frames.
+        - Server ends each completion with {"type":"done","id":...}.
+        """
+        await websocket.accept()
+        try:
+            while True:
+                payload = await websocket.receive_json()
+                try:
+                    ws_req = ChatCompletionRequest(**(payload or {}))
+                except Exception:
+                    await websocket.send_json({"error": "bad_request"})
+                    continue
+
+                completion_id = f"chatcmpl-{uuid.uuid4().hex[:16]}"
+                created = _utc_now()
+                model = ws_req.model
+
+                # Start chunk
+                await websocket.send_json(
+                    _openai_chunk(
+                        completion_id=completion_id,
+                        created=created,
+                        model=model,
+                        delta={"role": "assistant"},
+                        finish_reason=None,
+                    )
+                )
+
+                hop = parse_hop(websocket.headers.get("x-denis-hop"))
+                try:
+                    max_hop = int(os.getenv("DENIS_OPENAI_COMPAT_MAX_HOP", "0"))
+                except Exception:
+                    max_hop = 0
+
+                if hop > max_hop:
+                    text = "Degraded response: loop protection (X-Denis-Hop) blocked request."
+                    for chunk in _iter_text_chunks(text, chunk_chars=64):
+                        await websocket.send_json(
+                            _openai_chunk(
+                                completion_id=completion_id,
+                                created=created,
+                                model=model,
+                                delta={"content": chunk},
+                                finish_reason=None,
+                            )
+                        )
+                    await websocket.send_json(
+                        _openai_chunk(
+                            completion_id=completion_id,
+                            created=created,
+                            model=model,
+                            delta={},
+                            finish_reason="stop",
+                        )
+                    )
+                    await websocket.send_json({"type": "done", "id": completion_id})
+                    continue
+
+                hop_token = set_current_hop(hop)
+                try:
+                    result = await runtime.generate(ws_req)
+                finally:
+                    reset_hop(hop_token)
+
+                assistant_text = ""
+                tool_calls: list[dict[str, Any]] | None = None
+                finish_reason = "stop"
+                try:
+                    choices = (
+                        result.get("choices") if isinstance(result, dict) else None
+                    )
+                    choice0 = (choices or [{}])[0] if isinstance(choices, list) else {}
+                    msg0 = (
+                        (choice0.get("message") or {}) if isinstance(choice0, dict) else {}
+                    )
+                    assistant_text = str(msg0.get("content") or "")
+                    tc = msg0.get("tool_calls")
+                    if isinstance(tc, list) and tc:
+                        tool_calls = tc
+                        finish_reason = "tool_calls"
+                except Exception:
+                    assistant_text = ""
+                    tool_calls = None
+                    finish_reason = "stop"
+
+                if tool_calls:
+                    await websocket.send_json(
+                        _openai_chunk(
+                            completion_id=completion_id,
+                            created=created,
+                            model=model,
+                            delta={"tool_calls": tool_calls},
+                            finish_reason=None,
+                        )
+                    )
+                    await websocket.send_json(
+                        _openai_chunk(
+                            completion_id=completion_id,
+                            created=created,
+                            model=model,
+                            delta={},
+                            finish_reason="tool_calls",
+                        )
+                    )
+                    await websocket.send_json({"type": "done", "id": completion_id})
+                    continue
+
+                for chunk in _iter_text_chunks(assistant_text, chunk_chars=64):
+                    if not chunk:
+                        continue
+                    await websocket.send_json(
+                        _openai_chunk(
+                            completion_id=completion_id,
+                            created=created,
+                            model=model,
+                            delta={"content": chunk},
+                            finish_reason=None,
+                        )
+                    )
+
+                await websocket.send_json(
+                    _openai_chunk(
+                        completion_id=completion_id,
+                        created=created,
+                        model=model,
+                        delta={},
+                        finish_reason=finish_reason,
+                    )
+                )
+                await websocket.send_json({"type": "done", "id": completion_id})
+        except WebSocketDisconnect:
+            return
+        except Exception:
+            return
 
     return router

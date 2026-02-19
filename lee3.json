@@ -1,0 +1,304 @@
+## CP-F — ContextHarvester
+
+```json
+{
+  "contextpack_id": "denis_F_harvester_2026-02-18T2234",
+  "mode": "makina",
+  "schema_version": 7,
+  "owner": "jotah",
+  "workspace": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+  "venv": "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
+  "priority": "CRITICAL",
+  "estimated_duration": "25min",
+
+  "MISSION": "Implementar ContextHarvester — orquestador que conecta RepoWatcher → SymbolExtractor → Neo4j. Es la pieza que hace que IntentRouter tenga contexto real de sesión en vez de listas vacías.",
+
+  "FILES_TO_READ_FIRST": [
+    "kernel/ghost_ide/repo_watcher.py",
+    "kernel/ghost_ide/symbol_extractor.py",
+    "kernel/ghost_ide/symbol_graph.py",
+    "denis_unified_v1/inference/intent_router.py",
+    "denis_unified_v1/inference/implicit_tasks.py"
+  ],
+
+  "TASK_1_SESSION_MODEL": {
+    "description": "Añadir nodo Session a Neo4j si no existe",
+    "file": "kernel/ghost_ide/symbol_graph.py — añadir métodos, NO reescribir",
+    "new_methods": [
+      "ensure_session(session_id: str, node_id: str = 'nodo1') → str",
+      "link_symbol_to_session(symbol_name: str, symbol_path: str, session_id: str) → None",
+      "get_session_symbols(session_id: str) → list[dict]",
+      "get_today_modified_paths(session_id: str) → list[str]"
+    ],
+    "cypher": {
+      "ensure_session": "MERGE (s:Session {id: $session_id}) SET s.date = date(), s.node = $node_id RETURN s",
+      "link_symbol": "MATCH (sym:Symbol {name: $name}) MATCH (sess:Session {id: $session_id}) MERGE (sym)-[:MODIFIED_IN]->(sess)",
+      "get_today": "MATCH (sym:Symbol)-[:MODIFIED_IN]->(sess:Session) WHERE sess.date = date() AND sess.id = $session_id RETURN sym.path, sym.name"
+    }
+  },
+
+  "TASK_2_CONTEXT_HARVESTER": {
+    "file": "kernel/ghost_ide/context_harvester.py",
+    "description": "Orquestador principal — escucha RepoWatcher, extrae símbolos, persiste en grafo",
+    "class": "ContextHarvester",
+    "init_params": {
+      "session_id": "str — identificador de sesión actual",
+      "node_id": "str = 'nodo1'",
+      "watch_paths": "list[str] — paths a monitorear",
+      "auto_start": "bool = False"
+    },
+    "methods": {
+      "start(blocking: bool = False)": "Arranca RepoWatcher + loop de harvest. Si blocking=False → thread separado",
+      "stop()": "Para el watcher limpiamente",
+      "harvest_file(path: str)": "Procesa un archivo: extrae símbolos → upsert Neo4j → link a sesión",
+      "harvest_repo(root_path: str)": "Harvest inicial completo del repo al arrancar",
+      "get_session_context() → SessionContext": "Lo que IntentRouter necesita — paths modificados, símbolos tocados, do_not_touch inferido",
+      "on_file_changed(path: str)": "Callback del RepoWatcher — llama harvest_file()"
+    },
+    "session_context_dataclass": {
+      "session_id": "str",
+      "modified_paths": "list[str]",
+      "modified_symbols": "list[str]",
+      "do_not_touch_auto": "list[str] — paths que ya tienen trabajo hecho hoy",
+      "context_prefilled": "dict — {path: [symbol_names]} para inyectar en CP",
+      "last_updated": "datetime"
+    }
+  },
+
+  "TASK_3_WIRE_TO_ROUTER": {
+    "description": "Conectar ContextHarvester con IntentRouter.enrich_with_session()",
+    "file": "denis_unified_v1/inference/implicit_tasks.py — actualizar enrich_with_session()",
+    "current_code": "Tiene query Neo4j pero sin session_id real ni SymbolGraph importado",
+    "fix": [
+      "Importar SymbolGraph desde kernel.ghost_ide.symbol_graph",
+      "Llamar get_today_modified_paths(session_id) en vez de query raw",
+      "Poblar do_not_touch_auto con paths modificados hoy",
+      "Poblar context_prefilled con {path: símbolos} del grafo",
+      "Fail-open si Neo4j no responde — devolver EnrichedContext vacío, NO exception"
+    ]
+  },
+
+  "TASK_4_SESSION_ID_PROPAGATION": {
+    "description": "El session_id debe fluir desde OpenCode → makina_filter → router → harvester",
+    "implementation": [
+      "Generar session_id = sha256(date + node_id)[:12] al inicio del proceso",
+      "Guardarlo en /tmp/denis_session_id.txt al arrancar",
+      "IntentRouter lo lee de /tmp/denis_session_id.txt si no se pasa explícito",
+      "ContextHarvester escribe en ese mismo session_id"
+    ],
+    "note": "Simple y sin dependencias — no necesita Redis ni base de datos extra"
+  },
+
+  "TASK_5_STARTUP_SCRIPT": {
+    "description": "Script que arranca el Harvester como daemon al inicio de sesión",
+    "file": "scripts/start_harvester.py",
+    "behavior": [
+      "Genera session_id y lo escribe en /tmp/denis_session_id.txt",
+      "Arranca ContextHarvester en background thread",
+      "Hace harvest_repo() inicial del workspace",
+      "Log: 'ContextHarvester active — session {session_id} — {N} symbols indexed'",
+      "Queda corriendo hasta SIGTERM"
+    ],
+    "usage": "python scripts/start_harvester.py --workspace /media/jotah/SSD_denis/home_jotah/denis_unified_v1 &"
+  },
+
+  "TASK_6_TESTS": {
+    "file": "tests/test_context_harvester.py",
+    "test_cases": [
+      "test_harvest_file_creates_symbol_in_neo4j",
+      "test_harvest_file_links_to_session",
+      "test_get_session_context_returns_modified_paths",
+      "test_router_gets_do_not_touch_from_harvester",
+      "test_fail_open_when_neo4j_down",
+      "test_session_id_persisted_to_tmp"
+    ],
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah:. /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -m pytest tests/test_context_harvester.py -v --tb=short 2>&1 | tail -30"
+  },
+
+  "TASK_7_END_TO_END_VERIFY": {
+    "description": "Verificar la cadena completa funcionando",
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah:. /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -c \"\nfrom kernel.ghost_ide.context_harvester import ContextHarvester\nfrom denis_unified_v1.inference.intent_router import route_input\nimport time\n\n# 1. Arrancar harvester\nh = ContextHarvester(session_id='test_e2e', watch_paths=['kernel/'])\nh.harvest_file('kernel/sandbox/sandbox_manager.py')\ntime.sleep(1)\n\n# 2. Verificar contexto\nctx = h.get_session_context()\nprint('Modified paths:', ctx.modified_paths)\nprint('do_not_touch_auto:', ctx.do_not_touch_auto)\n\n# 3. Router con contexto real\nresult = route_input('crea nuevo modulo en kernel', session_id='test_e2e')\nprint('Model:', result.model)\nprint('do_not_touch_auto:', result.do_not_touch_auto)\nprint('context_prefilled:', list(result.context_prefilled.keys()))\nprint('E2E OK')\n\""
+  },
+
+  "TASK_8_COMMIT": {
+    "command": "git add -A && git commit -m 'feat(harvester): ContextHarvester — RepoWatcher+SymbolExtractor+Neo4j → IntentRouter sees the world'"
+  },
+
+  "ACCEPTANCE_CRITERIA": [
+    "context_harvester.py existe e importa sin error",
+    "harvest_file() crea Symbol + relación MODIFIED_IN en Neo4j",
+    "get_session_context().do_not_touch_auto no vacío después de harvest",
+    "route_input() devuelve do_not_touch_auto poblado con paths reales",
+    "start_harvester.py funciona como daemon",
+    "tests pasan",
+    "Commit realizado"
+  ],
+
+  "DO_NOT_TOUCH": [
+    "service_8084.py",
+    "kernel/meganube/",
+    "kernel/sandbox/",
+    "FrontDenisACTUAL/",
+    "denis_unified_v1/compiler/"
+  ]
+}
+```
+
+
+***
+
+Con esto la cadena queda **completamente cerrada**:
+
+```
+cambio en archivo
+    ↓ RepoWatcher detecta
+    ↓ ContextHarvester extrae + persiste
+    ↓ Neo4j tiene Session con símbolos reales
+    ↓ IntentRouter consulta → do_not_touch_auto poblado
+    ↓ CP generado ya sabe qué no tocar
+    ↓ Agente no rompe lo que ya existe
+```
+## CP-F-ANEXO — RedundancyDetector
+
+```json
+{
+  "contextpack_id": "denis_F_anexo_redundancy_2026-02-18T2238",
+  "mode": "makina",
+  "schema_version": 7,
+  "owner": "jotah",
+  "workspace": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+  "venv": "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
+  "priority": "HIGH",
+  "estimated_duration": "20min",
+  "depends_on": "denis_F_harvester — lanzar DESPUÉS de que F complete",
+
+  "MISSION": "Implementar RedundancyDetector — detecta patrones de tareas repetitivas, les asigna símbolo Neo4j, y los inyecta automáticamente en implicit_tasks cuando superan umbral de frecuencia. Usa la misma infraestructura de ContextHarvester.",
+
+  "FILES_TO_READ_FIRST": [
+    "kernel/ghost_ide/context_harvester.py",
+    "kernel/ghost_ide/symbol_graph.py",
+    "denis_unified_v1/inference/implicit_tasks.py",
+    "denis_unified_v1/inference/intent_router.py"
+  ],
+
+  "TASK_1_HYGIENE_PATTERN_NODE": {
+    "description": "Añadir nodo HygienePattern al grafo Neo4j",
+    "file": "kernel/ghost_ide/symbol_graph.py — añadir métodos, NO reescribir",
+    "new_methods": [
+      "upsert_hygiene_pattern(name: str, intent: str, constraints: list[str], tasks: list[str]) → None",
+      "increment_pattern_frequency(name: str) → int",
+      "get_auto_inject_patterns(intent: str, constraints: list[str]) → list[dict]",
+      "get_all_patterns() → list[dict]"
+    ],
+    "cypher": {
+      "upsert": "MERGE (h:HygienePattern {name: $name}) SET h.intent=$intent, h.constraints=$constraints, h.tasks=$tasks, h.last_seen=datetime() ON CREATE SET h.frequency=1",
+      "increment": "MATCH (h:HygienePattern {name: $name}) SET h.frequency = coalesce(h.frequency, 0) + 1, h.last_seen=datetime() RETURN h.frequency",
+      "get_inject": "MATCH (h:HygienePattern) WHERE h.intent=$intent AND h.frequency >= $threshold RETURN h.name, h.tasks, h.frequency ORDER BY h.frequency DESC",
+      "link_intent": "MERGE (h:HygienePattern {name:$name})-[:PRECEDES]->(i:Intent {name:$intent})"
+    },
+    "AUTO_INJECT_THRESHOLD": 3
+  },
+
+  "TASK_2_REDUNDANCY_DETECTOR": {
+    "file": "kernel/ghost_ide/redundancy_detector.py",
+    "class": "RedundancyDetector",
+    "description": "Observa ejecuciones del router, detecta patrones, persiste en grafo",
+    "methods": {
+      "record_execution(intent: str, constraints: list, tasks_run: list[str], session_id: str)": "Registra una ejecución. Si el patrón intent+constraints ya existe → incrementa frecuencia. Si es nuevo → crea HygienePattern.",
+      "get_auto_inject_for(intent: str, constraints: list[str]) -> list[str]": "Devuelve tasks que deben inyectarse automáticamente por frecuencia. Umbral: 3 apariciones.",
+      "suggest_new_implicit_tasks() -> list[dict]": "Lista de patrones candidatos a convertirse en implicit_tasks estáticos. Para revisión humana.",
+      "export_learned_patterns() -> dict": "Exporta todos los patrones aprendidos — para persistir entre sesiones en /tmp/denis_learned_patterns.json",
+      "load_learned_patterns()": "Carga patrones previos al arrancar — continuidad entre sesiones"
+    },
+    "pattern_key": "sha256(intent + sorted(constraints))[:12] — clave determinista del patrón"
+  },
+
+  "TASK_3_WIRE_TO_ROUTER": {
+    "description": "Conectar RedundancyDetector al ciclo de vida del IntentRouter",
+    "file": "denis_unified_v1/inference/intent_router.py — añadir, NO reescribir",
+    "changes": [
+      "Al final de route() → llamar detector.record_execution() en background thread",
+      "En _build_implicit_tasks() → consultar detector.get_auto_inject_for() ANTES de implicit_tasks estáticos",
+      "Merge: auto_injected + static → sin duplicados",
+      "Si detector falla → silencio total, implicit_tasks estáticos siguen funcionando"
+    ],
+    "example_flow": [
+      "route_input('crea endpoint fastapi', constraints=['python','testing'])",
+      "→ router ejecuta, tasks=['READ files first', 'RUN tests before commit']",
+      "→ detector.record_execution('implement_feature', ['python','testing'], [...])",
+      "→ 4ª vez que pasa → get_auto_inject_for devuelve esas tasks",
+      "→ próximo CP ya las incluye sin que tú las pidas"
+    ]
+  },
+
+  "TASK_4_INTERNAL_SYMBOL_OPTIMIZATION": {
+    "description": "Los patrones aprendidos también optimizan llamadas internas — no solo API",
+    "implementation": [
+      "Si patrón frequency > 10 → promover a implicit_tasks.py como entrada estática",
+      "Script: scripts/promote_patterns.py — revisa patrones aprendidos y sugiere promociones",
+      "Output: 'Patrón X apareció 15 veces — promover a implicit_tasks estático? [y/n]'",
+      "Si y → añade automáticamente a IMPLICIT_TASKS dict en implicit_tasks.py"
+    ],
+    "note": "Denis aprende qué es higiénico por observación, no solo por lo que tú escribes"
+  },
+
+  "TASK_5_PERSISTENCE": {
+    "description": "Patrones sobreviven entre sesiones",
+    "files": [
+      "/tmp/denis_learned_patterns.json — cache rápido entre sesiones del día",
+      "Neo4j HygienePattern nodes — persistencia permanente"
+    ],
+    "on_startup": "RedundancyDetector.load_learned_patterns() lee /tmp/ primero, luego Neo4j como fallback"
+  },
+
+  "TASK_6_TESTS": {
+    "file": "tests/test_redundancy_detector.py",
+    "test_cases": [
+      "test_record_execution_creates_pattern",
+      "test_frequency_increments_on_repeat",
+      "test_auto_inject_triggers_at_threshold",
+      "test_auto_inject_below_threshold_returns_empty",
+      "test_patterns_persist_to_json",
+      "test_patterns_load_from_json",
+      "test_router_uses_auto_inject",
+      "test_fail_open_when_neo4j_down"
+    ],
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah:. /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -m pytest tests/test_redundancy_detector.py -v --tb=short 2>&1 | tail -20"
+  },
+
+  "TASK_7_COMMIT": {
+    "command": "git add -A && git commit -m 'feat(redundancy): RedundancyDetector — Denis learns hygiene patterns autonomously'"
+  },
+
+  "ACCEPTANCE_CRITERIA": [
+    "redundancy_detector.py existe e importa sin error",
+    "record_execution() crea HygienePattern en Neo4j",
+    "get_auto_inject_for() devuelve tasks después de 3 ejecuciones del mismo patrón",
+    "router usa auto_inject en implicit_tasks",
+    "patrones persisten en /tmp/denis_learned_patterns.json",
+    "promote_patterns.py existe y sugiere promociones",
+    "tests pasan",
+    "commit realizado"
+  ],
+
+  "DO_NOT_TOUCH": [
+    "service_8084.py",
+    "kernel/meganube/",
+    "kernel/sandbox/",
+    "FrontDenisACTUAL/",
+    "denis_unified_v1/compiler/"
+  ]
+}
+```
+
+
+***
+
+Lánzalo en cuanto F reporte. El orden es importante:
+
+```
+🔄 F (corriendo)  → ContextHarvester + Neo4j Session model
+⏳ F-ANEXO        → RedundancyDetector (espera a que F termine)
+
+Porque F-ANEXO lee context_harvester.py y symbol_graph.py
+que F está creando ahora mismo.

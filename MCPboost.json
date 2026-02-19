@@ -1,0 +1,89 @@
+{
+  "contextpack_id": "sprint19-opencode-godmode-2026-02-19T1137",
+  "priority": "ULTIMATE",
+  "MISSION": "Multi-file atomic edits + LSP semantic context + working memory + Serena integration.",
+  "TASK1_MULTI_FILE_ATOMIC": {
+    "file": "scripts/denis_mcp_ultra.py",
+    "multi_file_tools": [
+      "multi_file_edit(files:list, diff_patches:dict):",
+      "  # Atomic multi-file: backup → apply patches → git diff → test → commit",
+      "  backup_paths = [f'{f}.bkp' for f in files]",
+      "  for f,patch in zip(files, diff_patches.values()): write(f, patch)",
+      "  EventBus.publish('multi_file_applied', {'files':files, 'tests_passed':run_tests(files)})",
+      "  git.add_commit(files, f'feat: multi-file {{len(files)}} files')",
+      "multi_file_read_context(files:list, lsp_semantic=True):",
+      "  ctx = {}; for f in files: ctx[f] = {'content':read(f), 'lsp':lsp_diagnostics(f) if lsp_semantic else ''}",
+      "  return ctx",
+      "atomic_refactor(pattern:str, replacement:str, files:list):",
+      "  # Tree-sitter atomic refactor across files",
+      "  patches = tree_sitter_refactor(files, pattern, replacement)",
+      "  return multi_file_edit(files, patches)"
+    ]
+  },
+  "TASK2_LSP_SEMANTIC_CONTEXT": {
+    "mcp_tools": [
+      "lsp_semantic_navigate(file,line,col,intent):",
+      "  # LSP semantic context: definitions → usages → symbols → Neo4j",
+      "  lsp = lsp_client(file); defs = lsp.definition(line,col)",
+      "  usages = lsp.references(line,col); symbols = SymbolGraph.lsp_symbols(defs)",
+      "  return {'defs':defs, 'usages':usages[:10], 'graph_symbols':symbols}",
+      "lsp_diagnostics_context(file):",
+      "  diags = lsp_client(file).diagnostics(); return {'errors':len([d for d in diags if d.severity=='error']), 'warnings':len([d for d in diags if d.severity=='warning']), 'fixes':lsp_fixes(diags)}",
+      "serena_semantic_search(query, repo_path):",
+      "  # Serena MCP: semantic code retrieval across repo",
+      "  return requests.post('http://serena-mcp.local/semantic_search', json={'query':query, 'repo':repo_path}).json()"
+    ]
+  },
+  "TASK3_WORKING_MEMORY_FAST": {
+    "file": "plugins/opencode_working_memory.py",  // Zero-config plugin[web:120]
+    "lru_pool": [
+      "class WorkingMemory:",
+      "  def __init__(self, max_files=15): self.hot_files = LRUCache(maxsize=max_files)",
+      "  def inject_context(self):",
+      "    context = {'hot_files':list(self.hot_files.keys()), 'errors':self.lsp_errors(), 'decisions':self.protected_slots}",
+      "    return json.dumps(context)  # Injected to every prompt"
+    ],
+    "protected_slots": "errors/stderr, decisions/CP-notes, git-diffs-last-3"
+  },
+  "TASK4_OPENCODE_CONFIG_GODMODE": {
+    "~/.config/opencode/opencode.json": {
+      "plugins": ["plugins/opencode_working_memory.py"],
+      "lsp": {
+        "enabled": true,
+        "auto_install": true,
+        "servers": {
+          "typescript": {"initialization": {"importModuleSpecifierPreference": "shortest"}},
+          "python": {"command": ["pyright-langserver", "--stdio"]},
+          "rust": {"env": {"RUST_LOG": "info"}}
+        }
+      },
+      "mcp": {
+        "denis-ultra-multi": {"type": "local", "command": ["python3", "scripts/denis_mcp_ultra.py"], "tools_limit": 25},
+        "serena": {"type": "remote", "url": "http://localhost:8181/serena-mcp"},
+        "context7": {"type": "remote", "url": "https://mcp.context7.com"}
+      }
+    }
+  },
+  "TASK5_MULTI_FILE_WORKFLOWS": {
+    "AGENTS.md updates": [
+      "## MULTI-FILE ATÓMICO",
+      "1. MCP.multi_file_read_context(['a.py','b.py','c.ts']) → LSP context",
+      "2. MCP.lsp_semantic_navigate('kernel/persona.py',42,5,'refactor') → defs/usages",
+      "3. MCP.atomic_refactor('old_func', 'new_func', files) → backup+edit+test+commit",
+      "4. MCP.multi_file_edit(files,diffs) → atomic apply",
+      "## CONTEXT RECOVERY ULTRA",
+      "ALWAYS: MCP.lsp_diagnostics_context() + working_memory.hot_files",
+      "Error? MCP.serena_semantic_search('similar bug', repo)"
+    ]
+  },
+  "LAUNCH": {
+    "bash": "python3 plugins/opencode_working_memory.py --install; bash scripts/start_denis_opencode.sh"
+  },
+  "TESTS": [
+    "opencode 'refactor persona.py + event_bus.py'",
+    "→ MCP.multi_file_read_context(['persona.py','event_bus.py']) → LSP injected",
+    "→ MCP.lsp_semantic_navigate() → symbols graph",
+    "→ MCP.atomic_refactor() → 2 files edited + tests + commit atomic",
+    "working_memory.hot_files → ['persona.py','event_bus.py'] active"
+  ]
+}

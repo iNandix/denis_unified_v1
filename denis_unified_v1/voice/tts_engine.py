@@ -15,7 +15,8 @@ class TTSEngine:
             os.getenv("DENIS_TTS_URL") or "http://127.0.0.1:8084/v1/voice/tts"
         ).strip()
         self.fallback_url = (
-            os.getenv("DENIS_TTS_FALLBACK_URL") or "http://10.10.10.2:5002/api/tts"
+            # Node2 runs Piper TTS on :8005 (see denis_piper_tts.py).
+            os.getenv("DENIS_TTS_FALLBACK_URL") or "http://10.10.10.2:8005/synthesize"
         ).strip()
         self.timeout_sec = float(os.getenv("DENIS_TTS_TIMEOUT_SEC", "6.0"))
 
@@ -63,10 +64,8 @@ class TTSEngine:
         except Exception:
             pass
 
-        payload_fallback = {
-            "text": text,
-            "speaker_id": os.getenv("DENIS_TTS_SPEAKER_ID", "es_male"),
-        }
+        # Piper canonical expects {text, voice?} and returns audio/wav bytes.
+        payload_fallback = {"text": text, "voice": voice}
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(self.fallback_url, json=payload_fallback) as resp:

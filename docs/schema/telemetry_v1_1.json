@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "denis://contracts/control_plane/telemetry_v1_1.json",
+  "title": "DENIS Telemetry Contract v1.1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["timestamp", "started_utc", "requests", "chat", "async", "graph"],
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "started_utc": { "type": "string" },
+    "requests": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["total_1h", "error_rate_1h", "latency_p95_ms", "by_path", "by_status", "last_request_utc"],
+      "properties": {
+        "total_1h": { "type": "integer", "minimum": 0 },
+        "error_rate_1h": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "latency_p95_ms": { "type": "integer", "minimum": 0 },
+        "by_path": { "type": "object" },
+        "by_status": { "type": "object" },
+        "last_request_utc": { "type": "string" }
+      }
+    },
+    "chat": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["total", "blocked_hop_total", "last_decisions"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "blocked_hop_total": { "type": "integer", "minimum": 0 },
+        "last_decisions": { "type": "array" }
+      }
+    },
+    "async": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "async_enabled",
+        "worker_seen",
+        "materializer_stale",
+        "last_materialize_ts",
+        "blocked_mutations_count",
+        "queue_depth"
+      ],
+      "properties": {
+        "async_enabled": { "type": "boolean" },
+        "worker_seen": { "type": "boolean" },
+        "materializer_stale": { "type": "boolean" },
+        "last_materialize_ts": { "type": "string" },
+        "blocked_mutations_count": { "type": "integer", "minimum": 0 },
+        "queue_depth": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "providers": { "type": "object" },
+    "graph": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["layers", "summary"],
+      "properties": {
+        "layers": {
+          "type": "array",
+          "minItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["layer_id", "status", "last_update_ts"],
+            "properties": {
+              "layer_id": { "type": "string" },
+              "status": { "type": "string", "enum": ["live", "stale", "unknown"] },
+              "last_update_ts": { "type": ["string", "null"], "format": "date-time" }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["live_count", "stale_count", "unknown_count", "integrity_degraded"],
+          "properties": {
+            "live_count": { "type": "integer", "minimum": 0 },
+            "stale_count": { "type": "integer", "minimum": 0 },
+            "unknown_count": { "type": "integer", "minimum": 0 },
+            "integrity_degraded": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "code": { "type": "string" },
+        "msg": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Denis CP Graph Daemon - Graph-centric Control Plane
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/media/jotah/SSD_denis/.venv_oceanai/bin/python3 /media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/denis_cp_daemon.py
+Environment=DISPLAY=:0
+Environment=PYTHONPATH=/media/jotah/SSD_denis/home_jotah/denis_unified_v1
+Environment=NEO4J_URI=bolt://127.0.0.1:7687
+Environment=NEO4J_USER=neo4j
+Environment=NEO4J_PASSWORD=Leon1234$
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

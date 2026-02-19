@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DENIS Async Status</title>
+    <style>
+      body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        background: #0b1020;
+        color: #e6edf3;
+        margin: 0;
+        padding: 16px;
+      }
+      .card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 14px;
+        max-width: 900px;
+      }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; }
+      .pill {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 12px;
+      }
+      a { color: #9cdcfe; }
+    </style>
+  </head>
+  <body>
+    <h1>DENIS Async Visibility</h1>
+    <div class="card">
+      <div class="row" id="pills"></div>
+      <p><a href="/telemetry" target="_blank" rel="noreferrer">Open /telemetry JSON</a></p>
+      <pre id="raw">Loading...</pre>
+    </div>
+
+    <script>
+      async function refresh() {
+        const res = await fetch("/telemetry", { headers: { "Accept": "application/json" } });
+        const data = await res.json();
+        const a = (data && data.async) || {};
+        const pills = [
+          ["async_enabled", !!a.async_enabled],
+          ["worker_seen", !!a.worker_seen],
+          ["materializer_stale", !!a.materializer_stale],
+          ["last_materialize_ts", a.last_materialize_ts || ""],
+          ["blocked_mutations_count", a.blocked_mutations_count ?? 0]
+        ];
+        document.getElementById("pills").innerHTML = pills.map(([k,v]) => (
+          `<span class="pill">${k}=${String(v)}</span>`
+        )).join("");
+        document.getElementById("raw").textContent = JSON.stringify(data, null, 2);
+      }
+      refresh().catch((e) => {
+        document.getElementById("raw").textContent = "Failed to load /telemetry: " + e;
+      });
+      setInterval(() => refresh().catch(() => {}), 2000);
+    </script>
+  </body>
+</html>
+

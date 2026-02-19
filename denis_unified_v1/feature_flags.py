@@ -45,6 +45,17 @@ class FeatureFlags:
     denis_persona_unified: bool = False
     denis_enable_action_planner: bool = False
 
+    # InferenceGateway flags (Track B)
+    denis_enable_inference_gateway: bool = False
+    denis_gateway_shadow_mode: bool = False
+
+    # Chat Control Plane flags
+    denis_enable_chat_cp: bool = False
+    denis_chat_cp_shadow_mode: bool = False
+
+    # WS23-G Neuroplasticity
+    neuro_enabled: bool = True
+
 
 _flags_instance: Optional[FeatureFlags] = None
 _flags_lock = threading.Lock()
@@ -86,6 +97,16 @@ def load_feature_flags(force_reload: bool = False) -> FeatureFlags:
             phase12_smx_fast_path=_env_bool("PHASE12_SMX_FAST_PATH", True),
             denis_persona_unified=_env_bool("DENIS_PERSONA_UNIFIED", False),
             denis_enable_action_planner=_env_bool("DENIS_ENABLE_ACTION_PLANNER", False),
+            # InferenceGateway flags (Track B)
+            denis_enable_inference_gateway=_env_bool(
+                "DENIS_ENABLE_INFERENCE_GATEWAY", False
+            ),
+            denis_gateway_shadow_mode=_env_bool("DENIS_GATEWAY_SHADOW_MODE", False),
+            # Chat Control Plane flags
+            denis_enable_chat_cp=_env_bool("DENIS_ENABLE_CHAT_CP", False),
+            denis_chat_cp_shadow_mode=_env_bool("DENIS_CHAT_CP_SHADOW_MODE", False),
+            # WS23-G Neuroplasticity
+            neuro_enabled=_env_bool("NEURO_ENABLED", True),
         )
         return _flags_instance
 

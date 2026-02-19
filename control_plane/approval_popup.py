@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
-"""
-Approval Popup - Zenity-based approval dialog for Control Plane.
+"""Approval Popup - Zenity-based approval dialog for Control Plane.
+
+Tres momentos deterministas cuando salta el popup:
+1. POST-BRIEF: Agente propone implementación después del brief del usuario
+2. FASE-COMPLETA/ERROR: Termina fase o hay problema que requiere atención
+3. SPRINT-CLOSE: Finalización del sprint o proyecto
+
+Control Plane tiene autoridad absoluta:
+- Si usuario marca PARAR → modelo PARA (determinista)
+- Modelo obligado a reformular con feedback del Control Plane
+- Todo en JSON (lenguaje máquina)
+- Todo grafocéntrico (Neo4j)
 """
 
 from __future__ import annotations
@@ -9,7 +19,6 @@ import json
 import logging
 import os
 import subprocess
-import tempfile
 import threading
 from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
@@ -20,514 +29,560 @@ from control_plane.cp_generator import ContextPack
 logger = logging.getLogger(__name__)
 
 
-class ApprovalPopup:
-    """Zenity-based approval popup for ContextPacks."""
+class ControlPlaneAuthority:
+    """
+    Autoridad absoluta del Control Plane.
 
-    RETURN_APPROVED = 0
-    RETURN_REJECTED = 1
-    RETURN_EDIT = 2
-    RETURN_TIMEOUT = 5
+    Cuando el usuario dice PARAR, el modelo PARA.
+    El feedback va al grafo y el modelo debe reformular.
+    """
 
     def __init__(self):
-        self._ai_consult = AIConsult()
+        self.blocked_models = set()
+        self.pending_reformulation = {}
 
-    def _run_zenity(self, args: list, timeout: int = 120) -> Tuple[int, str]:
-        """Run zenity command and return (returncode, output)."""
-        try:
-            result = subprocess.run(
-                args,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-            )
-            return result.returncode, result.stdout
-        except subprocess.TimeoutExpired:
-            return self.RETURN_TIMEOUT, ""
-        except Exception as e:
-            logger.error(f"Zenity error: {e}")
-            return self.RETURN_REJECTED, ""
-
-    def _notify(self, title: str, message: str, expire: int = 3000) -> None:
-        """Show notification."""
-        try:
-            subprocess.Popen(
-                ["notify-send", title, message, "--expire-time={}".format(expire)],
-                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-            )
-        except Exception as e:
-            logger.warning(f"notify-send failed: {e}")
-
-    def _format_cp_text(self, cp: ContextPack) -> str:
-        """Format ContextPack details for zenity display."""
-        lines = []
-        status_icon = "✅" if cp.success else "❌"
-        lines.append(f"🎯 Intent:   {cp.intent} {status_icon}")
-        lines.append(f"📋 Misión:   {cp.mission[:80]}")
-        lines.append(f"🤖 Modelo:   {cp.model}")
-        lines.append(f"🌿 Repo:     {cp.repo_name} · {cp.branch}")
-        lines.append(f"🔑 CP ID:    {cp.cp_id}")
-        lines.append("")
-        if cp.files_touched:
-            lines.append(f"✋ Archivos tocados ({len(cp.files_touched)}):")
-            for f in cp.files_touched[:6]:
-                lines.append(f"   · {f}")
-            if len(cp.files_touched) > 6:
-                lines.append(f"   · ... +{len(cp.files_touched) - 6} más")
-            lines.append("")
-        if cp.files_to_read:
-            lines.append(f"📖 Archivos a leer ({len(cp.files_to_read)}):")
-            for f in cp.files_to_read[:4]:
-                lines.append(f"   · {f}")
-            if len(cp.files_to_read) > 4:
-                lines.append(f"   · ... +{len(cp.files_to_read) - 4} más")
-            lines.append("")
-        if cp.implicit_tasks:
-            lines.append(f"⚙️  Tareas implícitas:")
-            for t in cp.implicit_tasks[:4]:
-                lines.append(f"   · {t}")
-            lines.append("")
-        if cp.constraints:
-            lines.append(f"🔒 Constraints: {', '.join(cp.constraints)}")
-            lines.append("")
-        if cp.notes:
-            lines.append(f"💬 Nota: {cp.notes[:100]}")
-            lines.append("")
-        lines.append(
-            f"⏱️  Expira en 120s · {'✅ validado' if cp.human_validated else '⏳ pendiente'}"
-        )
-        return "\n".join(lines)
-
-    def show_cp_approval(self, cp: ContextPack) -> Tuple[str, Optional[ConsultResult]]:
+    def stop_model(self, model_id: str, reason: str) -> dict:
         """
-        Show approval dialog for a ContextPack.
+        Bloquea un modelo y genera feedback estructurado.
 
         Returns:
-            ('approved'|'rejected'|'edit'|'timeout', ConsultResult|None)
+            JSON con acción requerida para el modelo
         """
-        self._notify("Denis", f"CP {cp.cp_id} pendiente de aprobación")
+        self.blocked_models.add(model_id)
 
-        text = self._format_cp_text(cp)
+        feedback = {
+            "action": "STOP",
+            "authority": "ControlPlane",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+            "model_id": model_id,
+            "required": {
+                "halt_execution": True,
+                "save_state": True,
+                "wait_for_reformulation": True,
+            },
+            "next_steps": [
+                "Guardar estado actual en /tmp/denis/suspended_{model_id}.json",
+                "Esperar señal de CONTINUAR o REFORMULAR del Control Plane",
+                "NO proceder hasta nuevo CP aprobado",
+            ],
+        }
 
-        args = [
-            "zenity",
-            "--forms",
-            "--title=f'Denis · {cp.repo_name} · {cp.branch}'",
-            f"--text={text}",
-            "--add-entry=💬 Consultar antes de aprobar (opcional)",
-            "--ok-label=Siguiente →",
-            "--cancel-label=❌ Rechazar",
-            "--extra-button=📂 Cargar otro CP",
-            "--width=560",
-            "--timeout=120",
-        ]
+        # Persistir al grafo
+        self._persist_stop_to_graph(model_id, feedback)
 
-        returncode, output = self._run_zenity(args)
+        return feedback
 
-        if returncode == self.RETURN_TIMEOUT:
-            self._write_expired(cp)
-            self._notify("❌ CP expirado", f"CP {cp.cp_id} rechazado por timeout")
-            return "timeout", None
+    def _persist_stop_to_graph(self, model_id: str, feedback: dict):
+        """Persiste la parada al grafo como (:ControlPlaneDecision)."""
+        try:
+            from neo4j import GraphDatabase
 
-        if returncode == self.RETURN_REJECTED:
-            return "rejected", None
+            driver = GraphDatabase.driver("bolt://127.0.0.1:7687", auth=("neo4j", "Leon1234$"))
+            with driver.session() as session:
+                session.run(
+                    """
+                    MERGE (cpd:ControlPlaneDecision {id: $id})
+                    SET cpd.action = 'STOP',
+                        cpd.model_id = $model_id,
+                        cpd.reason = $reason,
+                        cpd.timestamp = datetime(),
+                        cpd.feedback = $feedback_json
+                    WITH cpd
+                    MATCH (m:Model {name: $model_id})
+                    MERGE (m)-[:BLOCKED_BY]->(cpd)
+                """,
+                    id=f"stop_{model_id}_{int(datetime.now().timestamp())}",
+                    model_id=model_id,
+                    reason=feedback["reason"],
+                    feedback_json=json.dumps(feedback),
+                )
+            driver.close()
+        except Exception as e:
+            logger.error(f"Failed to persist stop to graph: {e}")
 
-        if returncode == 1 and "load_file" in output.lower():
-            loaded_cp = load_cp_from_file()
-            if loaded_cp:
-                return self.show_cp_approval(loaded_cp)
-            return self.show_cp_approval(cp)
+    def signal_reformulate(self, model_id: str, new_constraints: list) -> dict:
+        """
+        Señal para que el modelo reformule con nuevas constraints.
 
-        query = output.strip()
+        Returns:
+            JSON con instrucciones de reformulación
+        """
+        self.pending_reformulation[model_id] = new_constraints
 
-        if not query:
-            returncode2, _ = self._run_zenity(
-                [
-                    "zenity",
-                    "--question",
-                    "--title=Denis · Aprobar",
-                    f"--text=¿Aprobar CP {cp.cp_id}?",
-                    "--ok-label=✅ Aprobar",
-                    "--cancel-label=❌ Rechazar",
-                    "--extra-button=✏️ Editar",
-                    "--width=560",
-                ]
-            )
-            if returncode2 == self.RETURN_APPROVED:
-                cp.human_validated = True
-                cp.validated_by = "human_direct"
-                self._send_webhook(cp, "approved")
-                return "approved", None
-            elif returncode2 == 3:
-                return self._handle_edit(cp)
-            self._send_webhook(cp, "rejected")
-            return "rejected", None
+        reformulation = {
+            "action": "REFORMULATE",
+            "authority": "ControlPlane",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "model_id": model_id,
+            "new_constraints": new_constraints,
+            "required": {
+                "re_read_cp": True,
+                "apply_constraints": True,
+                "generate_new_plan": True,
+                "submit_for_approval": True,
+            },
+            "source": "user_feedback_via_control_plane",
+            "grafocentric": {
+                "query": "MATCH (cp:ContextPack {status: 'rejected'})-[:BLOCKED_BY]->(:ControlPlaneDecision) RETURN cp.constraints",
+                "apply_to": model_id,
+            },
+        }
 
-        self._notify("Denis", "🔍 Consultando...", expire=3000)
+        self._persist_reformulation_to_graph(model_id, reformulation)
 
-        consult_result = self._ai_consult.consult_with_context_sync(query, cp)
+        return reformulation
 
-        returncode3, _ = self._run_zenity(
+    def _persist_reformulation_to_graph(self, model_id: str, reformulation: dict):
+        """Persiste la señal de reformulación al grafo."""
+        try:
+            from neo4j import GraphDatabase
+
+            driver = GraphDatabase.driver("bolt://127.0.0.1:7687", auth=("neo4j", "Leon1234$"))
+            with driver.session() as session:
+                session.run(
+                    """
+                    MERGE (r:ReformulationSignal {id: $id})
+                    SET r.action = 'REFORMULATE',
+                        r.model_id = $model_id,
+                        r.timestamp = datetime(),
+                        r.constraints = $constraints,
+                        r.signal_json = $signal_json
+                    WITH r
+                    MATCH (m:Model {name: $model_id})
+                    MERGE (m)-[:MUST_REFORMULATE]->(r)
+                """,
+                    id=f"ref_{model_id}_{int(datetime.now().timestamp())}",
+                    model_id=model_id,
+                    constraints=json.dumps(reformulation["new_constraints"]),
+                    signal_json=json.dumps(reformulation),
+                )
+            driver.close()
+        except Exception as e:
+            logger.error(f"Failed to persist reformulation to graph: {e}")
+
+
+# Singleton
+_authority = None
+
+
+def get_control_plane_authority() -> ControlPlaneAuthority:
+    """Get Control Plane Authority singleton."""
+    global _authority
+    if _authority is None:
+        _authority = ControlPlaneAuthority()
+    return _authority
+
+
+async def consult_graph(query: str, cp: ContextPack, symbols_context: list = None) -> ConsultResult:
+    """Graph-enhanced consult (existing)."""
+    from control_plane.repo_context import RepoContext
+    from kernel.ghostide.symbol_cypher_router import get_symbol_cypher_router
+
+    cypher_router = get_symbol_cypher_router()
+    repo_ctx = RepoContext()
+
+    if symbols_context is None:
+        symbols = cypher_router.get_symbols_context(cp.intent, repo_ctx.get_session_id(), limit=10)
+        symbols_context = [{"path": s.path, "name": s.name, "kind": s.kind} for s in symbols]
+
+    ai_consult = AIConsult()
+
+    enriched_context = f"""CONTEXTO GRAFICO DENIS:
+Repo: {cp.repo_name} · {cp.branch}
+Intent: {cp.intent}
+Mission: {cp.mission}
+
+SIMBOLOS RELACIONADOS DEL GRAFO:
+{chr(10).join([f"- {s['name']} ({s['kind']}): {s['path']}" for s in symbols_context[:5]])}
+
+Archivos a leer: {", ".join(cp.files_to_read[:3])}
+Modelo: {cp.model}
+
+PREGUNTA: {query}"""
+
+    return await ai_consult.consult_with_context(query, cp)
+
+
+# ============================================================================
+# TRES MOMENTOS DETERMINISTAS DEL POPUP
+# ============================================================================
+
+
+def show_post_brief_popup(cp: ContextPack) -> Tuple[str, str]:
+    """
+    MOMENTO 1: POST-BRIEF
+
+    El agente propone implementación después del brief del usuario.
+    Este es el punto de control inicial.
+    """
+    summary = f"""🤖 DENIS — POST-BRIEF: Propuesta de Implementación
+
+🎯 MISIÓN PROPUESTA:
+{cp.mission[:120]}...
+
+💻 MODELO ASIGNADO: {cp.model}
+📁 ARCHIVOS INVOLUCRADOS: {len(cp.files_to_read)}
+⚙️  CONSTRAINTS: {", ".join(cp.constraints[:3]) if cp.constraints else "none"}
+
+El agente está listo para ejecutar. ¿Aprobar?"""
+
+    try:
+        result = subprocess.run(
             [
                 "zenity",
                 "--question",
-                f"--title=Denis · Respuesta · {consult_result.source}",
-                f"--text=💬 {consult_result.summary}\n\n¿Aprobar CP con esta validación?",
-                "--ok-label=✅ Aprobar",
-                "--cancel-label=❌ Rechazar",
-                "--extra-button=🔄 Otra consulta",
-                "--width=560",
-            ]
+                "--title=🤖 DENIS — POST-BRIEF [Determinista]",
+                f"--text={summary}",
+                "--ok-label=✅ APROBAR Y LANZAR",
+                "--cancel-label=⛔ PARAR",
+                "--extra-button=✏️ EDITAR",
+                "--width=700",
+                "--height=400",
+                "--timeout=180",  # 3 min para decidir
+            ],
+            capture_output=True,
+            text=True,
         )
 
-        if returncode3 == self.RETURN_APPROVED:
-            cp.notes = consult_result.summary
-            cp.extra_context = consult_result.full_response
-            cp.human_validated = True
-            cp.validated_by = consult_result.source
-            self._notify("✅ CP aprobado", f"{cp.repo_name} · {cp.intent}")
-            self._send_webhook(cp, "approved")
-            return "approved", consult_result
-        elif returncode3 == 3:
-            return self.show_cp_approval(cp)
+        authority = get_control_plane_authority()
 
-        self._send_webhook(cp, "rejected")
-        return "rejected", consult_result
+        if result.returncode == 0:
+            return "approved", ""
+        elif result.returncode == 1:
+            # PARAR - Control Plane tiene autoridad
+            feedback = authority.stop_model(cp.model, "Usuario rechazó en POST-BRIEF")
+            return "stopped", json.dumps(feedback)
+        elif result.returncode == 2:
+            return "edit", ""
+        else:
+            # Timeout = PARAR por seguridad
+            feedback = authority.stop_model(cp.model, "Timeout en POST-BRIEF")
+            return "stopped", json.dumps(feedback)
 
-    def _handle_edit(self, cp: ContextPack) -> Tuple[str, Optional[ConsultResult]]:
-        """Handle edit flow."""
-        edit_file = "/tmp/denis_cp_edit.json"
-        with open(edit_file, "w") as f:
-            json.dump(cp.to_dict(), f, indent=2)
-
-        editor = os.environ.get("EDITOR", "gedit")
-        subprocess.run(
-            [editor, edit_file],
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-        )
-
-        try:
-            with open(edit_file, "r") as f:
-                edited = json.load(f)
-            return self.show_cp_approval(ContextPack.from_dict(edited))
-        except Exception as e:
-            logger.error(f"Error reading edited CP: {e}")
-            return "rejected", None
-
-    def _write_expired(self, cp: ContextPack) -> None:
-        """Write expired CP to file."""
-        expired_file = "/tmp/denis_cp_expired.json"
-        with open(expired_file, "w") as f:
-            json.dump(cp.to_dict(), f, indent=2)
-
-    def _send_webhook(self, cp: ContextPack, decision: str) -> None:
-        """Send webhook notification after approval/rejection."""
-        webhook_url = os.environ.get("DENIS_CP_WEBHOOK")
-        if not webhook_url:
-            return
-
-        payload = {
-            "cp_id": cp.cp_id,
-            "decision": decision,
-            "intent": cp.intent,
-            "repo_name": cp.repo_name,
-            "branch": cp.branch,
-            "validated_by": cp.validated_by or "human",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-
-        def _async_post():
-            try:
-                import requests
-
-                requests.post(webhook_url, json=payload, timeout=5)
-            except Exception as e:
-                logger.warning(f"Webhook failed: {e}")
-
-        threading.Thread(target=_async_post, daemon=True).start()
+    except Exception as e:
+        logger.error(f"Popup failed: {e}")
+        # Fallback: PARAR si no hay UI
+        authority = get_control_plane_authority()
+        feedback = authority.stop_model(cp.model, f"UI failure: {e}")
+        return "stopped", json.dumps(feedback)
 
 
-def show_cp_approval(cp: ContextPack) -> Tuple[str, Optional[ConsultResult]]:
-    """Convenience function."""
-    if not getattr(cp, "is_checkpoint", False):
-        os.makedirs("/tmp/denis", exist_ok=True)
-        with open(f"/tmp/denis/cp_{cp.cp_id}_decision.txt", "w") as f:
-            f.write("approved")
-        return ("approved", None)
-
-    popup = ApprovalPopup()
-    return popup.show_cp_approval(cp)
-
-
-def load_cp_from_file(initial_dir: str = "/tmp") -> Optional[ContextPack]:
+def show_phase_complete_popup(cp: ContextPack, phase_result: dict) -> Tuple[str, str]:
     """
-    Load a ContextPack from a JSON file using zenity file picker.
+    MOMENTO 2: FASE-COMPLETA o ERROR
+
+    Termina una fase o hay problema que requiere atención.
+    """
+    status = phase_result.get("status", "unknown")
+    phase_num = phase_result.get("phase_num", 1)
+    errors = phase_result.get("errors", [])
+
+    if errors:
+        error_str = "\n".join([f"  ❌ {e[:80]}" for e in errors[:3]])
+        summary = f"""🤖 DENIS — FASE {phase_num}: ⚠️ ERRORES DETECTADOS
+
+🎯 {cp.mission[:80]}...
+
+ERRORES:
+{error_str}
+
+¿Continuar con la siguiente fase?"""
+    else:
+        summary = f"""🤖 DENIS — FASE {phase_num}: ✅ COMPLETADA
+
+🎯 {cp.mission[:80]}...
+
+Fase completada exitosamente.
+
+¿Continuar con la siguiente fase?"""
+
+    try:
+        result = subprocess.run(
+            [
+                "zenity",
+                "--question",
+                f"--title=🤖 DENIS — FASE {phase_num} [Determinista]",
+                f"--text={summary}",
+                "--ok-label=✅ CONTINUAR",
+                "--cancel-label=⛔ PARAR",
+                "--extra-button=🔄 REFORMULAR",
+                "--width=700",
+                "--height=450",
+                "--timeout=120",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        authority = get_control_plane_authority()
+
+        if result.returncode == 0:
+            return "continue", ""
+        elif result.returncode == 1:
+            feedback = authority.stop_model(cp.model, f"Usuario paró en FASE {phase_num}")
+            return "stopped", json.dumps(feedback)
+        elif result.returncode == 2:
+            # REFORMULAR - enviar feedback al grafo
+            new_constraints = phase_result.get("suggested_constraints", [])
+            reformulation = authority.signal_reformulate(cp.model, new_constraints)
+            return "reformulate", json.dumps(reformulation)
+        else:
+            feedback = authority.stop_model(cp.model, f"Timeout en FASE {phase_num}")
+            return "stopped", json.dumps(feedback)
+
+    except Exception as e:
+        authority = get_control_plane_authority()
+        feedback = authority.stop_model(cp.model, f"UI failure en fase: {e}")
+        return "stopped", json.dumps(feedback)
+
+
+def show_sprint_close_popup(cp: ContextPack, sprint_summary: dict) -> Tuple[str, str]:
+    """
+    MOMENTO 3: SPRINT-CLOSE
+
+    Finalización del sprint o proyecto.
+    """
+    tasks_completed = sprint_summary.get("tasks_completed", 0)
+    tasks_failed = sprint_summary.get("tasks_failed", 0)
+    files_changed = sprint_summary.get("files_changed", [])
+
+    summary = f"""🤖 DENIS — SPRINT CLOSE: Resumen Final
+
+🎯 SPRINT: {cp.mission[:80]}...
+
+📊 RESULTADOS:
+  ✅ Completadas: {tasks_completed}
+  ❌ Fallidas: {tasks_failed}
+  📝 Archivos modificados: {len(files_changed)}
+
+¿Aprobar cierre del sprint?"""
+
+    try:
+        result = subprocess.run(
+            [
+                "zenity",
+                "--question",
+                "--title=🤖 DENIS — SPRINT CLOSE [Determinista]",
+                f"--text={summary}",
+                "--ok-label=✅ CERRAR SPRINT",
+                "--cancel-label=⛔ PARAR (revisar)",
+                "--extra-button=📝 VER DETALLES",
+                "--width=700",
+                "--height=400",
+                "--timeout=300",  # 5 min para revisar
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        authority = get_control_plane_authority()
+
+        if result.returncode == 0:
+            # Persistir cierre al grafo
+            _persist_sprint_close_to_graph(cp, sprint_summary)
+            return "close_approved", ""
+        elif result.returncode == 1:
+            feedback = authority.stop_model(cp.model, "Usuario rechazó cierre de sprint")
+            return "stopped", json.dumps(feedback)
+        elif result.returncode == 2:
+            return "view_details", ""
+        else:
+            # Timeout en cierre = revisar manualmente
+            return "timeout_review", "Revisar manualmente"
+
+    except Exception as e:
+        return "error", str(e)
+
+
+def _persist_sprint_close_to_graph(cp: ContextPack, sprint_summary: dict):
+    """Persiste el cierre del sprint al grafo."""
+    try:
+        from neo4j import GraphDatabase
+
+        driver = GraphDatabase.driver("bolt://127.0.0.1:7687", auth=("neo4j", "Leon1234$"))
+        with driver.session() as session:
+            session.run(
+                """
+                MERGE (s:SprintClose {id: $id})
+                SET s.cp_id = $cp_id,
+                    s.timestamp = datetime(),
+                    s.tasks_completed = $completed,
+                    s.tasks_failed = $failed,
+                    s.summary_json = $summary
+                WITH s
+                MATCH (cp:ContextPack {id: $cp_id})
+                MERGE (cp)-[:CLOSED_AS]->(s)
+            """,
+                id=f"sprint_close_{int(datetime.now().timestamp())}",
+                cp_id=cp.cp_id,
+                completed=sprint_summary.get("tasks_completed", 0),
+                failed=sprint_summary.get("tasks_failed", 0),
+                summary=json.dumps(sprint_summary),
+            )
+        driver.close()
+    except Exception as e:
+        logger.error(f"Failed to persist sprint close: {e}")
+
+
+# ============================================================================
+# COMPATIBILIDAD CON CÓDIGO EXISTENTE
+# ============================================================================
+
+
+def show_cp_approval(cp: ContextPack) -> Tuple[str, str]:
+    """Compatibilidad: usa POST-BRIEF por defecto."""
+    return show_post_brief_popup(cp)
+
+
+def show_plan_review(cp: ContextPack, phases: list, risks: list) -> Tuple[str, str]:
+    """Compatibilidad: usa FASE-COMPLETA."""
+    phase_result = {
+        "status": "complete",
+        "phase_num": 1,
+        "errors": [],
+        "phases": phases,
+        "risks": risks,
+    }
+    return show_phase_complete_popup(cp, phase_result)
+
+
+def show_upload_cp_popup() -> Tuple[str, Optional[ContextPack]]:
+    """
+    ANEXO: Cargar CP desde archivo de disco.
+
+    Permite al usuario seleccionar un archivo JSON con CP y cargarlo
+    directamente al Control Plane.
 
     Returns:
-        ContextPack if loaded successfully, None if cancelled or invalid.
+        (decision, cp_object) - cp_object es None si se canceló
     """
     try:
+        # Abrir diálogo de selección de archivo
         result = subprocess.run(
             [
                 "zenity",
                 "--file-selection",
-                "--title=Denis · Cargar Context Pack",
-                f"--filename={initial_dir}/",
-                "--file-filter=JSON files | *.json",
-                "--width=600",
+                "--title=📂 Cargar ContextPack desde archivo",
+                "--filename=/tmp/denis/",
+                "--file-filter=ContextPacks (*.json) | *.json",
+                "--file-filter=Todos los archivos | *",
             ],
             capture_output=True,
             text=True,
-            timeout=60,
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
         )
 
-        if result.returncode != 0 or not result.stdout.strip():
-            return None
+        if result.returncode != 0:
+            return "cancelled", None
 
         filepath = result.stdout.strip()
+        if not filepath or not os.path.exists(filepath):
+            return "cancelled", None
 
+        # Cargar y validar CP
         with open(filepath, "r") as f:
             data = json.load(f)
 
-        required_fields = ["mission", "intent", "files_to_read", "repo_name"]
-        missing = [f for f in required_fields if f not in data or not data[f]]
+        from control_plane.cp_generator import ContextPack
 
-        if missing:
-            subprocess.run(
-                [
-                    "zenity",
-                    "--error",
-                    f"--text=❌ JSON inválido o campos faltantes: {', '.join(missing)}",
-                ],
-                env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+        # Detectar formato (puede ser CP completo o solo datos)
+        if "cp_id" in data:
+            # Formato completo ContextPack
+            cp = ContextPack.from_dict(data)
+        elif "mission" in data:
+            # Formato simplificado - construir CP
+            cp = ContextPack(
+                cp_id=f"upload_{int(datetime.now().timestamp())}",
+                mission=data.get("mission", "Mission from uploaded CP"),
+                model=data.get("model", "groq"),
+                files_to_read=data.get("files_to_read", []),
+                files_touched=data.get("files_touched", []),
+                success=data.get("success", False),
+                risk_level=data.get("risk_level", "MEDIUM"),
+                is_checkpoint=data.get("is_checkpoint", True),
+                do_not_touch=data.get("do_not_touch", []),
+                implicit_tasks=data.get("implicit_tasks", []),
+                acceptance_criteria=data.get("acceptance_criteria", []),
+                intent=data.get("intent", "implement_feature"),
+                constraints=data.get("constraints", []),
+                repo_id=data.get("repo_id", ""),
+                repo_name=data.get("repo_name", "denis_unified_v1"),
+                branch=data.get("branch", "main"),
             )
-            return None
+        else:
+            return "invalid_format", None
 
-        cp = ContextPack.from_dict(data)
-        cp.source = "manual_file"
-        cp.requires_human_approval = True
-        cp.human_validated = False
+        # Mostrar preview y pedir confirmación
+        preview = f"""📂 CP CARGADO DESDE DISCO:
 
-        return cp
+🎯 MISSION: {cp.mission[:100]}...
+💻 MODEL: {cp.model}
+📁 FILES: {len(cp.files_to_read)} archivos
+⚙️  CONSTRAINTS: {", ".join(cp.constraints[:3]) if cp.constraints else "none"}
+📄 ARCHIVO: {filepath}
 
-    except json.JSONDecodeError as e:
-        subprocess.run(
+¿Proceder con este CP?"""
+
+        confirm = subprocess.run(
             [
                 "zenity",
-                "--error",
-                f"--text=❌ JSON inválido: {e}",
+                "--question",
+                "--title=📂 Confirmar CP Cargado",
+                f"--text={preview}",
+                "--ok-label=✅ CARGAR Y LANZAR",
+                "--cancel-label=❌ CANCELAR",
+                "--width=700",
+                "--height=400",
             ],
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+            capture_output=True,
+            text=True,
         )
-        return None
+
+        if confirm.returncode == 0:
+            logger.info(f"CP cargado desde {filepath}: {cp.cp_id}")
+            return "loaded", cp
+        else:
+            return "cancelled", None
+
+    except FileNotFoundError:
+        # zenity no disponible - fallback CLI
+        print("📂 Cargar CP desde archivo")
+        filepath = input("Ruta al archivo JSON: ").strip()
+
+        if not filepath or not os.path.exists(filepath):
+            print("Archivo no encontrado")
+            return "cancelled", None
+
+        try:
+            with open(filepath, "r") as f:
+                data = json.load(f)
+
+            from control_plane.cp_generator import ContextPack
+
+            cp = ContextPack.from_dict(data) if "cp_id" in data else None
+
+            if cp:
+                resp = input(f"CP: {cp.mission[:60]}...\n¿Cargar? [s/n]: ").lower()
+                if resp in ["s", "si", "yes"]:
+                    return "loaded", cp
+            return "cancelled", None
+
+        except Exception as e:
+            print(f"Error cargando CP: {e}")
+            return "error", None
+
     except Exception as e:
-        logger.error(f"Error loading CP from file: {e}")
-        return None
+        logger.error(f"Failed to upload CP: {e}")
+        return "error", None
 
 
 __all__ = [
-    "ApprovalPopup",
+    "show_post_brief_popup",
+    "show_phase_complete_popup",
+    "show_sprint_close_popup",
     "show_cp_approval",
-    "load_cp_from_file",
     "show_plan_review",
-    "show_phase_complete",
+    "show_upload_cp_popup",
+    "ControlPlaneAuthority",
+    "get_control_plane_authority",
 ]
-
-
-def show_plan_review(cp: ContextPack, phases: list, risks: list) -> tuple:
-    """
-    Popup shown ONCE when Denis receives a new CP.
-    Blocks until user approves the plan or writes a correction.
-
-    Returns: (decision, correction_text)
-    decision: 'approved' | 'correction' | 'timeout'
-    correction_text: texto escrito por el usuario, '' si aprobó directo
-    """
-    import os
-    import subprocess
-
-    phases_text = (
-        "\n".join([f"  {i + 1}. {p}" for i, p in enumerate(phases)]) if phases else "  (ninguna)"
-    )
-    risks_text = "\n".join([f"  • {r}" for r in risks]) if risks else "  (ninguno)"
-
-    text = f"📋 MISIÓN:\n{cp.mission}\n\n📐 FASES PROPUESTAS:\n{phases_text}\n\n⚠️  RIESGOS:\n{risks_text}"
-
-    args = [
-        "zenity",
-        "--forms",
-        '--title=f"Denis · {cp.repo_name} · {cp.branch} · Plan"',
-        f"--text={text}",
-        "--add-entry=✏️ Corrección opcional (dejar vacío para aprobar tal cual)",
-        "--ok-label=✅ Correcto, arranca Fase 1",
-        "--cancel-label=⏹️ Cancelar",
-        "--width=580",
-        "--timeout=300",
-    ]
-
-    try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-        )
-    except subprocess.TimeoutExpired:
-        decision_data = {"decision": "timeout", "correction": "", "cpid": cp.cp_id}
-        with open("/tmp/denis/plan_review_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("timeout", "")
-
-    if result.returncode == 1:
-        decision_data = {"decision": "timeout", "correction": "", "cpid": cp.cp_id}
-        with open("/tmp/denis/plan_review_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("timeout", "")
-
-    correction = result.stdout.strip()
-
-    if not correction:
-        decision_data = {"decision": "approved", "correction": "", "cpid": cp.cp_id}
-        with open("/tmp/denis/plan_review_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("approved", "")
-
-    args2 = [
-        "zenity",
-        "--forms",
-        "--title=Denis · Tu corrección",
-        "--text=✏️ Describe la corrección que quieres hacer:",
-        "--add-entry=Corrección:",
-        "--ok-label=Continuar",
-        "--cancel-label=Atrás",
-        "--width=500",
-    ]
-
-    try:
-        result2 = subprocess.run(
-            args2,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-        )
-    except:
-        return ("correction", correction)
-
-    if result2.returncode == 0:
-        final_correction = result2.stdout.strip()
-        decision_data = {
-            "decision": "correction",
-            "correction": final_correction or correction,
-            "cpid": cp.cp_id,
-        }
-        with open("/tmp/denis/plan_review_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("correction", final_correction or correction)
-
-    return ("correction", correction)
-
-
-def show_phase_complete(
-    phase_num: int, completed: list, failed: list, next_phase_summary: str
-) -> tuple:
-    """
-    Popup shown when each phase ends.
-    Lists what completed and what failed. Proposes next phase. Blocks until decision.
-
-    Returns: (decision, adjustment_text)
-    decision: 'continue' | 'adjust' | 'stop' | 'timeout'
-    """
-    import os
-    import subprocess
-
-    completed_text = "\n".join([f"  ✅ {c}" for c in completed]) if completed else "  (nada)"
-    failed_text = "\n".join([f"  ❌ {f}" for f in failed]) if failed else "  (nada)"
-
-    text = f"RESULTADOS FASE {phase_num}:\n\n{completed_text}\n{failed_text}\n\nSIGUIENTE PROPUESTA:\n{next_phase_summary}"
-
-    args = [
-        "zenity",
-        "--question",
-        '--title=f"Denis · Fase {phase_num} completada"',
-        f"--text={text}",
-        "--ok-label=▶️ Continuar",
-        "--cancel-label=⏹️ Parar aquí",
-        "--extra-button=✏️ Ajuste antes de continuar",
-        "--width=600",
-        "--timeout=600",
-    ]
-
-    try:
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=600,
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-        )
-    except subprocess.TimeoutExpired:
-        decision_data = {
-            "decision": "timeout",
-            "adjustment": "",
-            "phase": phase_num,
-            "failed": failed,
-        }
-        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("timeout", "")
-
-    if result.returncode == 0:
-        decision_data = {
-            "decision": "continue",
-            "adjustment": "",
-            "phase": phase_num,
-            "failed": failed,
-        }
-        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("continue", "")
-
-    if result.returncode == 1:
-        decision_data = {"decision": "stop", "adjustment": "", "phase": phase_num, "failed": failed}
-        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("stop", "")
-
-    args2 = [
-        "zenity",
-        "--forms",
-        "--title=Denis · Ajuste antes de continuar",
-        "--text=✏️ Describe el ajuste que quieres hacer:",
-        "--add-entry=Ajuste:",
-        "--ok-label=Continuar",
-        "--cancel-label=Atrás",
-        "--width=500",
-    ]
-
-    try:
-        result2 = subprocess.run(
-            args2,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-        )
-    except:
-        return ("adjust", "")
-
-    if result2.returncode == 0:
-        adjustment = result2.stdout.strip()
-        decision_data = {
-            "decision": "adjust",
-            "adjustment": adjustment,
-            "phase": phase_num,
-            "failed": failed,
-        }
-        with open("/tmp/denis/phase_complete_decision.json", "w") as f:
-            json.dump(decision_data, f)
-        return ("adjust", adjustment)
-
-    return ("continue", "")

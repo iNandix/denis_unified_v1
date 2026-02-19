@@ -99,9 +99,7 @@ class AuditTrail:
             try:
                 import redis
 
-                self.redis = redis.Redis.from_url(
-                    "redis://localhost:6379/0", decode_responses=True
-                )
+                self.redis = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=True)
             except Exception:
                 return None
         return self.redis
@@ -168,8 +166,8 @@ class AuditTrail:
     async def _log_to_neo4j(self, event: AuditEvent) -> None:
         """Log event to Neo4j for graph queries."""
         try:
-            async with self.neo4j.session() as session:
-                await session.run(
+            with self.neo4j.session() as session:
+                session.run(
                     """
                     CREATE (e:AuditEvent {
                         event_id: $event_id,

@@ -3,7 +3,12 @@ from neo4j import GraphDatabase
 
 uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 user = os.getenv("NEO4J_USER", "neo4j")
-password = os.getenv("NEO4J_PASSWORD", "Leon1234$")
+password = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS")
+
+if not password:
+    raise SystemExit(
+        "Missing Neo4j password. Set NEO4J_PASSWORD (or NEO4J_PASS) in your environment."
+    )
 
 print(f"Testing Neo4j connection to {uri}...")
 

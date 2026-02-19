@@ -294,6 +294,303 @@ def handle_jsonrpc(request: dict) -> dict:
                             "required": ["intent"],
                         },
                     },
+                    # SPRINT 19: Multi-file atomic operations
+                    {
+                        "name": "multi_file_read_context",
+                        "description": "READS multiple files with LSP semantic context. Returns file content + pyright diagnostics for each file. Use for atomic multi-file operations.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "files": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Array of file paths to read",
+                                },
+                                "lsp_semantic": {
+                                    "type": "boolean",
+                                    "description": "Include LSP diagnostics (default true)",
+                                    "default": True,
+                                },
+                            },
+                            "required": ["files"],
+                        },
+                    },
+                    {
+                        "name": "multi_file_edit",
+                        "description": "ATOMIC multi-file edit with backup. Applies patches to multiple files. Creates automatic backups before modification. Returns applied/failed status.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "files": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Array of file paths to edit",
+                                },
+                                "patches": {
+                                    "type": "object",
+                                    "description": "Dict of filepath -> new content",
+                                },
+                                "create_backup": {
+                                    "type": "boolean",
+                                    "description": "Create backup before editing (default true)",
+                                    "default": True,
+                                },
+                            },
+                            "required": ["files", "patches"],
+                        },
+                    },
+                    {
+                        "name": "atomic_refactor",
+                        "description": "ATOMIC refactor across multiple files using regex pattern replacement. Returns patches without applying. Use multi_file_edit to apply.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "files": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Array of file paths to refactor",
+                                },
+                                "pattern": {
+                                    "type": "string",
+                                    "description": "Regex pattern to match",
+                                },
+                                "replacement": {
+                                    "type": "string",
+                                    "description": "Replacement string",
+                                },
+                            },
+                            "required": ["files", "pattern", "replacement"],
+                        },
+                    },
+                    # Working Memory tools
+                    {
+                        "name": "working_memory_add_file",
+                        "description": "ADDS file to working memory LRU cache. Keeps hot files in memory for fast access across operations.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {
+                                    "type": "string",
+                                    "description": "File path to add to working memory",
+                                },
+                            },
+                            "required": ["filepath"],
+                        },
+                    },
+                    {
+                        "name": "working_memory_get_context",
+                        "description": "RETURNS current working memory context: hot_files, errors, decisions, git_diffs. Use for prompt injection.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                    {
+                        "name": "working_memory_add_error",
+                        "description": "ADDS error to protected slot in working memory. Errors are preserved across operations.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string",
+                                    "description": "Error message to store",
+                                },
+                            },
+                            "required": ["error"],
+                        },
+                    },
+                    {
+                        "name": "working_memory_add_decision",
+                        "description": "ADDS decision to protected slot in working memory. Decisions are preserved across operations.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "decision": {
+                                    "type": "string",
+                                    "description": "Decision description to store",
+                                },
+                            },
+                            "required": ["decision"],
+                        },
+                    },
+                    {
+                        "name": "working_memory_clear",
+                        "description": "CLEARS all working memory: hot_files, errors, decisions, git_diffs.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                    # ATLAS FORK - Self-aware tools
+                    {
+                        "name": "atlas_self_check",
+                        "description": "ATLAS FORK: Performs self-awareness check. Returns current state: mood, consciousness_level, decisions_made, last_error. Use when you need to know how Denis is feeling.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                    {
+                        "name": "atlas_decide",
+                        "description": "ATLAS FORK: Asks Denis to make a decision. Pass intent, constraints. Returns {engine, mood, confidence, reasoning}. This is the PRIMARY way to route - don't guess, ask Denis.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "intent": {
+                                    "type": "string",
+                                    "description": "Intent to decide on (e.g., 'implement_feature', 'debug_repo')",
+                                },
+                                "constraints": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Active constraints",
+                                },
+                                "session_id": {
+                                    "type": "string",
+                                    "description": "Optional session ID",
+                                },
+                            },
+                            "required": ["intent"],
+                        },
+                    },
+                    {
+                        "name": "atlas_learn_outcome",
+                        "description": "ATLAS FORK: Tell Denis the outcome of a decision so he can learn. Updates consciousness_level based on success/failure.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": {"type": "string"},
+                                "decision": {
+                                    "type": "object",
+                                    "description": "Decision that was made",
+                                },
+                                "outcome": {
+                                    "type": "string",
+                                    "description": "Outcome description (success/failure)",
+                                },
+                            },
+                            "required": ["session_id", "outcome"],
+                        },
+                    },
+                    {
+                        "name": "atlas_get_knowledge",
+                        "description": "ATLAS FORK: Get what Denis knows. Returns symbols in his knowledge base.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": {
+                                    "type": "string",
+                                    "description": "Optional session filter",
+                                },
+                            },
+                        },
+                    },
+                    # Intent Router - Universal routing
+                    {
+                        "name": "route_input",
+                        "description": "UNIVERSAL ROUTING: Takes prompt, returns routed request with model, implicit_tasks, context_prefilled. Use this instead of guessing which model to use.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "prompt": {"type": "string", "description": "User prompt to route"},
+                                "session_id": {
+                                    "type": "string",
+                                    "description": "Optional session ID",
+                                },
+                                "context_refs": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Optional file references",
+                                },
+                            },
+                            "required": ["prompt"],
+                        },
+                    },
+                    # Pattern Health - RedundancyDetector validation
+                    {
+                        "name": "get_pattern_health",
+                        "description": "RETURNS health status of learned patterns: approved, blocked, needs_review. Shows which patterns passed validation (frequency>=3, success_rate>=0.8, no conflicts, recent validation).",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                    {
+                        "name": "validate_pattern",
+                        "description": "VALIDATES a single pattern against control plane rules. Returns {is_valid, reason}. Use to check if a pattern can be auto-injected.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "pattern_name": {"type": "string"},
+                                "frequency": {"type": "integer"},
+                                "success_rate": {"type": "number"},
+                                "last_validated": {"type": "string"},
+                            },
+                            "required": ["pattern_name", "frequency"],
+                        },
+                    },
+                    # Quick context for agents
+                    {
+                        "name": "quick_context",
+                        "description": "FAST: Returns minimal context for agents. Combines workspace_paths + do_not_touch + session_context in one call. Use this instead of multiple tool calls.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                    # Control Plane - CP management
+                    {
+                        "name": "get_next_cp",
+                        "description": "CONTROL PLANE: Gets the next pending ContextPack from the queue. Returns CP object or null if queue is empty. Use this to see what Denis has proposed.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                    {
+                        "name": "approve_cp",
+                        "description": "CONTROL PLANE: Approves a ContextPack programmatically (without zenity popup). Marks CP as human_validated and moves it to execution queue.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "cp_id": {
+                                    "type": "string",
+                                    "description": "ContextPack ID to approve",
+                                },
+                                "notes": {
+                                    "type": "string",
+                                    "description": "Optional approval notes",
+                                },
+                            },
+                            "required": ["cp_id"],
+                        },
+                    },
+                    {
+                        "name": "upload_cp",
+                        "description": "CONTROL PLANE: Uploads a ContextPack from disk file. Opens file dialog, validates JSON, shows preview, and if approved, adds to queue. Use when you have a CP saved locally.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "filepath": {
+                                    "type": "string",
+                                    "description": "Optional: direct path to CP JSON file. If not provided, opens file dialog.",
+                                },
+                            },
+                        },
+                    },
+                    {
+                        "name": "show_post_brief",
+                        "description": "CONTROL PLANE: Shows POST-BRIEF popup manually. Use when you want to trigger the approval dialog for a generated CP.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "cp_id": {
+                                    "type": "string",
+                                    "description": "CP ID to show popup for",
+                                },
+                            },
+                        },
+                    },
                 ]
             },
         }
@@ -533,6 +830,324 @@ def call_tool(name: str, arguments: dict) -> list:
             return [{"type": "text", "text": json.dumps({"status": "approved", "cp_id": cp_id})}]
         except Exception as e:
             return [{"type": "text", "text": json.dumps({"status": "error", "message": str(e)})}]
+
+    # SPRINT 8: Graph-centric CP tools
+    if name == "mcp_get_next_cp":
+        from control_plane.cp_queue import CPQueue
+
+        q = CPQueue()
+        next_cp = q.peek()
+        if next_cp:
+            return [{"type": "text", "text": json.dumps(next_cp.to_dict())}]
+        return [{"type": "text", "text": json.dumps(None)}]
+
+    if name == "mcp_approve_cp":
+        cpid = arguments.get("cpid", "")
+        notes = arguments.get("notes", "")
+        from control_plane.cp_queue import CPQueue
+
+        q = CPQueue()
+        q.mark_approved(cpid, notes)
+        return [{"type": "text", "text": json.dumps({"status": "approved", "cpid": cpid})}]
+
+    if name == "mcp_get_graph_routing":
+        intent = arguments.get("intent", "implement_feature")
+        session_id = arguments.get("session_id", "default")
+        from kernel.ghostide.symbol_cypher_router import get_symbol_cypher_router
+
+        cypher = get_symbol_cypher_router()
+        engines = cypher.get_engine_for_intent(intent)
+        if engines:
+            engine = engines[0]
+            return [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {
+                            "engine_id": engine.engine_id,
+                            "model": engine.model,
+                            "endpoint": engine.endpoint,
+                            "priority": engine.priority,
+                        }
+                    ),
+                }
+            ]
+        return [{"type": "text", "text": json.dumps({"error": "No engines found"})}]
+
+    # SPRINT 19: Multi-file atomic operations
+    if name == "multi_file_read_context":
+        files = arguments.get("files", [])
+        lsp_semantic = arguments.get("lsp_semantic", True)
+        workspace = WORKSPACE_BASE["workspace"]
+
+        ctx = {}
+        for filepath in files:
+            full_path = filepath if filepath.startswith("/") else os.path.join(workspace, filepath)
+            try:
+                content = Path(full_path).read_text(encoding="utf-8", errors="ignore")
+                lsp_data = {}
+                if lsp_semantic:
+                    try:
+                        import subprocess
+
+                        result = subprocess.run(
+                            ["python3", "-m", "pyright", "--outputjson", full_path],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                        )
+                        if result.returncode == 0:
+                            import json as pyjson
+
+                            lsp_data = pyjson.loads(result.stdout)
+                        else:
+                            lsp_data = {"errors": result.stderr[:500]}
+                    except Exception as e:
+                        lsp_data = {"lsp_error": str(e)[:200]}
+
+                ctx[filepath] = {
+                    "content": content,
+                    "size": len(content),
+                    "lsp": lsp_data,
+                    "path": full_path,
+                }
+            except Exception as e:
+                ctx[filepath] = {"error": str(e)[:200]}
+
+        return [{"type": "text", "text": json.dumps(ctx, indent=2, ensure_ascii=False)}]
+
+    if name == "multi_file_edit":
+        files = arguments.get("files", [])
+        patches = arguments.get("patches", {})
+        create_backup = arguments.get("create_backup", True)
+        workspace = WORKSPACE_BASE["workspace"]
+
+        results = {"applied": [], "failed": [], "backups": {}}
+
+        if create_backup:
+            import shutil
+            import tempfile
+
+            backup_dir = tempfile.mkdtemp(prefix="denis_backup_")
+
+        for filepath in files:
+            full_path = filepath if filepath.startswith("/") else os.path.join(workspace, filepath)
+            patch_content = patches.get(filepath, "")
+
+            try:
+                if create_backup:
+                    backup_path = os.path.join(backup_dir, filepath.replace("/", "_") + ".bkp")
+                    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                    shutil.copy2(full_path, backup_path)
+                    results["backups"][filepath] = backup_path
+
+                Path(full_path).write_text(patch_content, encoding="utf-8")
+                results["applied"].append(filepath)
+            except Exception as e:
+                results["failed"].append({"file": filepath, "error": str(e)[:200]})
+
+        if create_backup and not results["applied"]:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+
+        results["backup_dir"] = backup_dir if results["applied"] and create_backup else None
+
+        return [{"type": "text", "text": json.dumps(results, indent=2)}]
+
+    if name == "atomic_refactor":
+        files = arguments.get("files", [])
+        pattern = arguments.get("pattern", "")
+        replacement = arguments.get("replacement", "")
+        workspace = WORKSPACE_BASE["workspace"]
+
+        import re
+
+        patches = {}
+
+        for filepath in files:
+            full_path = filepath if filepath.startswith("/") else os.path.join(workspace, filepath)
+            try:
+                content = Path(full_path).read_text(encoding="utf-8", errors="ignore")
+                new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+                patches[filepath] = new_content
+            except Exception as e:
+                return [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"error": f"Failed to read {filepath}: {str(e)[:200]}"}),
+                    }
+                ]
+
+        results = {
+            "pattern": pattern,
+            "replacement": replacement,
+            "files": files,
+            "patches": patches,
+        }
+
+        return [{"type": "text", "text": json.dumps(results, indent=2)}]
+
+    # Working Memory integration
+    if name == "working_memory_add_file":
+        filepath = arguments.get("filepath", "")
+        workspace = WORKSPACE_BASE["workspace"]
+        full_path = filepath if filepath.startswith("/") else os.path.join(workspace, filepath)
+
+        try:
+            content = Path(full_path).read_text(encoding="utf-8", errors="ignore")[:10000]
+            sys.path.insert(0, str(Path(__file__).parent.parent / "plugins"))
+            from opencode_working_memory import get_working_memory
+
+            wm = get_working_memory()
+            wm.add_file(filepath, content)
+            return [{"type": "text", "text": json.dumps({"status": "added", "file": filepath})}]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "working_memory_get_context":
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / "plugins"))
+            from opencode_working_memory import inject_context
+
+            context = inject_context()
+            return [{"type": "text", "text": context}]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "working_memory_add_error":
+        error_msg = arguments.get("error", "")
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / "plugins"))
+            from opencode_working_memory import get_working_memory
+
+            wm = get_working_memory()
+            wm.add_error({"message": error_msg})
+            return [{"type": "text", "text": json.dumps({"status": "added"})}]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "working_memory_add_decision":
+        decision = arguments.get("decision", "")
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / "plugins"))
+            from opencode_working_memory import get_working_memory
+
+            wm = get_working_memory()
+            wm.add_decision({"description": decision})
+            return [{"type": "text", "text": json.dumps({"status": "added"})}]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "working_memory_clear":
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent / "plugins"))
+            from opencode_working_memory import clear_working_memory
+
+            clear_working_memory()
+            return [{"type": "text", "text": json.dumps({"status": "cleared"})}]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    # CONTROL PLANE handlers
+    if name == "get_next_cp":
+        try:
+            sys.path.insert(0, "/media/jotah/SSD_denis/home_jotah")
+            from control_plane.cp_queue import get_cp_queue
+
+            queue = get_cp_queue()
+            cp = queue.peek()
+
+            if cp:
+                return [{"type": "text", "text": json.dumps(cp.to_dict(), indent=2, default=str)}]
+            else:
+                return [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"exists": False, "message": "No pending CPs in queue"}),
+                    }
+                ]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "approve_cp":
+        try:
+            sys.path.insert(0, "/media/jotah/SSD_denis/home_jotah")
+            from control_plane.cp_queue import get_cp_queue
+
+            cp_id = arguments.get("cp_id", "")
+            notes = arguments.get("notes", "Approved via MCP")
+
+            queue = get_cp_queue()
+            success = queue.mark_approved(cp_id, notes)
+
+            if success:
+                # Escribir para que el agente lo lea
+                import json
+
+                with open("/tmp/denis_next_cp.json", "w") as f:
+                    f.write(json.dumps({"cp_id": cp_id, "approved": True, "notes": notes}))
+
+                return [
+                    {"type": "text", "text": json.dumps({"status": "approved", "cp_id": cp_id})}
+                ]
+            else:
+                return [
+                    {
+                        "type": "text",
+                        "text": json.dumps({"error": f"CP {cp_id} not found in queue"}),
+                    }
+                ]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "upload_cp":
+        try:
+            sys.path.insert(0, "/media/jotah/SSD_denis/home_jotah")
+            from control_plane.approval_popup import show_upload_cp_popup
+
+            decision, cp = show_upload_cp_popup()
+
+            if decision == "loaded" and cp:
+                return [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {"status": "loaded", "cp_id": cp.cp_id, "mission": cp.mission[:80]}
+                        ),
+                    }
+                ]
+            elif decision == "cancelled":
+                return [{"type": "text", "text": json.dumps({"status": "cancelled"})}]
+            else:
+                return [{"type": "text", "text": json.dumps({"status": decision})}]
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
+
+    if name == "show_post_brief":
+        try:
+            sys.path.insert(0, "/media/jotah/SSD_denis/home_jotah")
+            from control_plane.cp_queue import get_cp_queue
+            from control_plane.approval_popup import show_post_brief_popup
+
+            cp_id = arguments.get("cp_id", "")
+            queue = get_cp_queue()
+
+            # Buscar CP en la cola
+            cp = None
+            for item in queue.list_pending():
+                if item.cp_id == cp_id:
+                    cp = item
+                    break
+
+            if not cp:
+                return [{"type": "text", "text": json.dumps({"error": f"CP {cp_id} not found"})}]
+
+            decision, feedback = show_post_brief_popup(cp)
+            return [
+                {"type": "text", "text": json.dumps({"decision": decision, "feedback": feedback})}
+            ]
+
+        except Exception as e:
+            return [{"type": "text", "text": json.dumps({"error": str(e)[:200]})}]
 
     return [{"type": "text", "text": f"Unknown tool: {name}"}]
 

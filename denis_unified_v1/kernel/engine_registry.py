@@ -245,3 +245,9 @@ def list_engines(
         filtered[engine_id] = config
 
     return filtered
+
+
+def reset_registry() -> None:
+    """Reset cached engine registry (tests only)."""
+    global _engine_registry
+    _engine_registry = {}

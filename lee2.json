@@ -1,0 +1,230 @@
+## CP-ROUTER — Universal Intent Router
+
+```json
+{
+  "contextpack_id": "denis_ROUTER_2026-02-18T2222",
+  "mode": "makina",
+  "schema_version": 7,
+  "owner": "jotah",
+  "workspace": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+  "venv": "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
+  "priority": "CRITICAL",
+  "estimated_duration": "30min",
+
+  "MISSION": "Implementar denis_unified_v1/inference/intent_router.py — router universal que consume MakinaOutput y decide modelo destino consultando quota_registry + session_graph + implicit_tasks. Fail-open siempre a llama local.",
+
+  "FILES_TO_READ_FIRST": [
+    "denis_unified_v1/inference/makina_filter.py",
+    "denis_unified_v1/inference/compiler_client.py",
+    "kernel/runtime/governor.py",
+    "kernel/ghost_ide/symbol_graph.py",
+    "docs/makina_filter_contract.md"
+  ],
+
+  "ARCHITECTURE": {
+    "flow": "prompt → makina_filter → MakinaOutput → IntentRouter → RoutedRequest → model",
+    "new_files": [
+      "denis_unified_v1/inference/intent_router.py",
+      "denis_unified_v1/inference/quota_registry.py",
+      "denis_unified_v1/inference/implicit_tasks.py",
+      "docs/intent_router_contract.md",
+      "tests/test_intent_router.py"
+    ]
+  },
+
+  "TASK_1_QUOTA_REGISTRY": {
+    "file": "denis_unified_v1/inference/quota_registry.py",
+    "description": "Registro de quotas por modelo — estado persiste en /tmp/denis_quota_registry.json",
+    "models": {
+      "claude": {
+        "available": "auto-detect via env ANTHROPIC_API_KEY",
+        "best_for": ["architecture", "long_context", "complex_reasoning"],
+        "max_tokens": 200000,
+        "cost_tier": "HIGH",
+        "weekly_reset": true
+      },
+      "groq": {
+        "available": "auto-detect via env GROQ_API_KEY",
+        "best_for": ["fast_code", "debug_repo", "run_tests_ci", "implement_feature"],
+        "max_tokens": 32768,
+        "cost_tier": "FREE",
+        "rate_limit_rpm": 30
+      },
+      "openrouter": {
+        "available": "auto-detect via env OPENROUTER_API_KEY",
+        "best_for": ["reasoning", "explain_concept", "design_architecture"],
+        "max_tokens": 128000,
+        "cost_tier": "MEDIUM",
+        "weekly_reset": false
+      },
+      "llama_local": {
+        "available": true,
+        "best_for": ["repetitive", "private", "toolchain_task", "ops_health_check"],
+        "max_tokens": 8192,
+        "cost_tier": "ZERO",
+        "endpoint": "http://localhost:8084/inference/local"
+      }
+    },
+    "methods": [
+      "get_available_models() → list[str]",
+      "mark_quota_exhausted(model: str, reset_in_seconds: int)",
+      "is_available(model: str) → bool",
+      "get_best_model_for(intent: str) → str",
+      "load_from_disk() / save_to_disk()"
+    ]
+  },
+
+  "TASK_2_IMPLICIT_TASKS": {
+    "file": "denis_unified_v1/inference/implicit_tasks.py",
+    "description": "Mapa de tareas higiénicas implícitas por intent — elimina rondas PRE",
+    "structure": {
+      "implement_feature": [
+        "READ target files before writing",
+        "VERIFY all imports resolve after creation",
+        "RUN existing tests before commit",
+        "CHECK DO_NOT_TOUCH list"
+      ],
+      "debug_repo": [
+        "READ error + stack trace first",
+        "CHECK git diff last 5 commits",
+        "VERIFY fix does not break existing tests"
+      ],
+      "refactor_migration": [
+        "SNAPSHOT current behavior via tests",
+        "VERIFY identical behavior post-refactor",
+        "CHECK no new imports needed"
+      ],
+      "run_tests_ci": [
+        "VERIFY test environment active",
+        "CHECK all services needed are running"
+      ],
+      "toolchain_task": [
+        "VERIFY tool/command exists in PATH",
+        "CHECK service dependencies are up"
+      ]
+    },
+    "session_graph_query": {
+      "description": "Consultar Neo4j para enriquecer implicit_tasks con contexto de sesión",
+      "query": "MATCH (s:Symbol)-[:MODIFIED_IN]->(sess:Session) WHERE sess.date = date() RETURN s.path, s.name LIMIT 20",
+      "fallback": "Si Neo4j no responde → usar solo implicit_tasks estáticos",
+      "result_use": "Añadir a DO_NOT_TOUCH_AUTO los paths modificados hoy + prefill context_refs"
+    },
+    "methods": [
+      "get_implicit_tasks(intent: str) → list[str]",
+      "enrich_with_session(intent: str, session_id: str) → EnrichedContext",
+      "build_prefilled_cp_additions(intent: str, session_id: str) → dict"
+    ]
+  },
+
+  "TASK_3_INTENT_ROUTER": {
+    "file": "denis_unified_v1/inference/intent_router.py",
+    "description": "Router principal — consume MakinaOutput, decide modelo, enriquece request",
+    "main_class": "IntentRouter",
+    "routing_logic": {
+      "priority_order": [
+        "1. Si missing_inputs no vacío → bloquear, pedir inputs antes de routear",
+        "2. Si confidence < 0.55 → llama_local (no gastar quota en intent ambiguo)",
+        "3. Consultar quota_registry.get_best_model_for(intent)",
+        "4. Si modelo óptimo no disponible → siguiente en fallback chain",
+        "5. SIEMPRE fail-open a llama_local"
+      ],
+      "fallback_chain": {
+        "claude": ["openrouter", "groq", "llama_local"],
+        "groq": ["llama_local"],
+        "openrouter": ["groq", "llama_local"],
+        "llama_local": ["llama_local"]
+      }
+    },
+    "output_class": "RoutedRequest",
+    "routed_request_fields": {
+      "model": "str — modelo destino final",
+      "intent": "str",
+      "prompt": "str — prompt original",
+      "implicit_tasks": "list[str] — tareas higiénicas inyectadas",
+      "context_prefilled": "dict — contexto del grafo pre-cargado",
+      "do_not_touch_auto": "list[str] — inferido del session graph",
+      "constraints": "list[str]",
+      "acceptance_criteria": "list[str]",
+      "routing_trace": "dict — por qué se eligió este modelo",
+      "fallback_used": "bool"
+    },
+    "methods": [
+      "route(makina_output: MakinaOutput, prompt: str, session_id: str) → RoutedRequest",
+      "route_safe(makina_output: MakinaOutput, prompt: str, session_id: str) → RoutedRequest",
+      "_select_model(intent: str, confidence: float) → str",
+      "_build_routing_trace(intent: str, model: str, reason: str) → dict"
+    ]
+  },
+
+  "TASK_4_INTEGRATION_WITH_FILTER": {
+    "description": "Función de entrada unificada que combina filter + router en una sola llamada",
+    "file": "denis_unified_v1/inference/makina_filter.py — añadir al final",
+    "new_function": "route_input(prompt: str, session_id: str = 'default', context_refs: list = []) → RoutedRequest",
+    "flow": [
+      "1. filter_input_safe({prompt, context_refs})",
+      "2. pre_execute_hook(prompt, context_refs) — si bloquea, return RoutedRequest con blocked=True",
+      "3. IntentRouter().route_safe(makina_output, prompt, session_id)",
+      "4. return RoutedRequest"
+    ],
+    "note": "Esta es la función que usarán TODOS los módulos de Denis. Una sola llamada, resultado completo."
+  },
+
+  "TASK_5_CONTRACT": {
+    "file": "docs/intent_router_contract.md",
+    "sections": [
+      "Overview + flow diagram en ASCII",
+      "QuotaRegistry — modelos, cost_tier, best_for",
+      "ImplicitTasks — mapa completo por intent",
+      "IntentRouter — routing_logic + fallback_chain",
+      "RoutedRequest — todos los campos",
+      "route_input() — la API pública unificada",
+      "Ejemplo end-to-end completo"
+    ]
+  },
+
+  "TASK_6_TESTS": {
+    "file": "tests/test_intent_router.py",
+    "test_cases": [
+      "test_routes_implement_to_groq_when_available",
+      "test_fallback_to_local_when_groq_unavailable",
+      "test_blocks_on_missing_inputs",
+      "test_low_confidence_goes_local",
+      "test_implicit_tasks_injected_for_debug",
+      "test_implicit_tasks_injected_for_implement",
+      "test_quota_exhausted_triggers_fallback",
+      "test_route_input_unified_api",
+      "test_fail_open_always_returns_routed_request"
+    ],
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah:. /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -m pytest tests/test_intent_router.py -v --tb=short 2>&1 | tail -30"
+  },
+
+  "TASK_7_COMMIT": {
+    "command": "git add -A && git commit -m 'feat(router): UniversalIntentRouter + QuotaRegistry + ImplicitTasks — Denis routes himself'"
+  },
+
+  "ACCEPTANCE_CRITERIA": [
+    "route_input('crea endpoint fastapi').model in ['groq', 'llama_local', 'claude']",
+    "route_input('haz').model == 'llama_local' (low confidence → local)",
+    "route_input con GROQ_API_KEY ausente → fallback a llama_local",
+    "implicit_tasks no vacío para implement_feature y debug_repo",
+    "do_not_touch_auto incluye paths del session graph si Neo4j responde",
+    "RoutedRequest siempre devuelve objeto válido — nunca excepción",
+    "Todos los tests pasan",
+    "docs/intent_router_contract.md existe",
+    "Commit realizado"
+  ],
+
+  "DO_NOT_TOUCH": [
+    "compiler/makina_filter.py",
+    "service_8084.py",
+    "kernel/ghost_ide/",
+    "kernel/meganube/",
+    "kernel/sandbox/",
+    "FrontDenisACTUAL/"
+  ],
+
+  "SCOPE": "Solo inference/ + docs/ + tests/. Nada más.",
+
+  "ON_COMPLETION": "Escribir resumen en /tmp/denis_router_status.txt con: modelo por defecto activo, quotas detectadas, implicit_tasks count por intent, test results"
+}
+```

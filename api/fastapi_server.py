@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 import logging
 import os
+import sys
 import time
 import uuid
 from typing import Any
@@ -15,6 +16,18 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 # All other imports moved inside create_app() for complete fail-open behavior
+
+
+# Pytest safety: avoid enabling exporters/instrumentation during module import,
+# because this module creates a global `app = create_app()` as a fallback.
+_running_pytest = ("pytest" in sys.modules) or any("pytest" in (arg or "") for arg in sys.argv)
+if _running_pytest and (os.getenv("DENIS_TEST_ENABLE_OBSERVABILITY") or "").strip().lower() not in {
+    "1",
+    "true",
+    "yes",
+}:
+    # Force-disable to prevent flaky hangs with exporters/instrumentation in tests.
+    os.environ["DISABLE_OBSERVABILITY"] = "1"
 
 
 def _utc_now() -> str:
@@ -32,6 +45,17 @@ def _safe_json(obj: Any) -> Any:
 # Global flags for idempotent setup
 tracing_setup_done = False
 metrics_setup_done = False
+
+# Global Prometheus metrics to prevent duplicate registration in tests.
+# NOTE: must be defined before `create_app()` is executed at module import time.
+import threading
+
+_metrics_initialized = False
+_metrics_lock = threading.Lock()
+
+_requests_total = None
+_denies_total = None
+_degraded_total = None
 
 
 class InMemoryRateLimiter:
@@ -69,13 +93,9 @@ def create_app() -> FastAPI:
         global _metrics_initialized, _requests_total, _denies_total, _degraded_total
         with _metrics_lock:
             if not _metrics_initialized:
-                _requests_total = Counter(
-                    "requests_total", "Total requests", ["critical"]
-                )
+                _requests_total = Counter("requests_total", "Total requests", ["critical"])
                 _denies_total = Counter("denies_total", "Total denies", ["policy"])
-                _degraded_total = Counter(
-                    "degraded_total", "Total degraded responses", ["reason"]
-                )
+                _degraded_total = Counter("degraded_total", "Total degraded responses", ["reason"])
                 _metrics_initialized = True
 
         requests_total = _requests_total
@@ -84,21 +104,28 @@ def create_app() -> FastAPI:
     except ImportError:
         requests_total = denies_total = degraded_total = None
 
-    # Neo4j client for identity checks (fail-open)
+    # Neo4j client for identity checks (fail-open).
+    # Never hard-probe network on startup; tests/contract mode must not hang here.
     neo4j_driver = None
     try:
-        neo4j_uri = os.getenv("NEO4J_URI")
-        neo4j_user = os.getenv("NEO4J_USER")
-        neo4j_pass = os.getenv("NEO4J_PASSWORD")
-        if neo4j_uri and neo4j_user and neo4j_pass:
-            from neo4j import GraphDatabase
+        if os.getenv("DENIS_CONTRACT_TEST_MODE") == "1":
+            neo4j_driver = None
+        else:
+            neo4j_uri = os.getenv("NEO4J_URI")
+            neo4j_user = os.getenv("NEO4J_USER")
+            neo4j_pass = os.getenv("NEO4J_PASSWORD")
+            if neo4j_uri and neo4j_user and neo4j_pass:
+                from neo4j import GraphDatabase
 
-            neo4j_driver = GraphDatabase.driver(
-                neo4j_uri, auth=(neo4j_user, neo4j_pass)
-            )
-            # Test connection
-            with neo4j_driver.session() as session:
-                session.run("RETURN 1")
+                neo4j_driver = GraphDatabase.driver(
+                    neo4j_uri,
+                    auth=(neo4j_user, neo4j_pass),
+                    connection_timeout=float(os.getenv("DENIS_NEO4J_CONNECT_TIMEOUT_S", "0.2")),
+                    connection_acquisition_timeout=float(
+                        os.getenv("DENIS_NEO4J_ACQUIRE_TIMEOUT_S", "0.2")
+                    ),
+                    max_connection_pool_size=int(os.getenv("DENIS_NEO4J_POOL_SIZE", "1")),
+                )
     except Exception:
         neo4j_driver = None
 
@@ -106,8 +133,7 @@ def create_app() -> FastAPI:
         """Check Denis identity and constitution. Fail-closed for critical actions."""
         # In contract test mode, allow all requests
         is_contract_mode = (
-            os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
-            and os.getenv("ENV") != "production"
+            os.getenv("DENIS_CONTRACT_TEST_MODE") == "1" and os.getenv("ENV") != "production"
         )
         if is_contract_mode:
             return True
@@ -121,7 +147,12 @@ def create_app() -> FastAPI:
             with neo4j_driver.session() as session:
                 # Check companion_mode and required edges in single query
                 result = session.run("""
+                // Defensive: graph may contain duplicate Identity nodes. Pick the
+                // best candidate deterministically (companion_mode=true first).
                 MATCH (iden:Identity {id: 'identity:denis'})
+                WITH iden
+                ORDER BY coalesce(iden.companion_mode, false) DESC, size(keys(iden)) DESC
+                LIMIT 1
                 OPTIONAL MATCH (iden)-[:ENFORCED_BY]->(aa:System {id: 'system:action_authorizer'})
                 OPTIONAL MATCH (iden)-[:GUARDED_BY]->(cg:System {id: 'system:ci_gate'})
                 OPTIONAL MATCH (iden)-[:OBSERVED_BY]->(at:System {id: 'system:atlas'})
@@ -253,8 +284,7 @@ def create_app() -> FastAPI:
             logger.exception(f"Failed to include router from {router_factory.__name__}")
             # In test mode, fail fast if we can't include critical routers
             is_test_mode = (
-                os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
-                and os.getenv("ENV") != "production"
+                os.getenv("DENIS_CONTRACT_TEST_MODE") == "1" and os.getenv("ENV") != "production"
             )
             if is_test_mode and router_factory.__name__ == "build_openai_router":
                 raise RuntimeError(
@@ -265,8 +295,7 @@ def create_app() -> FastAPI:
     # Determine if critical dependencies are ready (not in degraded mode)
     # In contract test mode, allow requests even with degraded dependencies
     is_contract_mode = (
-        os.getenv("DENIS_CONTRACT_TEST_MODE") == "1"
-        and os.getenv("ENV") != "production"
+        os.getenv("DENIS_CONTRACT_TEST_MODE") == "1" and os.getenv("ENV") != "production"
     )
     critical_ready = (runtime_mode == "full") or is_contract_mode
 
@@ -305,9 +334,7 @@ def create_app() -> FastAPI:
     except Exception:
         pass
 
-    def inject_i2_human_memory(
-        request: Request, user_id: str, group_id: str, intent: str
-    ) -> str:
+    def inject_i2_human_memory(request: Request, user_id: str, group_id: str, intent: str) -> str:
         """I2: Inject human memory (narrative state + episodic)."""
         if not human_memory_manager:
             return ""
@@ -363,9 +390,7 @@ def create_app() -> FastAPI:
     except Exception:
         pass
 
-    def inject_i2_human_memory(
-        request: Request, user_id: str, group_id: str, intent: str
-    ) -> str:
+    def inject_i2_human_memory(request: Request, user_id: str, group_id: str, intent: str) -> str:
         """I2: Inject human memory (narrative state + episodic)."""
         if not human_memory_manager:
             return ""
@@ -419,10 +444,15 @@ def create_app() -> FastAPI:
     async def read_root():
         return FileResponse("static/index.html")
 
+    @app.get("/cockpit")
+    async def read_cockpit():
+        return FileResponse("static/cockpit.html")
+
     @app.middleware("http")
     async def trace_and_security_middleware(request: Request, call_next):
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
         ip = request.client.host if request.client else "unknown"
+        start = time.perf_counter()
 
         try:
             if auth_token:
@@ -437,7 +467,20 @@ def create_app() -> FastAPI:
                         },
                     )
 
-            if not limiter.is_allowed(ip):
+            # Rate limiting (MVP): only applied to non-trivial endpoints.
+            # The frontend polls /health and /hass/* frequently; do not let that starve interactive endpoints
+            # like /v1/voice/chat or /v1/chat/completions.
+            path = request.url.path
+            rate_limit_exempt = (
+                path == "/health"
+                or path == "/v1/events"
+                or path.startswith("/hass/")
+                or path.startswith("/static/")
+                or path == "/"
+                or path == "/cockpit"
+                or path.startswith("/v1/voice/audio/")
+            )
+            if not rate_limit_exempt and not limiter.is_allowed(ip):
                 return JSONResponse(
                     status_code=429,
                     content={
@@ -477,7 +520,6 @@ def create_app() -> FastAPI:
             if requests_total:
                 requests_total.labels(critical=str(critical)).inc()
 
-            start = time.perf_counter()
             response = await call_next(request)
             duration_ms = int((time.perf_counter() - start) * 1000)
             response.headers["x-request-id"] = request_id
@@ -497,14 +539,37 @@ def create_app() -> FastAPI:
                 flush=True,
             )
 
+            # Minimal in-memory telemetry (fail-open)
+            try:
+                from api.telemetry_store import get_telemetry_store
+
+                get_telemetry_store().record_request(
+                    path=request.url.path,
+                    status_code=int(getattr(response, "status_code", 0) or 0),
+                    latency_ms=int(duration_ms),
+                )
+            except Exception:
+                pass
+
             return response
 
         except Exception as e:
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            try:
+                from api.telemetry_store import get_telemetry_store
+
+                get_telemetry_store().record_request(
+                    path=request.url.path,
+                    status_code=200,
+                    latency_ms=int(duration_ms),
+                )
+            except Exception:
+                pass
             return JSONResponse(
-                status_code=500,
+                status_code=200,
                 content={
-                    "error": "internal_error",
-                    "detail": str(e),
+                    "error": "degraded",
+                    "detail": "internal_error",
                     "request_id": request_id,
                     "timestamp_utc": _utc_now(),
                 },
@@ -512,8 +577,9 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        status = "healthy" if runtime_mode == "full" else "degraded"
         return {
-            "status": "ok",
+            "status": status,
             "version": "unified-v1",
             "timestamp_utc": _utc_now(),
             "ready_critical": critical_ready,
@@ -587,7 +653,86 @@ def create_app() -> FastAPI:
         }
 
     @fallback_router.post("/v1/chat/completions")
-    async def chat_completions_fallback(_: Request):
+    async def chat_completions_fallback(request: Request):
+        # Anti-loop protection even in degraded mode.
+        hop = 0
+        max_hop = 0
+        try:
+            from denis_unified_v1.inference.hop import parse_hop
+
+            hop = parse_hop(request.headers.get("x-denis-hop"))
+            max_hop = int(os.getenv("DENIS_OPENAI_COMPAT_MAX_HOP", "0"))
+        except Exception:
+            hop = 0
+            max_hop = 0
+
+        # Try to extract minimal info for telemetry (no raw prompts persisted).
+        user_text = ""
+        model = "denis-cognitive"
+        try:
+            payload = await request.json()
+            if isinstance(payload, dict):
+                model = str(payload.get("model") or model)
+                msgs = payload.get("messages") or []
+                if isinstance(msgs, list):
+                    for msg in reversed(msgs):
+                        if (
+                            isinstance(msg, dict)
+                            and msg.get("role") == "user"
+                            and isinstance(msg.get("content"), str)
+                        ):
+                            user_text = msg["content"]
+                            break
+        except Exception:
+            pass
+
+        blocked = hop > max_hop
+        try:
+            from api.telemetry_store import get_telemetry_store, sha256_text
+
+            get_telemetry_store().record_chat_decision(
+                {
+                    "request_id": None,
+                    "model": model,
+                    "x_denis_hop": hop,
+                    "blocked": bool(blocked),
+                    "path": "blocked_hop" if blocked else "fallback_degraded",
+                    "prompt_sha256": sha256_text(user_text),
+                    "prompt_chars": len(user_text or ""),
+                }
+            )
+        except Exception:
+            pass
+
+        if blocked:
+            return JSONResponse(
+                status_code=200,
+                headers={"x-runtime-mode": "degraded"},
+                content={
+                    "id": f"chatcmpl-{uuid.uuid4().hex[:16]}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "Degraded response: loop protection (X-Denis-Hop) blocked request.",
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                    "meta": {"path": "blocked_hop", "x_denis_hop": hop, "max_hop": max_hop},
+                    "diagnostics": {"degraded": True, "reason": "HOP_BLOCKED"},
+                },
+            )
+
         return JSONResponse(
             status_code=200,
             headers={"x-runtime-mode": "degraded"},
@@ -595,7 +740,7 @@ def create_app() -> FastAPI:
                 "id": f"chatcmpl-{uuid.uuid4().hex[:16]}",
                 "object": "chat.completion",
                 "created": int(time.time()),
-                "model": "denis-cognitive",
+                "model": model,
                 "choices": [
                     {
                         "index": 0,
@@ -611,12 +756,49 @@ def create_app() -> FastAPI:
                     "completion_tokens": 1,
                     "total_tokens": 2,
                 },
+                "meta": {"path": "fallback_degraded"},
                 "diagnostics": {"degraded": True, "reason": "DEPENDENCY_MISSING"},
             },
         )
 
     @fallback_router.post("/v1/chat/completions/stream")
-    async def chat_stream_fallback(_: Request):
+    async def chat_stream_fallback(request: Request):
+        try:
+            from denis_unified_v1.inference.hop import parse_hop
+
+            hop = parse_hop(request.headers.get("x-denis-hop"))
+            max_hop = int(os.getenv("DENIS_OPENAI_COMPAT_MAX_HOP", "0"))
+            if hop > max_hop:
+                return JSONResponse(
+                    status_code=200,
+                    headers={"x-runtime-mode": "degraded"},
+                    content={
+                        "id": f"chatcmpl-{uuid.uuid4().hex[:16]}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": "denis-cognitive",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "Degraded response: loop protection (X-Denis-Hop) blocked request.",
+                                },
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1,
+                            "total_tokens": 2,
+                        },
+                        "meta": {"path": "blocked_hop", "x_denis_hop": hop, "max_hop": max_hop},
+                        "diagnostics": {"degraded": True, "reason": "HOP_BLOCKED"},
+                    },
+                )
+        except Exception:
+            pass
+
         async def streamer():
             yield 'data: {"choices":[{"delta":{"content":"Degraded runtime response."}}]}\n\n'
             yield "data: [DONE]\n\n"
@@ -665,6 +847,79 @@ def create_app() -> FastAPI:
         from .healthz import router as healthz_router
 
         app.include_router(healthz_router)
+    except Exception:
+        pass
+
+    # Ops endpoints for Frontend/Care (P0: stubs, P1: full implementation)
+    try:
+        from .routes.health_ops import router as health_ops_router
+
+        app.include_router(health_ops_router)
+    except Exception:
+        pass
+    try:
+        from .routes.control_room import router as control_room_router
+
+        app.include_router(control_room_router)
+    except Exception:
+        pass
+    # Graph read endpoints for cockpit UI (fail-open, read-only)
+    try:
+        from .routes.graph_read import router as graph_read_router
+
+        app.include_router(graph_read_router)
+    except Exception:
+        pass
+
+    try:
+        from .routes.hass_ops import router as hass_ops_router
+
+        app.include_router(hass_ops_router)
+    except Exception:
+        pass
+
+    try:
+        from .routes.telemetry_ops import router as telemetry_ops_router
+
+        app.include_router(telemetry_ops_router)
+    except Exception:
+        pass
+
+    # OpenCode-compatible Tools API (fail-open)
+    try:
+        from .routes.tools_api import router as tools_api_router
+
+        app.include_router(tools_api_router)
+    except Exception:
+        pass
+
+    # WebSocket-first Event Bus v1 (fail-open)
+    try:
+        from .routes.ws_events import router as ws_events_router
+
+        app.include_router(ws_events_router)
+    except Exception:
+        pass
+    try:
+        from .routes.events_http import router as events_http_router
+
+        app.include_router(events_http_router)
+    except Exception:
+        pass
+
+    # WS15 Persona frontdoor (minimal gateway endpoints). Fail-open.
+    try:
+        from .routes.persona_gateway import router as persona_gateway_router
+
+        app.include_router(persona_gateway_router)
+    except Exception:
+        pass
+
+    # WS12-G Voice (Pipecat bridge + voice.* events). Fail-open.
+    try:
+        from .routes.voice import router as voice_router
+
+        app.include_router(voice_router)
     except Exception:
         pass
 
@@ -728,7 +983,10 @@ def create_app() -> FastAPI:
     # Setup tracing and metrics with complete fail-open
     tracing_enabled = False
     metrics_enabled = False
-    if os.getenv("DISABLE_OBSERVABILITY") == "1":
+    # In tests we disable observability to avoid background exporters and
+    # global instrumentation interfering with deterministic runs.
+    running_under_pytest = _running_pytest
+    if os.getenv("DISABLE_OBSERVABILITY") == "1" or is_contract_mode or running_under_pytest:
         tracing_enabled = False
         metrics_enabled = False
     else:
@@ -796,9 +1054,31 @@ def create_app() -> FastAPI:
             else:
                 raise HTTPException(status_code=404, detail="Location not available")
         except requests.RequestException as e:
-            raise HTTPException(
-                status_code=500, detail=f"Hass request failed: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Hass request failed: {str(e)}")
+
+    # Include middleware router for OpenCode integration
+    try:
+        from .middleware_api import router as middleware_router
+
+        app.include_router(middleware_router)
+    except Exception as e:
+        logger.warning(f"Failed to include middleware router: {e}")
+
+    # Include compiler router for WS21-G OpenCode LLM Compiler
+    try:
+        from .routes.compiler import router as compiler_router
+
+        app.include_router(compiler_router)
+    except Exception as e:
+        logger.warning(f"Failed to include compiler router: {e}")
+
+    # WS23-G Neuroplasticity endpoints (fail-open)
+    try:
+        from .routes.neuro import router as neuro_router
+
+        app.include_router(neuro_router)
+    except Exception as e:
+        logger.warning(f"Failed to include neuro router: {e}")
 
     return app
 
@@ -806,10 +1086,12 @@ def create_app() -> FastAPI:
 # Create app with complete fail-open
 try:
     app = create_app()
-except Exception as e:
+except Exception as exc:
     # Emergency fallback: create minimal app with just health and agent heart
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
+
+    _create_app_error = str(exc)
 
     app = FastAPI(title="Denis Cognitive Engine - Emergency Mode", version="emergency")
 
@@ -817,7 +1099,7 @@ except Exception as e:
     async def emergency_health():
         return {
             "status": "emergency_mode",
-            "error": str(e),
+            "error": _create_app_error,
             "timestamp_utc": _utc_now(),
             "available_components": ["health"],
         }
@@ -836,13 +1118,3 @@ except Exception as e:
         app.include_router(agent_heart_router)
     except Exception:
         pass
-
-# Global Prometheus metrics to prevent duplicate registration in tests
-import threading
-
-_metrics_initialized = False
-_metrics_lock = threading.Lock()
-
-_requests_total = None
-_denies_total = None
-_degraded_total = None

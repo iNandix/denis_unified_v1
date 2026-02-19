@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "denis://contracts/control_plane/event_v1.json",
+  "title": "DENIS Event Bus Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "ts",
+    "conversation_id",
+    "emitter",
+    "correlation_id",
+    "turn_id",
+    "channel",
+    "stored",
+    "trace_id",
+    "type",
+    "severity",
+    "schema_version",
+    "ui_hint",
+    "payload"
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "stored": { "const": true } } },
+      "then": { "properties": { "event_id": { "minimum": 1 } } }
+    }
+  ],
+  "properties": {
+    "event_id": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "string", "format": "date-time" },
+    "conversation_id": { "type": "string", "minLength": 1 },
+    "emitter": { "type": "string", "const": "denis_persona" },
+    "correlation_id": { "type": "string", "minLength": 1 },
+    "turn_id": { "type": "string", "minLength": 1 },
+    "channel": {
+      "type": "string",
+      "enum": ["text", "voice", "control_room", "ops", "tool", "rag", "scrape", "compiler", "neuro"]
+    },
+    "stored": { "type": "boolean" },
+    "trace_id": { "type": ["string", "null"] },
+    "type": {
+      "type": "string",
+      "enum": [
+        "chat.message",
+        "plan.created",
+        "plan.task.created",
+        "compiler.start",
+        "compiler.plan",
+        "compiler.result",
+        "compiler.error",
+        "compiler.fallback_start",
+        "compiler.fallback_result",
+        "retrieval.start",
+        "retrieval.result",
+        "voice.session.started",
+        "voice.asr.partial",
+        "voice.asr.final",
+        "voice.tts.requested",
+        "voice.tts.audio.ready",
+        "voice.tts.done",
+        "voice.error",
+        "agent.decision_trace_summary",
+        "agent.reasoning.summary",
+        "tool.call",
+        "tool.result",
+        "graph.mutation",
+        "ops.metric",
+        "rag.search.start",
+        "rag.search.result",
+        "rag.context.compiled",
+        "indexing.upsert",
+        "run.step",
+        "error",
+        "control_room.task.created",
+        "control_room.task.updated",
+        "control_room.run.spawned",
+        "control_room.approval.requested",
+        "control_room.approval.resolved",
+        "control_room.action.updated",
+        "neuro.wake.start",
+        "neuro.layer.snapshot",
+        "neuro.consciousness.snapshot",
+        "neuro.turn.update",
+        "neuro.consciousness.update",
+        "persona.state.update"
+      ]
+    },
+    "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+    "schema_version": { "type": "string", "const": "1.0" },
+    "ui_hint": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["render", "icon"],
+      "properties": {
+        "render": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string", "minLength": 1 },
+        "color": { "type": ["string", "null"] },
+        "collapsible": { "type": ["boolean", "null"] }
+      }
+    },
+    "payload": { "type": "object", "additionalProperties": true }
+  }
+}

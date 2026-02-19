@@ -58,11 +58,10 @@ def generate_context_pack(agent_result: dict) -> dict:
 
 def trigger_approval_popup(cp_dict: dict) -> bool:
     """Trigger zenity approval popup or auto-approve based on risk level."""
-    from control_plane.approval_popup import ApprovalPopup
+    from control_plane.approval_popup import show_post_brief_popup
     from control_plane.cp_generator import ContextPack
 
     cp = ContextPack.from_dict(cp_dict)
-    popup = ApprovalPopup()
 
     if cp.risk_level in ["LOW", "MEDIUM"] and not cp.is_checkpoint:
         logger.info(
@@ -112,13 +111,74 @@ def clear_agent_result() -> None:
 
 
 def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
-    """Main daemon loop."""
+    """Main daemon loop with Denis Persona live."""
+    import asyncio
     import json
 
-    logger.info("Denis Control Plane Daemon started")
+    logger.info("Denis Control Plane Daemon started with Persona")
     logger.info("Monitoring: /tmp/denis/cp_received.json, /tmp/denis/phase_complete.json")
 
+    denis_persona = None
+    try:
+        from kernel.denis_persona import get_denis_persona
+
+        denis_persona = get_denis_persona()
+        asyncio.run(denis_persona.initialize())
+        logger.info("Denis Persona initialized in daemon")
+    except Exception as e:
+        logger.warning(f"Could not initialize Denis Persona: {e}")
+
+    def sync_graph_engines():
+        """Poll Neo4j for live engine status."""
+        try:
+            from kernel.ghostide.symbol_cypher_router import get_symbol_cypher_router
+
+            cypher = get_symbol_cypher_router()
+            drivers = cypher._get_driver()
+            if drivers:
+                with drivers.session() as session:
+                    result = session.run("""
+                        MATCH (e:Engine)
+                        RETURN e.name as name, e.healthy as healthy, e.endpoint as endpoint
+                    """)
+                    engines = list(result)
+                    logger.debug(f"Graph engines polled: {len(engines)} engines")
+                    return engines
+        except Exception as e:
+            logger.debug(f"Graph engine poll failed: {e}")
+        return []
+
+    async def learn_from_outcome(session_id: str, cp_data: dict, approved: bool):
+        """Denis learns from CP outcome."""
+        if not denis_persona:
+            return
+
+        outcome_str = (
+            f"approved={approved}, intent={cp_data.get('intent')}, engine={cp_data.get('model')}"
+        )
+
+        try:
+            await denis_persona.learn_outcome(
+                session_id,
+                {
+                    "approved": approved,
+                    "intent": cp_data.get("intent", "unknown"),
+                    "engine": cp_data.get("model", "unknown"),
+                },
+                outcome_str,
+            )
+        except Exception as e:
+            logger.debug(f"Denis learn_outcome failed: {e}")
+
     while True:
+        engines = sync_graph_engines()
+
+        if denis_persona:
+            try:
+                asyncio.run(denis_persona.get_stats())
+            except Exception as e:
+                logger.debug(f"Denis Persona stats poll: {e}")
+
         CP_RECEIVED_FILE = "/tmp/denis/cp_received.json"
         PHASE_COMPLETE_FILE = "/tmp/denis/phase_complete.json"
 
@@ -138,6 +198,25 @@ def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
                 decision, correction = show_plan_review(cp, phases, risks)
                 logger.info(f"Plan review: {decision}")
 
+                if denis_persona and decision in ["approved", "correction"]:
+                    try:
+                        session_id = data.get("cp", {}).get("session_id", "default")
+                        cp_dict = cp.to_dict()
+                        outcome_str = f"decision={decision}, intent={cp.intent}"
+                        asyncio.run(
+                            denis_persona.learn_outcome(
+                                session_id,
+                                {
+                                    "approved": decision == "approved",
+                                    "intent": cp.intent,
+                                    "engine": cp.model,
+                                },
+                                outcome_str,
+                            )
+                        )
+                    except Exception as e:
+                        logger.debug(f"Denis learn from plan review failed: {e}")
+
                 if decision == "correction" and correction:
                     from control_plane.human_input_processor import process_human_input
                     from control_plane.cp_queue import CPQueue
@@ -150,9 +229,11 @@ def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
                     # Persist HumanInput to Neo4j
                     CPQueue._persist_human_input(delta, cp.cp_id)
 
-                    os.makedirs("/tmp/denis", exist_ok=True)
-                    with open("/tmp/denis/next_cp.json", "w") as f:
-                        json.dump(cp.to_dict(), f, indent=2)
+                    if cp.hop_count < 3:
+                        cp.hop_count += 1
+                        os.makedirs("/tmp/denis", exist_ok=True)
+                        with open("/tmp/denis/next_cp.json", "w") as f:
+                            json.dump(cp.to_dict(), f, indent=2, default=str)
                     logger.info(
                         f"Human input processed: {delta['new_constraints']}, dnt: {delta['new_do_not_touch']}"
                     )
@@ -189,9 +270,11 @@ def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
                         # Persist HumanInput to Neo4j
                         CPQueue._persist_human_input(delta, cp.cp_id)
 
-                        os.makedirs("/tmp/denis", exist_ok=True)
-                        with open("/tmp/denis/next_cp.json", "w") as f:
-                            json.dump(cp.to_dict(), f, indent=2)
+                        if cp.hop_count < 3:
+                            cp.hop_count += 1
+                            os.makedirs("/tmp/denis", exist_ok=True)
+                            with open("/tmp/denis/next_cp.json", "w") as f:
+                                json.dump(cp.to_dict(), f, indent=2, default=str)
                         logger.info(f"Phase adjust processed: {delta['new_constraints']}")
 
             except Exception as e:

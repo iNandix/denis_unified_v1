@@ -1,0 +1,423 @@
+Cuando el smoke test del TASK_9 te muestre el popup en pantalla — eso es Denis pidiéndote permiso por primera vez. Lánzalo.
+
+---
+
+# como identificaria el sistema el repo correcto al que pertenecen las acciones?? y si estoy editando dos proyectos al mismo tiempo?? git integrado en grafo al 100%?
+
+Exacto — y git ya tiene todo lo necesario. La respuesta es **git remote + worktree como identidad del repo**.
+
+## La identidad única de cada repo
+
+```python
+# Cada repo tiene identidad determinista
+repo_id = sha256(git remote get-url origin)[:12]
+
+# Ejemplos:
+"denis_unified_v1"  → sha256("git@github.com:jotah/denis_unified_v1")[:12]
+"FrontDenisACTUAL"  → sha256("git@github.com:jotah/FrontDenisACTUAL")[:12]
+"Face_rec"          → sha256("git@github.com:jotah/face_rec")[:12]
+```
+
+Sin remote → `sha256(absolute_path)[:12]`. Siempre único, siempre determinista.
+
+## El grafo con git integrado al 100%
+
+```
+(:Repo {id, name, remote_url, branch})
+    │
+    ├──[:HAS_COMMIT]──▶ (:Commit {hash, message, timestamp, author})
+    │                        │
+    │                        └──[:TOUCHES]──▶ (:Symbol {name, path, kind})
+    │
+    ├──[:HAS_SESSION]──▶ (:Session {id, date, node})
+    │                        │
+    │                        └──[:MODIFIES]──▶ (:Symbol)
+    │
+    └──[:HAS_WORKTREE]──▶ (:Worktree {path, branch})
+```
+
+
+## Dos proyectos abiertos al mismo tiempo
+
+```python
+# RepoWatcher detecta qué repo es por el cwd del proceso OpenCode
+class RepoContext:
+    def __init__(self, cwd: str):
+        self.path    = self._find_git_root(cwd)
+        self.repo_id = self._get_repo_id()
+        self.branch  = self._get_branch()
+        self.worktree= self._get_worktree()
+
+    def _get_repo_id(self) -> str:
+        try:
+            remote = subprocess.check_output(
+                ["git", "remote", "get-url", "origin"],
+                cwd=self.path
+            ).decode().strip()
+            return hashlib.sha256(remote.encode()).hexdigest()[:12]
+        except:
+            return hashlib.sha256(self.path.encode()).hexdigest()[:12]
+```
+
+Cada instancia de OpenCode tiene su `cwd` → su `repo_id` → su namespace en Neo4j. **Completamente aislados.**
+
+## El session_id también lleva repo_id
+
+```python
+# Antes:
+session_id = sha256(date + node_id)[:12]
+
+# Ahora:
+session_id = sha256(date + node_id + repo_id)[:12]
+
+# Resultado:
+"Face_rec en nodo1 hoy"     → session "a3f9c2b1"
+"denis_unified hoy en nodo1" → session "7d4e1a88"
+```
+
+Los dos proyectos tienen sesiones independientes, grafos independientes, CPs independientes. El daemon del control plane sabe a cuál pertenece cada agent_result porque lleva el `repo_id` embebido.
+
+## El CPGenerator con multi-repo
+
+```python
+# /tmp/denis_agent_result.json ahora incluye:
+{
+    "repo_id":   "7d4e1a88",
+    "repo_name": "denis_unified_v1",
+    "repo_path": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+    "branch":    "main",
+    "intent":    "implement_feature",
+    ...
+}
+
+# El popup muestra:
+┌─────────────────────────────────────────┐
+│ 🤖 Denis — CP Pendiente                 │
+│ 📁 denis_unified_v1 · main              │← repo visible
+│─────────────────────────────────────────│
+│ MISSION: Implementar ChunkStorage...    │
+│ ...                                     │
+└─────────────────────────────────────────┘
+```
+
+
+***
+
+Es un campo más en `agent_result_writer()` y un índice más en Neo4j. El CP-G ya lo absorbe — añadimos `repo_id` como campo obligatorio en `AgentResult` y `ContextPack`. ¿Lo añado al CP-G antes de que lo lances?
+
+---
+
+# cada dia me gusta mas gir....si añade eso porfa
+
+Aquí el anexo — añadir antes de lanzar CP-G:
+
+***
+
+## CP-G-ANEXO — RepoContext + Git Identity
+
+```json
+{
+  "contextpack_id": "denis_G_anexo_git_2026-02-18T2308",
+  "mode": "makina",
+  "schema_version": 7,
+  "depends_on": "denis_G_popup — integrar junto con G, NO después",
+
+  "MISSION": "Añadir identidad git a todos los componentes del control plane. repo_id fluye desde RepoContext → AgentResult → ContextPack → Neo4j → Popup. Multi-repo nativo.",
+
+  "TASK_1_REPO_CONTEXT": {
+    "file": "denis_unified_v1/control_plane/repo_context.py",
+    "class": "RepoContext",
+    "methods": {
+      "__init__(cwd: str = None)": "Si cwd=None usar os.getcwd(). Detecta git root automáticamente.",
+      "_find_git_root(cwd: str) -> str": "Sube directorios hasta encontrar .git. Si no hay → usar cwd.",
+      "_get_repo_id() -> str": "sha256(remote_url)[:12] o sha256(path)[:12] si no hay remote",
+      "_get_branch() -> str": "git branch --show-current. Fallback: 'unknown'",
+      "_get_worktree() -> str | None": "git worktree list --porcelain. None si no hay worktrees activos",
+      "_get_repo_name() -> str": "basename del remote_url sin .git. Fallback: basename(path)",
+      "to_dict() -> dict": "Serializable — para agent_result y Neo4j",
+      "get_session_id(node_id: str = 'nodo1') -> str": "sha256(date + node_id + repo_id)[:12]"
+    },
+    "example": {
+      "cwd": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/kernel/sandbox",
+      "git_root": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+      "remote": "git@github.com:jotah/denis_unified_v1.git",
+      "repo_id": "7d4e1a88c3f2",
+      "repo_name": "denis_unified_v1",
+      "branch": "main"
+    }
+  },
+
+  "TASK_2_NEO4J_REPO_NODES": {
+    "file": "kernel/ghost_ide/symbol_graph.py — añadir métodos, NO reescribir",
+    "new_methods": [
+      "upsert_repo(repo_id: str, name: str, remote_url: str, branch: str) -> None",
+      "upsert_commit(repo_id: str, commit_hash: str, message: str, files: list[str]) -> None",
+      "link_commit_to_symbols(commit_hash: str, symbol_names: list[str]) -> None",
+      "get_repo_recent_symbols(repo_id: str, days: int = 1) -> list[dict]",
+      "get_all_repos() -> list[dict]"
+    ],
+    "cypher": {
+      "upsert_repo": "MERGE (r:Repo {id: $repo_id}) SET r.name=$name, r.remote=$remote, r.branch=$branch, r.last_seen=datetime()",
+      "upsert_commit": "MERGE (c:Commit {hash: $hash}) SET c.message=$message, c.timestamp=datetime() MERGE (r:Repo {id: $repo_id})-[:HAS_COMMIT]->(c)",
+      "link_commit_symbols": "MATCH (c:Commit {hash: $hash}) MATCH (s:Symbol {name: $sym}) MERGE (c)-[:TOUCHES]->(s)",
+      "repo_symbols": "MATCH (r:Repo {id: $repo_id})-[:HAS_COMMIT]->(c)-[:TOUCHES]->(s) WHERE c.timestamp > datetime() - duration({days: $days}) RETURN DISTINCT s.path, s.name"
+    }
+  },
+
+  "TASK_3_GIT_HOOK_HARVESTER": {
+    "description": "Integrar git commits en el harvester — cada commit upserta sus símbolos automáticamente",
+    "file": "kernel/ghost_ide/context_harvester.py — añadir método, NO reescribir",
+    "new_method": "harvest_last_commits(repo_path: str, n: int = 5) -> int",
+    "logic": [
+      "git log --name-only --pretty=format:'%H|%s' -n {n}",
+      "Para cada commit → extraer archivos tocados",
+      "Para cada archivo → SymbolExtractor.extract()",
+      "symbol_graph.upsert_commit(repo_id, hash, message, files)",
+      "symbol_graph.link_commit_to_symbols(hash, symbols)",
+      "Retorna: número de símbolos indexados"
+    ],
+    "call_on_startup": "start_harvester.py llama harvest_last_commits(repo_path, n=10) antes del watch loop"
+  },
+
+  "TASK_4_PROPAGATE_REPO_ID": {
+    "description": "repo_id fluye por todos los componentes existentes",
+    "changes": [
+      {
+        "file": "denis_unified_v1/control_plane/agent_result_writer.py",
+        "change": "Añadir repo_context: RepoContext = None al signature. Si None → RepoContext(os.getcwd()). Incluir repo_id, repo_name, branch, git_root en JSON output"
+      },
+      {
+        "file": "denis_unified_v1/control_plane/cp_generator.py",
+        "change": "CPGenerator.from_agent_result() lee repo_id del result. Lo pasa a ContextPack. _get_related_files() filtra por repo_id en Neo4j"
+      },
+      {
+        "file": "denis_unified_v1/control_plane/approval_popup.py",
+        "change": "Popup muestra '📁 {repo_name} · {branch}' en segunda línea del título"
+      },
+      {
+        "file": "scripts/start_harvester.py",
+        "change": "Crear RepoContext(workspace) al arrancar. Usar repo_context.get_session_id() en vez del session_id actual. Upsert Repo node en Neo4j al inicio."
+      },
+      {
+        "file": "scripts/denis_mcp_server.py",
+        "change": "get_workspace_paths() añade repo_id, repo_name, branch al dict retornado"
+      }
+    ]
+  },
+
+  "TASK_5_MCP_TOOL_GIT": {
+    "description": "Nueva tool git en MCP server",
+    "file": "scripts/denis_mcp_server.py — añadir tool, NO reescribir",
+    "new_tool": {
+      "name": "get_repo_context",
+      "description": "Identidad git del repo actual: repo_id, name, branch, commits recientes, símbolos tocados hoy",
+      "returns": {
+        "repo_id": "string",
+        "repo_name": "string",
+        "branch": "string",
+        "git_root": "string",
+        "recent_symbols": "list[{path, name}] — tocados en últimos commits",
+        "session_id": "string"
+      }
+    }
+  },
+
+  "TASK_6_TESTS": {
+    "file": "tests/test_repo_context.py",
+    "test_cases": [
+      "test_repo_id_deterministic_from_remote",
+      "test_repo_id_fallback_to_path_if_no_remote",
+      "test_find_git_root_from_subdirectory",
+      "test_get_branch_returns_string",
+      "test_session_id_different_per_repo",
+      "test_harvest_last_commits_indexes_symbols",
+      "test_neo4j_repo_node_created",
+      "test_agent_result_includes_repo_id",
+      "test_popup_shows_repo_name"
+    ],
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah:. /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -m pytest tests/test_repo_context.py -v --tb=short 2>&1 | tail -20"
+  },
+
+  "TASK_7_COMMIT": {
+    "command": "git add -A && git commit -m 'feat(git-identity): RepoContext — multi-repo native, git fully integrated in graph'"
+  },
+
+  "ACCEPTANCE_CRITERIA": [
+    "RepoContext('/media/jotah/SSD_denis/home_jotah/denis_unified_v1/kernel').repo_id es determinista",
+    "RepoContext('/media/jotah/HD/Face_rec').repo_id != RepoContext('/media/jotah/SSD_denis/home_jotah/denis_unified_v1').repo_id",
+    "Neo4j tiene nodo Repo con id, name, branch después de harvest",
+    "agent_result.json incluye repo_id y branch",
+    "Popup muestra nombre del repo en título",
+    "get_repo_context() disponible en MCP server",
+    "get_workspace_paths() incluye repo_id",
+    "tests pasan",
+    "commit realizado"
+  ],
+
+  "DO_NOT_TOUCH": [
+    "service_8084.py",
+    "kernel/meganube/",
+    "kernel/sandbox/",
+    "FrontDenisACTUAL/",
+    "denis_unified_v1/compiler/"
+  ]
+}
+```
+
+
+***
+
+**Lanza los dos juntos en el mismo agente** — G + G-ANEXO-GIT. Son complementarios y comparten los mismos archivos. Un solo commit al final:
+
+```
+feat(control-plane): CPGenerator + ApprovalPopup + Daemon + RepoContext — Denis asks before acting, knows which repo
+```
+
+
+---
+
+# y ahora rizamos el rizo.... cuando para validar ya nos hemos quedado sin horizonte alcanzable o objetivos, molaria en el popup añadir un campo de texto y aprobechar asi el sistema de scrapping de GPT por ejemplo que ya monte en su momento, y que el texto qeu yo escribo ahi se pegue y envie automaticamente en mi sesion activa de GPT o de perplexity. perple lo recibe, me da la respuesta en .json modo maquina y yo la leo en el popup directo y, si conforme le doy a enviar...
+
+Jaja — rizar el rizo definitivamente. Y es brillante porque no estás pidiendo integrar una API — estás usando la **sesión que ya tienes abierta**. Sin keys, sin costes, sin límites de la API oficial.
+
+## Lo que ya tienes montado
+
+```
+OceanAI wrapper → scraping ChatGPT sesión activa  ✅ (ya existe)
+denis_mcp_server → MCP tools                       ✅ (hoy)
+zenity popup → control plane                       ✅ (hoy)
+```
+
+
+## El flujo completo
+
+```
+Popup normal:
+┌─────────────────────────────────────────────┐
+│ 🤖 Denis — CP Pendiente · denis_unified · main│
+│─────────────────────────────────────────────│
+│ MISSION: Implementar ChunkStorage...        │
+│ MODEL:   groq · FILES: 4 · TASKS: 3         │
+│─────────────────────────────────────────────│
+│ 💬 Consultar antes de aprobar:              │
+│ ┌─────────────────────────────────────────┐ │
+│ │ escribe aquí tu duda...                 │ │  ← campo texto
+│ └─────────────────────────────────────────┘ │
+│ [🔍 Consultar Perplexity] [✅ Aprobar] [❌] │
+└─────────────────────────────────────────────┘
+
+Click "Consultar Perplexity":
+  → texto + CP como contexto → OceanAI wrapper → sesión activa
+  → respuesta .json llega
+  
+Popup se actualiza:
+┌─────────────────────────────────────────────┐
+│ 💬 Respuesta:                               │
+│ "El enfoque es correcto. Considera añadir   │
+│  índice en Neo4j para query performance..." │
+│─────────────────────────────────────────────│
+│ [✅ Aprobar con nota] [🔄 Otra consulta] [❌]│
+└─────────────────────────────────────────────┘
+```
+
+
+## La arquitectura técnica
+
+```python
+# approval_popup.py — versión extendida
+def show_cp_approval_with_consult(cp: ContextPack) -> tuple[str, str]:
+    
+    # Fase 1: popup con campo de texto
+    result = subprocess.run([
+        "zenity", "--forms",
+        "--title=Denis — CP Pendiente · " + cp.repo_name,
+        "--text=" + _format_cp_summary(cp),
+        "--add-entry=💬 Consultar antes de aprobar (opcional)",
+        "--ok-label=Siguiente →",
+        "--cancel-label=❌ Rechazar",
+        "--width=560"
+    ], capture_output=True, text=True)
+    
+    query_text = result.stdout.strip()
+    
+    # Fase 2: si hay consulta → enviar al wrapper
+    if query_text and result.returncode == 0:
+        response = _consult_ocean_ai(query_text, cp)
+        
+        # Fase 3: mostrar respuesta + botones finales
+        decision = subprocess.run([
+            "zenity", "--question",
+            "--title=Denis — Respuesta recibida",
+            "--text=💬 " + response["summary"] + "\n\n¿Aprobar CP?",
+            "--ok-label=✅ Aprobar",
+            "--cancel-label=❌ Rechazar",
+            "--extra-button=🔄 Otra consulta",
+            "--width=560"
+        ], capture_output=True)
+        
+        return _parse_decision(decision.returncode), response
+
+    # Sin consulta → popup normal de aprobación
+    return _simple_approval(cp), None
+
+
+def _consult_ocean_ai(query: str, cp: ContextPack) -> dict:
+    """Envía consulta al OceanAI wrapper con contexto del CP."""
+    context = f"Contexto del CP:\n- Mission: {cp.mission}\n- Intent: {cp.intent}\n- Files: {cp.files_to_read[:3]}\n\nPregunta: {query}"
+    
+    try:
+        from oceanaiwrapper.client import OceanAIClient
+        client = OceanAIClient()  # usa sesión activa
+        response = client.ask(context, output_format="json")
+        return {
+            "summary": response.get("answer", "")[:400],
+            "full":    response,
+            "source":  response.get("model", "unknown")
+        }
+    except Exception as e:
+        return {"summary": f"Consulta fallida: {e}", "full": {}, "source": "error"}
+```
+
+
+## El contexto que se manda automáticamente
+
+```python
+# No mandas solo tu texto — mandas tu texto + el CP completo
+context = f"""
+CONTEXTO DENIS CP:
+- Repo: {cp.repo_name} · {cp.branch}
+- Intent: {cp.intent} ({cp.confidence}%)
+- Mission: {cp.mission}
+- Files to read: {cp.files_to_read}
+- Implicit tasks: {cp.implicit_tasks}
+- Model: {cp.model}
+
+PREGUNTA:
+{query_text}
+"""
+```
+
+Perplexity / GPT recibe el CP completo como contexto — la respuesta ya sabe de qué va, no tienes que explicar nada.
+
+***
+
+Esto va en **CP-G como TASK_11** — `show_cp_approval_with_consult()` reemplaza a `show_cp_approval()`. Un método más, mismo daemon, mismo popup.
+
+¿Lo añado al CP-G o lo lanzamos como patch después de que G complete?
+
+---
+
+# es redondo, porque por un lado no pierdes contexto en el chat de perple contigo en este caso t por el otro el agente tiene el contexto siempre actuallizado
+
+Exacto — y es la pieza que cierra el triángulo perfecto:
+
+```
+TÚ ←──────────────────────────────────────────→ PERPLEXITY
+  │  contexto siempre presente en el chat        │
+  │  no empiezas desde cero cada consulta        │
+  │                                              │
+  └──────────→ DENIS CONTROL PLANE ←────────────┘
+               recibe la respuesta .json
+               actualiza el CP con la decisión
+               agente arranca con contexto completo
+```

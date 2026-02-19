@@ -37,7 +37,7 @@ DECISION_KINDS = {
 }
 
 DECISION_MODES = {
-    "engine_selection": {"PRIMARY", "OFFLOAD", "DEGRADED", "FALLBACK"},
+    "engine_selection": {"PRIMARY", "OFFLOAD", "DEGRADED", "FALLBACK", "SHADOW"},
     "tool_approval": {"APPROVED", "REQUIRES_HUMAN", "BLOCKED"},
     "plan_selection": {"SELECTED", "FALLBACK", "GATED"},
     "routing": {"DEDICATED", "LAN", "TAILSCALE", "CLOUD"},

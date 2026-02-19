@@ -551,3 +551,187 @@ def classify_chunk(chunk) -> ChunkMetadata:
     """Convenience function."""
     classifier = ChunkClassifier()
     return classifier.classify(chunk)
+
+
+@dataclass
+class CodeChunkCandidate:
+    """A code chunk candidate for reuse."""
+
+    chunk_id: str
+    text: str
+    language: str
+    license: Optional[str] = None
+    reliability: float = 0.5
+    freshness: float = 0.5
+    verification: str = "unverified"
+    risk_flags: List[str] = field(default_factory=list)
+    utility_score: float = 0.0
+    source: str = ""
+    url: str = ""
+    quality: float = 0.5
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "text": self.text,
+            "language": self.language,
+            "license": self.license,
+            "reliability": self.reliability,
+            "freshness": self.freshness,
+            "verification": self.verification,
+            "risk_flags": self.risk_flags,
+            "utility_score": self.utility_score,
+            "source": self.source,
+            "url": self.url,
+            "quality": self.quality,
+        }
+
+
+async def retrieve_code_chunks(
+    query: str,
+    language: str = "",
+    intent: str = "write_code",
+    k: int = 10,
+) -> List[CodeChunkCandidate]:
+    """
+    Retrieve code chunks for reuse in CodeCraft.
+
+    Contract:
+        Input:
+            query: str - The code request description
+            language: str - Programming language (python, javascript, etc.)
+            intent: str - Intent (write_code, fix_bug, implement_feature, etc.)
+            k: int - Max candidates to return
+
+        Output:
+            List[CodeChunkCandidate] with:
+                - chunk_id: unique identifier
+                - text: code content
+                - language: programming language
+                - license: license name (MIT, Apache, etc.)
+                - reliability: 0-1 source reliability score
+                - freshness: 0-1 freshness score
+                - verification: unverified/partially_verified/cross_verified
+                - risk_flags: [low_trust, outdated, unsafe_code, etc.]
+                - utility_score: 0-1 computed utility
+                - source: source identifier (gh, hf, web)
+                - url: source URL
+                - quality: 0-1 quality score
+    """
+    from denis_unified_v1.actions.vector_store import VectorStoreManager
+
+    # For now, use mock data - in production this would query Neo4j + Vector store
+    mock_chunks = [
+        {
+            "chunk_id": "chunk-gh-001",
+            "text": "def process_data(data):\n    return [x*2 for x in data]",
+            "language": "python",
+            "license": "MIT",
+            "reliability": 0.95,
+            "freshness": 0.8,
+            "verification": "cross_verified",
+            "risk_flags": [],
+            "source": "github.com",
+            "url": "https://github.com/example/utils/blob/main/process.py",
+        },
+        {
+            "chunk_id": "chunk-gh-002",
+            "text": "async function fetchData(url) {\n    const response = await fetch(url);\n    return response.json();\n}",
+            "language": "javascript",
+            "license": "Apache-2.0",
+            "reliability": 0.9,
+            "freshness": 0.7,
+            "verification": "partially_verified",
+            "risk_flags": [],
+            "source": "github.com",
+            "url": "https://github.com/example/fetch/blob/main/api.js",
+        },
+        {
+            "chunk_id": "chunk-so-001",
+            "text": "def calculate(x, y):\n    return x + y",
+            "language": "python",
+            "license": None,
+            "reliability": 0.4,
+            "freshness": 0.2,
+            "verification": "unverified",
+            "risk_flags": ["outdated"],
+            "source": "stackoverflow.com",
+            "url": "https://stackoverflow.com/questions/12345",
+        },
+        {
+            "chunk_id": "chunk-gh-003",
+            "text": "class AuthHandler:\n    def __init__(self, secret):\n        self.secret = secret\n    \ndef authenticate(self, token):\n        return token == self.secret",
+            "language": "python",
+            "license": "MIT",
+            "reliability": 0.92,
+            "freshness": 0.85,
+            "verification": "cross_verified",
+            "risk_flags": [],
+            "source": "github.com",
+            "url": "https://github.com/example/auth/blob/main/handler.py",
+        },
+        {
+            "chunk_id": "chunk-gh-004",
+            "text": "import os\nos.system('rm -rf /')  # DANGEROUS",
+            "language": "python",
+            "license": "GPL-3.0",
+            "reliability": 0.1,
+            "freshness": 0.9,
+            "verification": "unverified",
+            "risk_flags": ["unsafe_code"],
+            "source": "github.com",
+            "url": "https://github.com/bad actor/dangerous/blob/main/script.py",
+        },
+    ]
+
+    # Filter by language if specified
+    candidates = []
+    for mock in mock_chunks:
+        if language and mock["language"] != language:
+            continue
+        candidates.append(mock)
+
+    # If no language filter, use all
+    if not language:
+        candidates = mock_chunks
+
+    # Calculate utility scores
+    classifier = ChunkClassifier()
+    results = []
+
+    for mock in candidates:
+        # Create a mock chunk object for classification
+        class MockChunk:
+            def __init__(self, text, url):
+                self.text = text
+                self.source_url = url
+                self.id = ""
+
+        chunk = MockChunk(mock["text"], mock["url"])
+        metadata = classifier.classify(chunk)
+
+        # Calculate utility
+        relevance = 0.8  # Default relevance for now
+        utility = classifier.calculate_utility_probability(relevance, metadata)
+
+        results.append(
+            CodeChunkCandidate(
+                chunk_id=mock["chunk_id"],
+                text=mock["text"],
+                language=mock["language"],
+                license=mock.get("license"),
+                reliability=mock["reliability"],
+                freshness=mock["freshness"],
+                verification=mock["verification"],
+                risk_flags=mock["risk_flags"],
+                utility_score=utility,
+                source=mock["source"],
+                url=mock["url"],
+                quality=metadata.chunk_quality_score,
+            )
+        )
+
+    # Sort by utility score descending
+    results.sort(key=lambda x: x.utility_score, reverse=True)
+
+    return results[:k]

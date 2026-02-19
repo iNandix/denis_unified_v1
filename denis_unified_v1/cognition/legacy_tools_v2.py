@@ -133,8 +133,8 @@ class LegacyToolAdapter:
             return ToolResult(False, {}, {"type": "policy", "message": "internet gated"})
 
         # run_command gate
-        if self.meta.name == "run_command":
-            cmd = str(args.get("cmd", ""))
+        if self.meta.name in {"run_command", "execute_bash"}:
+            cmd = str(args.get("cmd") or args.get("command") or "")
             if band != "high":
                 emit_tool_step({
                     "request_id": request_id,
@@ -205,9 +205,14 @@ def build_tool_registry_v2() -> Dict[str, Any]:
     legacy = build_tool_registry()
     metas = {
         "list_files": ToolMeta("list_files", "ide.fs", "ro", "low"),
+        "glob_files": ToolMeta("glob_files", "ide.fs", "ro", "low"),
+        "list_directory": ToolMeta("list_directory", "ide.fs", "ro", "low"),
         "grep_search": ToolMeta("grep_search", "ide.fs", "ro", "low"),
         "read_file": ToolMeta("read_file", "ide.fs", "ro", "low"),
+        "write_file": ToolMeta("write_file", "ide.fs", "rw", "high"),
+        "edit_file": ToolMeta("edit_file", "ide.fs", "rw", "high"),
         "run_command": ToolMeta("run_command", "ide.exec", "rw", "high"),
+        "execute_bash": ToolMeta("execute_bash", "ide.exec", "rw", "high"),
     }
     v2: Dict[str, Any] = {}
     for name, fn in legacy.items():

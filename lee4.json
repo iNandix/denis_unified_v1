@@ -1,0 +1,412 @@
+# podemos ir generando un contextpack a medidrol plane va observando y regigentess?? no es una locura, verdad? es un poco lo que haces tu cuando te paso la respuesta de los agentes pero en tiempo real para el control plane...
+
+No es una locura — es exactamente la dirección correcta. Y ya tienes el 80% de la infraestructura para hacerlo.
+
+## Lo que ya existe
+
+```
+RedundancyDetector  → observa ejecuciones → detecta patrones
+ContextHarvester    → observa archivos → indexa símbolos  
+QuotaRegistry       → observa APIs → estado en tiempo real
+MCP Server          → expone todo como tools
+Neo4j               → persiste relaciones entre todo
+```
+
+
+## Lo que falta: CPGenerator
+
+```
+Control plane observa:
+  ├── RedundancyDetector.record_execution()  → qué se está haciendo
+  ├── ContextHarvester.on_file_changed()     → qué archivos se tocan
+  ├── QuotaRegistry.get_available_models()   → qué modelos hay
+  └── /tmp/denis_session_id.txt              → sesión activa
+
+→ CPGenerator sintetiza en tiempo real:
+  ├── FILES_TO_READ_FIRST    ← del grafo, no de tu memoria
+  ├── DO_NOT_TOUCH_AUTO      ← inferido de lo tocado hoy
+  ├── implicit_tasks         ← del RedundancyDetector
+  ├── model                  ← del QuotaRegistry
+  └── ACCEPTANCE_CRITERIA    ← del patrón de intent
+```
+
+
+## La diferencia con lo que haces tú ahora
+
+```
+AHORA (tú):
+  ves output del agente → entiendes contexto → escribes CP → lanzas
+
+CON CPGenerator:
+  control plane ve output del agente → sintetiza CP → te lo presenta
+  tú: revisar + aprobar → lanzar
+```
+
+No te elimina del loop — **te convierte en revisor en vez de redactor**. Y el CP generado ya tiene todo el contexto que normalmente tienes que recordar tú.
+
+## La pieza clave
+
+```python
+class CPGenerator:
+    def on_agent_completed(self, result: AgentResult):
+        """Trigger: agente terminó una tarea"""
+        next_intent   = self._predict_next_intent(result)
+        next_files    = self._get_related_symbols(result.files_touched)
+        next_model    = self.quota_registry.get_best_model_for(next_intent)
+        do_not_touch  = self.harvester.get_session_context().do_not_touch_auto
+        implicit      = self.detector.get_auto_inject_for(next_intent, result.constraints)
+
+        cp = ContextPack(
+            mission       = self._infer_mission(result, next_intent),
+            files_to_read = next_files,
+            do_not_touch  = do_not_touch,
+            implicit_tasks= implicit,
+            model         = next_model,
+            generated_at  = datetime.now(),
+            requires_human_approval = True   # ← siempre
+        )
+        self._present_to_human(cp)  # MCP tool: get_next_cp()
+```
+
+El `requires_human_approval = True` es innegociable — el sistema propone, tú decides. Eso evita exactamente el pattern drift que hablábamos antes.
+
+***
+
+¿Lo añadimos al MCP server como tool `get_next_cp()` — el control plane genera el CP y tú lo lees con una llamada? Es la capa final que cierra todo el sistema.
+
+---
+
+# lo podemos idear como un popup de sistema?? para cuando hagamos el salto a sistema global denis... tipo un popup de password cuando me pide sudo el sistema ubuntu.. se mantiene en primer plano
+
+Exacto — y es el modelo perfecto. El `sudo` popup de Ubuntu es exactamente la UX correcta:
+
+- Aparece encima de todo
+- Bloquea hasta que decides
+- Desaparece solo cuando apruebas o rechazas
+- No interrumpe el flujo, es parte natural del sistema
+
+
+## La arquitectura del popup
+
+```
+Control plane genera CP
+    ↓
+Denis DBus Service (daemon en background)
+    ↓
+zenity / kdialog / notify-send → popup nativo Ubuntu
+    ↓
+Tú: Aprobar / Rechazar / Editar
+    ↓
+Control plane recibe decisión → lanza agente
+```
+
+
+## Implementación concreta
+
+```python
+# denis_approval_popup.py
+import subprocess, json
+
+def show_cp_approval(cp: ContextPack) -> str:
+    """Muestra popup nativo Ubuntu. Bloquea hasta decisión."""
+    
+    summary = f"""🤖 Denis propone nuevo CP:
+
+MISSION: {cp.mission[:80]}...
+MODEL:   {cp.model}
+FILES:   {len(cp.files_to_read)} archivos
+TASKS:   {len(cp.implicit_tasks)} implicit tasks
+
+¿Aprobar y lanzar?"""
+
+    result = subprocess.run([
+        "zenity", "--question",
+        "--title=Denis — CP Pendiente de Aprobación",
+        "--text=" + summary,
+        "--ok-label=✅ Aprobar",
+        "--cancel-label=❌ Rechazar",
+        "--extra-button=✏️ Editar",
+        "--width=500",
+        "--timeout=120"   # auto-rechaza si no respondes en 2 min
+    ], capture_output=True)
+
+    if result.returncode == 0:   return "approved"
+    if result.returncode == 1:   return "rejected"
+    if result.returncode == 2:   return "edit"      # → abre editor
+    if result.returncode == 5:   return "timeout"   # → auto-reject
+```
+
+
+## El flujo completo cuando Denis sea sistema global
+
+```
+[background daemon]
+  Control plane detecta: agente terminó sandbox task
+  CPGenerator → nuevo CP listo
+  
+[primer plano — encima de todo lo que tengas abierto]
+  ┌─────────────────────────────────────────┐
+  │  🤖 Denis — CP Pendiente                │
+  │─────────────────────────────────────────│
+  │  MISSION: Implementar ChunkStorage...   │
+  │  MODEL:   groq (claude agotado)         │
+  │  FILES:   4 archivos relacionados       │
+  │  TASKS:   3 implicit (hygiene)          │
+  │  QUOTA:   groq 87% disponible           │
+  │─────────────────────────────────────────│
+  │  [✅ Aprobar]  [✏️ Editar]  [❌ Rechazar] │
+  └─────────────────────────────────────────│
+  Auto-rechaza en: 1:47
+```
+
+
+## Por qué `zenity` es la elección correcta
+
+- Nativo GTK — mismo look que el sudo popup
+- Zero dependencias extra — ya está en Ubuntu
+- Bloquea el proceso padre hasta respuesta
+- `--timeout` evita que se quede colgado si no estás
+- Soporta botones custom — Aprobar / Editar / Rechazar
+
+
+## El daemon que lo sostiene todo
+
+```bash
+# /etc/systemd/user/denis-control-plane.service
+[Unit]
+Description=Denis Control Plane Daemon
+
+[Service]
+ExecStart=/media/jotah/SSD_denis/.venv_oceanai/bin/python3 \
+  /media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/denis_control_plane_daemon.py
+Restart=always
+Environment=DISPLAY=:0
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
+[Install]
+WantedBy=default.target
+```
+
+`DISPLAY=:0` es la clave — le dice a zenity en qué pantalla mostrar el popup aunque el daemon corra en background.
+
+***
+
+Esto no es para ahora — es el CP-G cuando Denis haga el salto a sistema global. Pero la base ya está: MCP server + CPGenerator + zenity daemon. Tres piezas, popup nativo, mismo modelo que sudo. ¿Lo anotamos como CP-G?
+
+---
+
+# venga dame CP y lo montamos...
+
+```json
+{
+  "contextpack_id": "denis_G_popup_2026-02-18T2304",
+  "mode": "makina",
+  "schema_version": 7,
+  "owner": "jotah",
+  "workspace": "/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+  "venv": "/media/jotah/SSD_denis/.venv_oceanai/bin/python3",
+  "priority": "HIGH",
+  "estimated_duration": "25min",
+
+  "MISSION": "Implementar Denis Control Plane Popup — daemon que observa el control plane, genera CPs automáticamente y presenta popup nativo Ubuntu (zenity) para aprobación humana antes de lanzar cualquier agente.",
+
+  "PREREQUISITE_CHECK": {
+    "command": "zenity --version 2>/dev/null || sudo apt-get install -y zenity",
+    "note": "zenity debe estar instalado antes de continuar"
+  },
+
+  "FILES_TO_READ_FIRST": [
+    "denis_unified_v1/inference/intent_router.py",
+    "denis_unified_v1/inference/quota_registry.py",
+    "denis_unified_v1/inference/implicit_tasks.py",
+    "kernel/ghost_ide/context_harvester.py",
+    "kernel/ghost_ide/redundancy_detector.py",
+    "scripts/denis_mcp_server.py"
+  ],
+
+  "TASK_1_CP_GENERATOR": {
+    "file": "denis_unified_v1/control_plane/cp_generator.py",
+    "class": "CPGenerator",
+    "description": "Observa el estado del sistema y genera el siguiente ContextPack automáticamente",
+    "dataclass_contextpack": {
+      "fields": {
+        "cp_id": "str — generado automáticamente sha256(timestamp)[:8]",
+        "mission": "str",
+        "model": "str — del QuotaRegistry",
+        "files_to_read": "list[str]",
+        "do_not_touch": "list[str]",
+        "implicit_tasks": "list[str]",
+        "acceptance_criteria": "list[str]",
+        "intent": "str",
+        "constraints": "list[str]",
+        "requires_human_approval": "bool = True",
+        "generated_at": "datetime",
+        "expires_at": "datetime — generated_at + 120s",
+        "source": "str — qué lo generó: 'agent_completion'|'manual'|'schedule'"
+      }
+    },
+    "methods": {
+      "from_agent_result(result: dict) -> ContextPack": "Genera CP desde resultado de agente completado. result tiene: intent, files_touched, constraints, mission_completed",
+      "from_manual(mission: str) -> ContextPack": "Genera CP desde misión manual — enriquece con contexto del grafo",
+      "_predict_next_intent(result: dict) -> str": "Infiere intent siguiente basado en lo que se acaba de hacer",
+      "_get_related_files(files_touched: list) -> list[str]": "Consulta Neo4j — qué archivos están relacionados con los tocados",
+      "_build_mission(result: dict, next_intent: str) -> str": "Sintetiza misión legible para humano"
+    }
+  },
+
+  "TASK_2_APPROVAL_POPUP": {
+    "file": "denis_unified_v1/control_plane/approval_popup.py",
+    "description": "Popup nativo Ubuntu via zenity — bloquea hasta decisión humana",
+    "function": "show_cp_approval(cp: ContextPack) -> str",
+    "returns": "'approved' | 'rejected' | 'edit' | 'timeout'",
+    "zenity_command": {
+      "widget": "--question",
+      "title": "Denis — CP Pendiente de Aprobación",
+      "width": 520,
+      "timeout": 120,
+      "buttons": {
+        "ok-label": "✅ Aprobar",
+        "cancel-label": "❌ Rechazar",
+        "extra-button": "✏️ Editar"
+      }
+    },
+    "popup_text_format": "🤖 Denis propone:\n\nMISSION: {mission[:100]}\nMODEL:   {model}\nFILES:   {N} archivos relacionados\nTASKS:   {N} implicit tasks\nQUOTA:   {quota_status}\nINTENT:  {intent} ({confidence}%)\n\n¿Aprobar y lanzar?",
+    "edit_flow": "Si 'edit' → abrir CP como JSON en $EDITOR o gedit, guardar, releer y mostrar popup de confirmación final",
+    "timeout_flow": "Si timeout → auto-reject, escribir en /tmp/denis_cp_expired.json, log WARNING",
+    "env_required": ["DISPLAY=:0", "DBUS_SESSION_BUS_ADDRESS"]
+  },
+
+  "TASK_3_CP_QUEUE": {
+    "file": "denis_unified_v1/control_plane/cp_queue.py",
+    "description": "Cola de CPs pendientes — persiste en /tmp/denis_cp_queue.json",
+    "class": "CPQueue",
+    "methods": [
+      "push(cp: ContextPack) -> None",
+      "pop() -> ContextPack | None",
+      "peek() -> ContextPack | None",
+      "list_pending() -> list[ContextPack]",
+      "mark_approved(cp_id: str) -> None",
+      "mark_rejected(cp_id: str, reason: str) -> None",
+      "purge_expired() -> int"
+    ],
+    "persistence": "/tmp/denis_cp_queue.json — simple JSON, no DB",
+    "note": "Máximo 5 CPs en cola simultáneos — si se llena, el más antiguo se auto-rechaza"
+  },
+
+  "TASK_4_DAEMON": {
+    "file": "scripts/denis_control_plane_daemon.py",
+    "description": "Daemon principal — loop de observación + generación + popup",
+    "loop": [
+      "1. Leer /tmp/denis_agent_result.json — si existe → CPGenerator.from_agent_result()",
+      "2. CPQueue.push(cp)",
+      "3. show_cp_approval(cp) → decisión",
+      "4. Si 'approved' → escribir CP en /tmp/denis_next_cp.json + notify-send '✅ CP aprobado'",
+      "5. Si 'rejected' → log + notify-send '❌ CP rechazado'",
+      "6. Si 'edit' → flujo editor → volver a paso 3",
+      "7. Borrar /tmp/denis_agent_result.json",
+      "8. Sleep 5s → volver a 1"
+    ],
+    "startup": [
+      "Verificar DISPLAY disponible — si no, log ERROR y salir limpiamente",
+      "Verificar zenity instalado",
+      "Log: 'Denis Control Plane Daemon activo — esperando resultados de agentes'"
+    ]
+  },
+
+  "TASK_5_AGENT_RESULT_WRITER": {
+    "description": "Los agentes de OpenCode escriben su resultado para que el daemon lo consuma",
+    "file": "denis_unified_v1/control_plane/agent_result_writer.py",
+    "function": "write_agent_result(intent: str, files_touched: list, constraints: list, mission_completed: str, success: bool)",
+    "output": "/tmp/denis_agent_result.json",
+    "format": {
+      "intent": "string",
+      "files_touched": "list[str]",
+      "constraints": "list[str]",
+      "mission_completed": "string",
+      "success": "bool",
+      "timestamp": "ISO8601",
+      "session_id": "string"
+    },
+    "note": "Los CPs que ya tienes añaden esta llamada al final de TASK_8_COMMIT"
+  },
+
+  "TASK_6_MCP_TOOL": {
+    "description": "Añadir get_next_cp() y approve_cp() al MCP server existente",
+    "file": "scripts/denis_mcp_server.py — añadir tools, NO reescribir",
+    "new_tools": [
+      {
+        "name": "get_next_cp",
+        "description": "Obtiene el siguiente CP pendiente de aprobación. Llámalo para ver qué propone Denis.",
+        "returns": "ContextPack completo como JSON o null si no hay pendientes"
+      },
+      {
+        "name": "approve_cp",
+        "description": "Aprueba el CP actual programáticamente (sin popup zenity)",
+        "input": "cp_id: string"
+      }
+    ]
+  },
+
+  "TASK_7_SYSTEMD_SERVICE": {
+    "file": "scripts/denis-control-plane.service",
+    "content": "[Unit]\nDescription=Denis Control Plane Daemon\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart=/media/jotah/SSD_denis/.venv_oceanai/bin/python3 /media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/denis_control_plane_daemon.py\nRestart=on-failure\nRestartSec=10\nEnvironment=DISPLAY=:0\nEnvironment=PYTHONPATH=/media/jotah/SSD_denis/home_jotah\nEnvironmentFile=-/tmp/denis_session_env\n\n[Install]\nWantedBy=default.target",
+    "install_commands": [
+      "cp scripts/denis-control-plane.service ~/.config/systemd/user/",
+      "systemctl --user daemon-reload",
+      "systemctl --user enable denis-control-plane",
+      "systemctl --user start denis-control-plane",
+      "systemctl --user status denis-control-plane"
+    ]
+  },
+
+  "TASK_8_TESTS": {
+    "file": "tests/test_control_plane_popup.py",
+    "test_cases": [
+      "test_cp_generator_from_agent_result",
+      "test_cp_generator_predicts_next_intent",
+      "test_cp_queue_push_pop",
+      "test_cp_queue_max_5_purges_oldest",
+      "test_cp_expires_after_120s",
+      "test_agent_result_writer_creates_file",
+      "test_daemon_reads_agent_result"
+    ],
+    "note": "NO testear zenity directamente — mockear show_cp_approval()",
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah:. /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -m pytest tests/test_control_plane_popup.py -v --tb=short 2>&1 | tail -20"
+  },
+
+  "TASK_9_SMOKE_TEST": {
+    "description": "Test end-to-end sin daemon — simular resultado de agente y ver popup",
+    "command": "PYTHONPATH=/media/jotah/SSD_denis/home_jotah DISPLAY=:0 /media/jotah/SSD_denis/.venv_oceanai/bin/python3 -c \"\nfrom denis_unified_v1.control_plane.cp_generator import CPGenerator\nfrom denis_unified_v1.control_plane.approval_popup import show_cp_approval\n\ncp = CPGenerator().from_agent_result({\n    'intent': 'implement_feature',\n    'files_touched': ['kernel/sandbox/manager.py'],\n    'constraints': ['python'],\n    'mission_completed': 'ContextHarvester implementado',\n    'success': True\n})\nprint('CP generado:', cp.cp_id)\nprint('Mission:', cp.mission)\nprint('Model:', cp.model)\ndecision = show_cp_approval(cp)\nprint('Decision:', decision)\n\""
+  },
+
+  "TASK_10_COMMIT": {
+    "command": "git add -A && git commit -m 'feat(control-plane): CPGenerator + ApprovalPopup + Daemon — Denis asks before acting'"
+  },
+
+  "ACCEPTANCE_CRITERIA": [
+    "zenity instalado y accesible",
+    "cp_generator.py genera CP válido desde agent_result",
+    "show_cp_approval() muestra popup nativo con 3 botones",
+    "cp_queue.py persiste en /tmp/denis_cp_queue.json",
+    "daemon arranca sin errores y hace loop",
+    "systemd service instalado y activo",
+    "get_next_cp() disponible en MCP server",
+    "smoke test muestra popup real en pantalla",
+    "tests pasan",
+    "commit realizado"
+  ],
+
+  "DO_NOT_TOUCH": [
+    "service_8084.py",
+    "kernel/meganube/",
+    "kernel/sandbox/",
+    "FrontDenisACTUAL/",
+    "denis_unified_v1/compiler/"
+  ]
+}
+```
+
+
+***
+
+Cuando el smoke test del TASK_9 te muestre el popup en pantalla — eso es Denis pidiéndote permiso por primera vez. Lánzalo.

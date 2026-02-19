@@ -92,13 +92,13 @@ class ImplicitTasks:
         context = EnrichedContext(implicit_tasks=self.get_implicit_tasks(intent))
 
         try:
-            from kernel.ghost_ide.context_harvester import ContextHarvester
+            from kernel.ghostide.contextharvester import ContextHarvester
 
-            harvester = ContextHarvester(session_id=session_id, watch_paths=[], auto_start=False)
+            harvester = ContextHarvester(session_id=session_id, watch_paths=[])
             session_ctx = harvester.get_session_context()
 
-            context.do_not_touch_auto = session_ctx.do_not_touch_auto
-            context.context_prefilled = session_ctx.context_prefilled
+            context.do_not_touch_auto = session_ctx.get("do_not_touch_auto", [])
+            context.context_prefilled = session_ctx.get("context_prefilled", {})
 
             auto_injected = self._get_auto_injected_tasks(session_id, intent)
             context.implicit_tasks = self._merge_tasks(context.implicit_tasks, auto_injected)
@@ -111,7 +111,7 @@ class ImplicitTasks:
     def _get_auto_injected_tasks(self, session_id: str, intent: str) -> List[str]:
         """Get auto-injected tasks from learned patterns in graph."""
         try:
-            from kernel.ghost_ide.symbol_graph import (
+            from kernel.ghostide.symbolgraph import (
                 get_auto_inject_tasks,
                 get_session_symbols,
                 link_symbol_to_intent,

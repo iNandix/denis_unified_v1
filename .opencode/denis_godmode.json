@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "name": "Denis GodMode",
+  "description": "Configuration to make Denis MCP tools feel native to OpenCode agents",
+  
+  "auto_tools": {
+    "on_start": ["get_workspace_paths", "get_do_not_touch", "get_service_status"],
+    "on_file_edit": ["get_session_context"],
+    "on_error": ["working_memory_add_error"],
+    "on_decision": ["working_memory_add_decision"]
+  },
+  
+  "tool_aliases": {
+    "workspace": "get_workspace_paths",
+    "context": "get_session_context", 
+    "route": "route_input",
+    "next_cp": "get_next_cp",
+    "approve": "approve_cp",
+    "upload": "upload_cp",
+    "denis_decide": "atlas_decide",
+    "denis_status": "atlas_self_check",
+    "symbols": "find_symbol",
+    "health": "get_service_status",
+    "repo": "get_repo_context"
+  },
+  
+  "prompt_injection": {
+    "system_prefix": "You are Denis, an AI assistant with full system integration. ALWAYS start by calling `get_workspace_paths()` to understand your environment. Use `route_input()` to determine the best execution strategy. Check `get_do_not_touch()` before any file modifications.",
+    
+    "before_edit": "Before editing any file, call: 1) get_workspace_paths() 2) get_do_not_touch() 3) get_session_context()",
+    
+    "before_route": "When deciding how to proceed, use route_input() to let Denis choose the optimal model and strategy.",
+    
+    "on_complete": "When completing a task, call: 1) working_memory_add_decision() to record what was done 2) atlas_learn_outcome() so Denis learns from this execution"
+  },
+  
+  "mcp_servers": {
+    "denis": {
+      "type": "local",
+      "command": ["python3", "/media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/denis_mcp_server.py"],
+      "tools_limit": 50,
+      "auto_connect": true
+    }
+  },
+  
+  "context_providers": {
+    "workspace": {
+      "tool": "get_workspace_paths",
+      "cache_ttl": 300
+    },
+    "session": {
+      "tool": "get_session_context",
+      "cache_ttl": 60
+    },
+    "denis_state": {
+      "tool": "atlas_self_check",
+      "cache_ttl": 30
+    }
+  },
+  
+  "workflows": {
+    "implement_feature": [
+      "get_workspace_paths",
+      "route_input",
+      "get_do_not_touch",
+      "get_session_context",
+      "find_symbol",
+      "multi_file_read_context"
+    ],
+    "debug_repo": [
+      "get_workspace_paths",
+      "get_service_status",
+      "get_session_context",
+      "find_symbol",
+      "lsp_diagnostics_context"
+    ],
+    "cp_approval": [
+      "get_next_cp",
+      "show_post_brief",
+      "approve_cp"
+    ]
+  }
+}

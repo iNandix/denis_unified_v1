@@ -1,5 +1,7 @@
 """Denis Control Plane — Standalone bricks for CP-G."""
 
+CONTEXTPACK_SCHEMA_VERSION = "8.0.0"
+
 import json
 import os
 from dataclasses import asdict, dataclass, field
@@ -68,6 +70,7 @@ class ContextPack:
     expires_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc) + timedelta(seconds=120)
     )
+    hop_count: int = 0
 
     def __post_init__(self):
         """Auto-populate repo context if empty."""

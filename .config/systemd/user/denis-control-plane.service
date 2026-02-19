@@ -1,0 +1,20 @@
+[Unit]
+Description=Denis Control Plane Daemon — Observa, genera CPs, pide aprobación
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/media/jotah/SSD_denis/.venv_oceanai/bin/python3 /media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/denis_control_plane_daemon.py
+Restart=on-failure
+RestartSec=10
+Environment=DISPLAY=:0
+Environment=PYTHONPATH=/media/jotah/SSD_denis/home_jotah
+Environment=NEO4J_URI=bolt://127.0.0.1:7687
+Environment=NEO4J_USER=neo4j
+Environment=NEO4J_PASSWORD=Leon1234$
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -609,10 +609,13 @@ def pre_execute_hook(prompt: str, context_refs: List[str]) -> Tuple[bool, Makina
                 return (False, output, f"Operación bloqueada: archivo protegido ({protected})")
 
     missing = output.missing_inputs
-    confidence = output.intent.get("confidence", 0.0)
 
-    if "intent_unclear" in missing and confidence < 0.4:
-        return (False, output, f"Prompt demasiado ambiguo: {missing}")
+    if missing and output.intent.get("confidence", 0) < 0.4:
+        return (
+            False,
+            output,
+            f"Intent unclear ({output.intent.get('pick', 'unknown')}) with missing inputs: {missing}",
+        )
 
     return (True, output, None)
 

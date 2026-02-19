@@ -13,13 +13,71 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from denis_unified_v1.actions.decision_trace import emit_decision_trace
 from denis_unified_v1.actions.graph_intent_resolver import _get_neo4j_driver
 
 logger = logging.getLogger(__name__)
+
+# Configuration
+DENIS_SHADOW_TIMEOUT_MS = int(os.getenv("DENIS_SHADOW_TIMEOUT_MS", "100"))
+
+# Circuit breaker state
+_circuit_breaker = {
+    "failures": 0,
+    "last_failure": None,
+    "open_until": None,
+}
+CIRCUIT_BREAKER_THRESHOLD = 5
+CIRCUIT_BREAKER_COOLDOWN_SECONDS = 60
+
+
+def _is_circuit_open() -> bool:
+    """Check if circuit breaker is open."""
+    if _circuit_breaker["open_until"] is None:
+        return False
+    if datetime.now(timezone.utc) > _circuit_breaker["open_until"]:
+        _circuit_breaker["open_until"] = None
+        _circuit_breaker["failures"] = 0
+        return False
+    return True
+
+
+def _record_circuit_failure():
+    """Record a failure in the circuit breaker."""
+    _circuit_breaker["failures"] += 1
+    _circuit_breaker["last_failure"] = datetime.now(timezone.utc)
+    if _circuit_breaker["failures"] >= CIRCUIT_BREAKER_THRESHOLD:
+        _circuit_breaker["open_until"] = datetime.now(timezone.utc) + timedelta(
+            seconds=CIRCUIT_BREAKER_COOLDOWN_SECONDS
+        )
+        logger.warning(f"Circuit breaker OPEN for {CIRCUIT_BREAKER_COOLDOWN_SECONDS}s")
+
+
+def _record_circuit_success():
+    """Record a success, reset circuit breaker."""
+    _circuit_breaker["failures"] = 0
+    _circuit_breaker["open_until"] = None
+
+
+# Lazy import for InferenceGateway (shadow mode)
+_inference_gateway = None
+
+
+def _get_inference_gateway():
+    """Lazy load InferenceGateway for shadow mode."""
+    global _inference_gateway
+    if _inference_gateway is None:
+        try:
+            from denis_unified_v1.inference.inference_gateway import shadow_select
+
+            _inference_gateway = shadow_select
+        except ImportError:
+            logger.warning("InferenceGateway not available - shadow mode disabled")
+            _inference_gateway = None
+    return _inference_gateway
 
 
 @dataclass
@@ -383,6 +441,83 @@ class ProSearchExecutor:
                 status="error",
                 error="Failed to load skill config from Neo4j",
             )
+
+        # Determine task_profile_id for PRO_SEARCH
+        task_profile_id = "premium_search"
+
+        # Shadow call to InferenceGateway with timeout and circuit breaker
+        gateway = _get_inference_gateway()
+        shadow_decision = None
+        shadow_timeout = DENIS_SHADOW_TIMEOUT_MS / 1000.0
+
+        if gateway and not _is_circuit_open():
+            try:
+                import signal
+
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Shadow call timed out")
+
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.setitimer(signal.ITIMER_REAL, shadow_timeout)
+
+                try:
+                    shadow_decision = gateway(
+                        task_profile_id=task_profile_id,
+                        intent="research",
+                        phase="local",
+                    )
+                    _record_circuit_success()
+                finally:
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, old_handler)
+
+                if shadow_decision:
+                    emit_decision_trace(
+                        kind="shadow_model_selection",
+                        mode="shadow",
+                        reason=f"gateway_selected={shadow_decision.provider}/{shadow_decision.model}, strategy={shadow_decision.strategy}, reason={shadow_decision.reason}",
+                        session_id=session_id,
+                        turn_id=turn_id,
+                        request_id=request_id,
+                        intent="research",
+                        extra={
+                            "task_profile_id": task_profile_id,
+                            "selected_provider": shadow_decision.provider,
+                            "selected_model": shadow_decision.model,
+                            "latency_ms": shadow_decision.latency_ms,
+                            "quota_available": shadow_decision.quota_available,
+                            "result": shadow_decision.result,
+                        },
+                    )
+                    logger.info(
+                        f"[SHADOW] PRO_SEARCH: {shadow_decision.provider}/{shadow_decision.model} selected for {task_profile_id}"
+                    )
+            except TimeoutError:
+                _record_circuit_failure()
+                logger.warning(
+                    f"[SHADOW] Gateway call timed out after {shadow_timeout}s"
+                )
+                emit_decision_trace(
+                    kind="shadow_model_selection",
+                    mode="shadow_timeout",
+                    reason=f"pro_search_unavailable: timeout after {shadow_timeout}s",
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    request_id=request_id,
+                    intent="research",
+                )
+            except Exception as e:
+                _record_circuit_failure()
+                logger.warning(f"[SHADOW] Gateway call failed (fail-open): {e}")
+                emit_decision_trace(
+                    kind="shadow_model_selection",
+                    mode="shadow_error",
+                    reason=f"pro_search_unavailable: {str(e)[:100]}",
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    request_id=request_id,
+                    intent="research",
+                )
 
         mode, depth = self.resolve_mode_and_depth(request, config)
 

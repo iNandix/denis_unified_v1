@@ -12,6 +12,9 @@ from typing import Any, Dict, List, Optional
 
 from control_plane.models import ContextPack
 from control_plane.repo_context import RepoContext
+from control_plane.precise_router import get_precise_router
+from kernel.ghostide.symbol_cypher_router import get_symbol_cypher_router
+from kernel.denis_persona import get_denis_persona
 
 logger = logging.getLogger(__name__)
 
@@ -89,23 +92,53 @@ class CPGenerator:
     def from_agent_result(self, result: dict) -> ContextPack:
         """
         Lee repo_id, intent, files_touched, constraints.
-        Enriquece con grafo.
+        Usa DenisPersona.decide() como orchestrator principal.
+        Rasa/ParLAI/ControlPlane = tools de Denis.
         """
+        import asyncio
+
         repo_ctx = RepoContext(cwd=result.get("cwd"))
 
         timestamp = datetime.now(timezone.utc).isoformat()
         cp_id = hashlib.sha256(f"{timestamp}_{repo_ctx.repo_id}".encode()).hexdigest()[:8]
 
         intent = result.get("intent", "unknown")
+        prompt = result.get("prompt", result.get("mission", ""))
         constraints = result.get("constraints", [])
         files_touched = result.get("files_touched", [])
-        related_files = self._get_related_files(files_touched, repo_ctx.repo_id)
+        session_id = result.get("session_id", repo_ctx.get_session_id())
+
+        denis = get_denis_persona()
+        denis_decision = None
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run, denis.decide(intent, session_id, constraints, prompt)
+                    )
+                    denis_decision = future.result(timeout=30)
+            else:
+                denis_decision = loop.run_until_complete(
+                    denis.decide(intent, session_id, constraints, prompt)
+                )
+        except Exception as e:
+            logger.warning(f"DenisPersona.decide failed: {e}, using fallback")
+
+        model = denis_decision.engine if denis_decision else "groq"
+        mood = denis_decision.mood if denis_decision else "neutral"
+        knowledge = denis_decision.knowledge if denis_decision else []
+
+        related_files = [k.get("path") for k in knowledge if k.get("path")]
+        related_files = list(set(files_touched + related_files))[:10]
+
+        implicit_tasks = result.get("implicit_tasks", [])
 
         next_intent = self._predict_next_intent(result)
         mission = self._build_mission(result, next_intent)
-
-        qr = self._get_quota_registry()
-        model = qr.get_best_model_for(intent) if qr else "groq"
 
         risk_level = self._infer_risk_level(
             intent, files_touched, result.get("is_checkpoint", False)
@@ -121,7 +154,7 @@ class CPGenerator:
             risk_level=risk_level,
             is_checkpoint=result.get("is_checkpoint", False),
             do_not_touch=["kernel/__init__.py", "public/"],
-            implicit_tasks=result.get("implicit_tasks", []),
+            implicit_tasks=implicit_tasks,
             acceptance_criteria=result.get("acceptance_criteria", []),
             intent=intent,
             constraints=constraints,

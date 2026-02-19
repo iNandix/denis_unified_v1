@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "denis://contracts/control_plane/contract_v1.json",
+  "title": "DENIS Control Plane Contracts v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/DecisionTrace" },
+    { "$ref": "#/$defs/DeviceEvent" },
+    { "$ref": "#/$defs/CareAlert" }
+  ],
+  "$defs": {
+    "DecisionTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_id",
+        "timestamp_ms",
+        "decision_type",
+        "inputs",
+        "provider",
+        "fallback_chain",
+        "latency_ms",
+        "outcome"
+      ],
+      "properties": {
+        "trace_id": { "type": "string", "minLength": 1 },
+        "timestamp_ms": { "type": "integer", "minimum": 0 },
+        "decision_type": { "type": "string", "const": "routing" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request_id", "intent"],
+          "properties": {
+            "request_id": { "type": "string", "minLength": 1 },
+            "intent": { "type": "string", "minLength": 1 }
+          }
+        },
+        "provider": { "type": "string", "minLength": 1 },
+        "fallback_chain": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "error_class": { "type": ["string", "null"] },
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "type": "string", "enum": ["success", "failure", "fallback"] }
+      }
+    },
+    "DeviceEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "device_id",
+        "device_type",
+        "event_type",
+        "timestamp_ms",
+        "payload",
+        "processed"
+      ],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "device_id": { "type": "string", "minLength": 1 },
+        "device_type": {
+          "type": "string",
+          "enum": ["camera", "sensor", "switch", "gps"]
+        },
+        "event_type": {
+          "type": "string",
+          "enum": ["motion", "state_change", "reading", "location"]
+        },
+        "timestamp_ms": { "type": "integer", "minimum": 0 },
+        "payload": { "type": "object" },
+        "processed": { "type": "boolean" }
+      }
+    },
+    "CareAlert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alert_id",
+        "severity",
+        "subject",
+        "source",
+        "message",
+        "created_at",
+        "acknowledged",
+        "acknowledged_by"
+      ],
+      "properties": {
+        "alert_id": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+        "subject": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "acknowledged": { "type": "boolean" },
+        "acknowledged_by": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
+

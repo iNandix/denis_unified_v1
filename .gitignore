@@ -142,7 +142,9 @@ docs/_build/
 *.pdf
 *.docx
 
-# ML Models and weights (never commit to Git)
+# Reports
+denis_unified_v1/_reports/
+_reports/
 models/
 checkpoints/
 *.gguf

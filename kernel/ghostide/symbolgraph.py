@@ -422,3 +422,91 @@ class SymbolGraph:
         MERGE (e)-[:AVAILABLE_FOR]->(i)
         """
         return self._run(query, {"engine_id": engine_id, "intent": intent}) is not None
+
+    def persona_prefers_intent(self, intent: str) -> list:
+        """
+        Query what engines Denis prefers for a given intent.
+        Returns engines ordered by preference confidence.
+        """
+        query = """
+        MATCH (d:Persona)-[p:PREFERS {intent: $intent}]->(e:Engine)
+        WHERE e.healthy = true OR e.healthy IS NULL
+        RETURN e.name AS engine_id, e.model AS model, e.endpoint AS endpoint,
+               p.confidence AS confidence, p.times_used AS times_used
+        ORDER BY p.confidence DESC, p.times_used DESC
+        LIMIT 3
+        """
+        result = self._run(query, {"intent": intent})
+        if not result:
+            return []
+        return [
+            {
+                "engine_id": r.get("engine_id"),
+                "model": r.get("model"),
+                "endpoint": r.get("endpoint"),
+                "confidence": r.get("confidence", 0.5),
+                "times_used": r.get("times_used", 0),
+            }
+            for r in result
+        ]
+
+    def persona_knowledge_base(self, session_id: str) -> list:
+        """
+        Get Denis knowledge base for a session (symbols touched).
+        """
+        query = """
+        MATCH (d:Persona)-[:KNOWS]-(s:Symbol)
+        OPTIONAL MATCH (s)-[:IN_FILE]-(f:File)
+        WHERE (d)-[:MODIFIED_IN]-(sess:Session {id: $session_id})
+        RETURN DISTINCT s.name AS name, s.type AS type, s.file AS path
+        LIMIT 20
+        """
+        result = self._run(query, {"session_id": session_id})
+        if not result:
+            return []
+        return [
+            {"name": r.get("name"), "type": r.get("type"), "path": r.get("path")} for r in result
+        ]
+
+    def update_persona_mood(self, mood_score: float) -> bool:
+        """
+        Update Denis mood in graph.
+        mood_score: -1.0 (sad) to 1.0 (confident)
+        """
+        mood = "sad" if mood_score < -0.3 else "confident" if mood_score > 0.3 else "neutral"
+
+        query = """
+        MATCH (d:Persona {name: 'Denis'})
+        SET d.mood = $mood, 
+            d.mood_score = $score, 
+            d.last_mood_update = datetime()
+        """
+        return self._run(query, {"mood": mood, "score": mood_score}) is not None
+
+    def record_persona_decision(
+        self, session_id: str, intent: str, engine: str, outcome: str = None
+    ) -> bool:
+        """
+        Record a decision Denis made for learning.
+        """
+        query = """
+        MATCH (d:Persona {name: 'Denis'})
+        SET d.total_decisions = COALESCE(d.total_decisions, 0) + 1
+        """
+        self._run(query)
+
+        if outcome:
+            exp_query = """
+            MATCH (d:Persona {name: 'Denis'})
+            MERGE (exp:Experience {session_id: $sid, intent: $intent, timestamp: datetime()})
+            SET exp.outcome = $outcome, exp.engine = $engine
+            CREATE (d)-[:LEARNED_FROM]->(exp)
+            """
+            return (
+                self._run(
+                    exp_query,
+                    {"sid": session_id, "intent": intent, "outcome": outcome, "engine": engine},
+                )
+                is not None
+            )
+        return True

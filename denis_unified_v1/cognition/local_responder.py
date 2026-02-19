@@ -102,9 +102,7 @@ class LocalResponder:
                 retrieval_used=True,
                 llm_used=False,
                 evidence=self._get_evidence_paths(retrieval),
-                duration_ms=int(
-                    (datetime.now(timezone.utc) - start).total_seconds() * 1000
-                ),
+                duration_ms=int((datetime.now(timezone.utc) - start).total_seconds() * 1000),
             )
 
         # Step 3: Try local LLM if available
@@ -113,9 +111,7 @@ class LocalResponder:
             return llm_response
 
         # Step 4: Fallback to template
-        return self._template_fallback(
-            user_message, intent, retrieval.reason_codes, start
-        )
+        return self._template_fallback(user_message, intent, retrieval.reason_codes, start)
 
     async def _parallel_retrieval(self, user_message: str) -> RetrievalResult:
         """Execute parallel retrieval with budget."""
@@ -166,9 +162,7 @@ class LocalResponder:
         return RetrievalResult(
             neo4j_data=neo4j_data if not isinstance(neo4j_data, Exception) else None,
             memory_data=memory_data if not isinstance(memory_data, Exception) else None,
-            metagraph_data=metagraph_data
-            if not isinstance(metagraph_data, Exception)
-            else None,
+            metagraph_data=metagraph_data if not isinstance(metagraph_data, Exception) else None,
             redis_data=redis_data if not isinstance(redis_data, Exception) else None,
             filesystem_data=fs_data if not isinstance(fs_data, Exception) else None,
             success=success,
@@ -196,9 +190,9 @@ class LocalResponder:
             if not driver:
                 return None
 
-            async with driver.session() as session:
-                result = await session.run("MATCH (n) RETURN count(n) as count LIMIT 1")
-                record = await result.single()
+            with driver.session() as session:
+                result = session.run("MATCH (n) RETURN count(n) as count LIMIT 1")
+                record = result.single()
                 if record:
                     return {"node_count": record["count"]}
         except Exception:
@@ -282,16 +276,12 @@ class LocalResponder:
         # Quick probe - just check if we have access to key files
         return None
 
-    def _synthesize_from_retrieval(
-        self, retrieval: RetrievalResult, user_message: str
-    ) -> str:
+    def _synthesize_from_retrieval(self, retrieval: RetrievalResult, user_message: str) -> str:
         """Synthesize response from retrieval data."""
         parts = []
 
         if retrieval.neo4j_data:
-            parts.append(
-                f"[Grafo: {retrieval.neo4j_data.get('node_count', '?')} nodos]"
-            )
+            parts.append(f"[Grafo: {retrieval.neo4j_data.get('node_count', '?')} nodos]")
 
         if retrieval.memory_data:
             results = retrieval.memory_data.get("results", [])
@@ -351,9 +341,7 @@ class LocalResponder:
 
         return None
 
-    async def _call_local_llm(
-        self, router: Any, message: str, engine_id: str
-    ) -> Optional[str]:
+    async def _call_local_llm(self, router: Any, message: str, engine_id: str) -> Optional[str]:
         """Call local LLM."""
         # Placeholder - implement actual call
         return None

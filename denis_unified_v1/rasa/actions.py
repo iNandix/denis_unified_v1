@@ -116,14 +116,147 @@ class ActionProSearch(Action):
         return [dispatcher.utter_message(text="Búsqueda no disponible.")]
 
 
+class ActionAskDenis(Action):
+    """
+    Tool de Rasa para consultar a Denis Persona.
+
+    Cuando Rasa necesita una decisión, consulta a Denis.
+    Denis = orquestador principal, Rasa = tool.
+    """
+
+    def name(self) -> str:
+        return "action_ask_denis"
+
+    def run(self, dispatcher, tracker, domain) -> List[Dict[str, Any]]:
+        """Consulta a Denis Persona para obtener decisión."""
+        import asyncio
+
+        intent = tracker.latest_message.get("intent", {}).get("name", "unknown")
+        session_id = tracker.current_state().get("sender_id", "default")
+
+        slots = {}
+        for key, value in tracker.slots.items():
+            if value:
+                slots[key] = value[0] if isinstance(value, list) else value
+
+        try:
+            from kernel.denis_persona import get_denis_persona
+
+            denis = get_denis_persona()
+
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(
+                            asyncio.run, denis.decide(intent, session_id, list(slots.values()))
+                        )
+                        decision = future.result(timeout=30)
+                else:
+                    decision = loop.run_until_complete(
+                        denis.decide(intent, session_id, list(slots.values()))
+                    )
+            except Exception as e:
+                logger.warning(f"DenisPersona.decide in Rasa failed: {e}")
+                return [dispatcher.utter_message(text=f"Denis no puede decidir ahora: {e}")]
+
+            mood_emoji = {"sad": "😢", "neutral": "😐", "confident": "😎"}.get(decision.mood, "😐")
+
+            knowledge_text = ""
+            if decision.knowledge:
+                knowledge_text = "\nConocimiento relevante:\n"
+                for k in decision.knowledge[:3]:
+                    knowledge_text += f"  • {k.get('name', 'unknown')}\n"
+
+            text = f"""🤔 Denis ({mood_emoji} {decision.mood.upper()}):
+• Engine: {decision.engine}
+• Confianza: {decision.confidence:.0%}{knowledge_text}
+• Razonamiento: {decision.reasoning}"""
+
+            return [dispatcher.utter_message(text=text)]
+
+        except Exception as e:
+            logger.error(f"ActionAskDenis failed: {e}")
+            return [dispatcher.utter_message(text="Denis no está disponible.")]
+
+
 # Action registry
 RASA_ACTIONS = {
     "action_get_symbols": ActionGetSymbols,
     "action_session_context": ActionSessionContext,
     "action_pro_search": ActionProSearch,
+    "action_ask_denis": ActionAskDenis,
 }
 
 
 def get_action(action_name: str) -> Action:
     """Get action by name."""
     return RASA_ACTIONS.get(action_name, Action())()
+
+
+class ActionAskDenis(Action):
+    """
+    Tool de Rasa para consultar a Denis Persona.
+
+    Cuando Rasa necesita una decisión, consulta a Denis.
+    Denis = orquestador principal, Rasa = tool.
+    """
+
+    def name(self) -> str:
+        return "action_ask_denis"
+
+    def run(self, dispatcher, tracker, domain) -> List[Dict[str, Any]]:
+        """Consulta a Denis Persona para obtener decisión."""
+        import asyncio
+
+        intent = tracker.latest_message.get("intent", {}).get("name", "unknown")
+        session_id = tracker.current_state().get("sender_id", "default")
+
+        slots = {}
+        for key, value in tracker.slots.items():
+            if value:
+                slots[key] = value[0] if isinstance(value, list) else value
+
+        try:
+            from kernel.denis_persona import get_denis_persona
+
+            denis = get_denis_persona()
+
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(
+                            asyncio.run, denis.decide(intent, session_id, list(slots.values()))
+                        )
+                        decision = future.result(timeout=30)
+                else:
+                    decision = loop.run_until_complete(
+                        denis.decide(intent, session_id, list(slots.values()))
+                    )
+            except Exception as e:
+                logger.warning(f"DenisPersona.decide in Rasa failed: {e}")
+                return [dispatcher.utter_message(text=f"Denis no puede decidir ahora: {e}")]
+
+            mood_emoji = {"sad": "😢", "neutral": "😐", "confident": "😎"}.get(decision.mood, "😐")
+
+            knowledge_text = ""
+            if decision.knowledge:
+                knowledge_text = "\nConocimiento relevante:\n"
+                for k in decision.knowledge[:3]:
+                    knowledge_text += f"  • {k.get('name', 'unknown')}\n"
+
+            text = f"""🤔 Denis ({mood_emoji} {decision.mood.upper()}):
+• Engine: {decision.engine}
+• Confianza: {decision.confidence:.0%}{knowledge_text}
+• Razonamiento: {decision.reasoning}"""
+
+            return [dispatcher.utter_message(text=text)]
+
+        except Exception as e:
+            logger.error(f"ActionAskDenis failed: {e}")
+            return [dispatcher.utter_message(text="Denis no está disponible.")]
