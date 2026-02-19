@@ -1,0 +1,112 @@
+En corto: sirve para “poblar” el grafo con infraestructura y servicios, pero no es suficiente (ni del todo correcto) para “despertar” a Denis Persona completo.
+
+Lo que tu script sí hace bien
+
+Modela nodo1/nodo2 como infraestructura.
+
+Crea servicios básicos (control plane, redis, neo4j, pipecat, piper_tts).
+
+Relaciona a Denis con control/persistencia (si ya existe el nodo (:Persona {name:'Denis'})).
+
+Lo que falta para “Denis Persona completo” (la parte “viva” / decisora)
+
+Crear (o asegurar) la Persona y su Kernel/Agent
+
+Tu script hace MATCH (denis:Persona ...) → si no existe, no crea nada y esa parte no corre.
+
+Para “despertar” deberías MERGE la Persona, y también un nodo tipo :Kernel / :Agent / :Mind (como lo estés modelando).
+
+Flujo de decisión
+
+Si tu intención es: “Denis decide; Rasa/ParlAI/Pipecat son herramientas”, eso debe verse en el grafo:
+
+(:Persona)-[:DECIDES]->(:Policy|:Planner|:Router)
+
+Herramientas: (:Persona)-[:USES]->(:Tool|:Service) (no “DECIDES” desde Rasa/ParlAI).
+
+Tu script solo pone CONTROLS y USES, pero no modela el router/planner ni el flujo.
+
+Workers/capacidades
+
+En capturas anteriores tú ya estabas creando :Worker y :CAN_DEPLOY.
+
+Aquí no aparecen. Si “despertar completo” implica capacidad operativa (search/create/modify/analysis), hay que:
+
+crear workers,
+
+colgarlos del nodo,
+
+y enlazarlos a Denis.
+
+Enlaces a Neo4j “semántico”
+
+Si el routing depende de Neo4j (engines, intents, BEST_FOR, etc.), faltan nodos/relaciones tipo:
+
+(:Engine) (:Intent) (:Engine)-[:BEST_FOR {intent:'...'}]->(:Intent)
+
+o tu esquema equivalente.
+
+Problemas concretos de tu Cypher (cosas a corregir)
+
+MATCH (denis:Persona...): si Denis no existe, no se crea → usa MERGE.
+
+MERGE (nodoX)-[:RUNS {since: datetime()}]->(...)
+Eso es un clásico bug: cada ejecución crea una relación nueva, porque datetime() cambia siempre. Mejor:
+
+MERGE (nodoX)-[r:RUNS]->(svc) ON CREATE SET r.since = datetime()
+
+pid y port: pid = 12955 ok si es int, pero ojo que en tu transcripción anterior ponías otros valores; sé consistente.
+
+ws://nodo2:8765/voice: probablemente debería usar el hostname real (nodo2.tail...) o IP.
+
+Una versión mínima “más correcta” (para que al menos “encienda” a Denis en el grafo)
+
+// Persona/KERNEL base
+MERGE (denis:Persona {name:'Denis'})
+ON CREATE SET denis.created_at = datetime()
+SET denis.status = 'awake';
+
+MERGE (kernel:Kernel {name:'denis_kernel'})
+MERGE (denis)-[:HAS_KERNEL]->(kernel);
+
+// Infra nodes
+MERGE (nodo1:InfrastructureNode {name:'nodo1'})
+SET nodo1.role='primary', nodo1.status='active', nodo1.ip='127.0.0.1';
+
+MERGE (nodo2:InfrastructureNode {name:'nodo2'})
+SET nodo2.role='voice', nodo2.status='active', nodo2.ip='100.85.244.19';
+
+// Services (ejemplo)
+MERGE (cp:Service {name:'denis_control_plane', type:'daemon'})
+SET cp.status='running', cp.systemd='denis-control-plane.service';
+
+MERGE (neo4j:Service {name:'neo4j', type:'graph'})
+SET neo4j.status='running', neo4j.bolt='bolt://127.0.0.1:7687', neo4j.port=7687;
+
+// Relate services to nodes (sin datetime en MERGE)
+MERGE (nodo1)-[r1:RUNS]->(cp)
+ON CREATE SET r1.since = datetime();
+
+MERGE (nodo1)-[r2:RUNS]->(neo4j)
+ON CREATE SET r2.since = datetime();
+
+// Authority / decision ownership
+MERGE (denis)-[:RESIDES_ON]->(nodo1);
+MERGE (kernel)-[:CONTROLS]->(cp);
+MERGE (kernel)-[:USES {purpose:'persistence'}]->(neo4j);
+
+
+Checklist rápido: ¿qué significa “despertar completo” en tu sistema?
+
+✅ Existe :Persona Denis + :Kernel y están en estado awake/active
+
+✅ Control plane y graph daemon están representados y “colgados” de nodo1
+
+✅ Las herramientas (Rasa/ParlAI/Pipecat/etc.) aparecen como USES (no como decisores)
+
+✅ Workers/capacidades están enlazados (CAN_DEPLOY, HOSTS)
+
+✅ Router/Planner está modelado y apunta a Denis/KERNEL como autoridad final
+
+Si me dices qué nodos/labels estás usando realmente (Persona/Kernel/Agent/Router/Tool/Worker) o me pegas el esquema mínimo, te lo dejo en un script Cypher único que al correrlo deje a “Denis Persona” consistente y “awake” sin duplicar relaciones
+.

@@ -1,25 +1,71 @@
-# AGENTS.md — Denis GodMode + 4 Workers Paralelos (CrewAI)
+# AGENTS.md — Denis GodMode + Pipecat Voz + 4 Workers Paralelos
 
-## Arquitectura de Workers
+## Arquitectura Completa
 
 ```
-Usuario → Denis Persona (Orquestador Único)
-              ↓ decide()
-    ┌─────────┼─────────┐
-    ↓         ↓         ↓         ↓
- Worker1   Worker2   Worker3   Worker4
- Search    Analysis  Create    Modify
- (Crew)    (Crew)    (Crew)    (Crew)
-    ↓         ↓         ↓         ↓
-    └─────────┴─────────┴─────────┘
-              ↓
-         Neo4j (Grafo Central)
-              ↓
-    ┌─────────┴─────────┐
-    ↓                   ↓
- Control Plane      User Feedback
- (Validación)       (Consolidado)
+┌─────────────────────────────────────────────────────────────────┐
+│                    INTERFAZ DE USUARIO                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │   Texto     │  │    Voz      │  │      IDE/API            │ │
+│  │  (Chat)     │  │  (Pipecat)  │  │   (Opencode/CLI)        │ │
+│  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘ │
+└─────────┼────────────────┼─────────────────────┼───────────────┘
+          │                │                     │
+          └────────────────┴──────────┬──────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                 DENIS PERSONA (Orquestador Único)                │
+│                                                                  │
+│  • Única fuente de verdad                                        │
+│  • Decide qué Agent/Worker usar                                  │
+│  • Evalúa complejidad (CoT adaptativa)                           │
+│  • Mantiene estado en Neo4j                                      │
+│  • Voz e identidad: Pipecat conversacional                       │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ decide()
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    AGENTS (Herramientas)                         │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────┐  │
+│  │   Rasa     │  │  ParLAI    │  │  Pipecat   │  │ Workers  │  │
+│  │   (NLU)    │  │(Templates) │  │   (Voz)    │  │(Paralelo)│  │
+│  │ Entiende   │  │  Responde  │  │  Habla     │  │ Ejecuta  │  │
+│  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └────┬─────┘  │
+└────────┼───────────────┼───────────────┼──────────────┼────────┘
+         │               │               │              │
+         └───────────────┴───────┬───────┴──────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────┐
+                    │  NEO4J (Grafo)      │
+                    │  Fuente de Verdad   │
+                    └─────────────────────┘
 ```
+
+## Jerarquía de Control
+
+```
+Usuario
+  ↓
+Pipecat (Interfaz Conversacional - "La Voz de Denis")
+  ↓
+Denis Persona (Orquestador Único - Decide TODO)
+  ↓
+  ├─ Rasa (NLU - entiende, no decide)
+  ├─ ParLAI (Templates - responde, no decide)
+  ├─ Agents (Opencode/Groq/OpenRouter - ejecutan, no deciden)
+  └─ Workers (Paralelos - trabajan, no deciden)
+```
+
+## Regla de Oro
+
+**Denis Persona es el único que decide.**
+
+- Pipecat habla, pero Denis decide qué decir.
+- Rasa entiende, pero Denis decide qué hacer.
+- ParLAI responde, pero Denis decide cómo.
+- Workers ejecutan, pero Denis decide cuándo y qué.
 
 ## Los 4 Workers
 
