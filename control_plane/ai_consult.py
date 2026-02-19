@@ -50,6 +50,55 @@ PREGUNTA:
 
     def __init__(self):
         self._oceanai_client = None
+        self._target = None
+
+    def _find_ai_consult_target(self) -> str:
+        """
+        Discover available AI consult target with priority: OceanAI -> local_8084 -> none.
+
+        Returns:
+            'oceanai:<path>' when wrapper exists
+            'local_8084' when 8084 health is 200 and no OceanAI found
+            'none' otherwise
+        """
+        if self._target is not None:
+            return self._target
+
+        ocean_path = os.environ.get("OCEAN_AI_CLIENT")
+        if not ocean_path:
+            result = subprocess.run(
+                "find /media/jotah/SSD_denis -path '*oceanaiwrapper*' -name 'client.py' 2>/dev/null | grep -v venv | head -1",
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            ocean_path = result.stdout.strip()
+
+        if not ocean_path or not os.path.exists(ocean_path):
+            result = subprocess.run(
+                "find /media/jotah/SSD_denis -path '*oceanai*' -name 'client.py' 2>/dev/null | grep -v venv | head -1",
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            ocean_path = result.stdout.strip()
+
+        if ocean_path and os.path.exists(ocean_path):
+            self._target = f"oceanai:{ocean_path}"
+            return self._target
+
+        try:
+            import requests
+
+            r = requests.get("http://localhost:8084/health", timeout=3)
+            if r.status_code == 200:
+                self._target = "local_8084"
+                return self._target
+        except Exception:
+            pass
+
+        self._target = "none"
+        return self._target
 
     def _find_oceanai_client(self):
         """Find OceanAI client wrapper (Perplexity/GPT)."""
@@ -119,53 +168,57 @@ PREGUNTA:
         2. HTTP to localhost:8084/api/consult
         3. Fallback error result
         """
-        client = self._find_oceanai_client()
-        if client:
-            try:
-                context = self._build_context(query, cp)
-                response = await client.consult(context)
-                return ConsultResult(
-                    summary=response.get("summary", response.get("text", "")[:400]),
-                    full_response=response,
-                    source="oceanai",
-                    timestamp=datetime.now(timezone.utc),
-                )
-            except AttributeError:
+        target = self._find_ai_consult_target()
+
+        if target.startswith("oceanai:"):
+            client = self._find_oceanai_client()
+            if client:
                 try:
                     context = self._build_context(query, cp)
-                    response = await client.client.ask(context, output_format="json")
+                    response = await client.consult(context)
                     return ConsultResult(
-                        summary=response.get("answer", "")[:400],
+                        summary=response.get("summary", response.get("text", "")[:400]),
                         full_response=response,
-                        source="perplexity_gpt",
+                        source="oceanai",
                         timestamp=datetime.now(timezone.utc),
                     )
+                except AttributeError:
+                    try:
+                        context = self._build_context(query, cp)
+                        response = await client.client.ask(context, output_format="json")
+                        return ConsultResult(
+                            summary=response.get("answer", "")[:400],
+                            full_response=response,
+                            source="perplexity_gpt",
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                    except Exception as e:
+                        logger.warning(f"OceanAI consult failed: {e}")
                 except Exception as e:
                     logger.warning(f"OceanAI consult failed: {e}")
-            except Exception as e:
-                logger.warning(f"OceanAI consult failed: {e}")
 
-        try:
-            import requests
+        if target == "local_8084":
+            try:
+                import requests
 
-            r = requests.get("http://localhost:8084/health", timeout=3)
-            if r.status_code == 200:
-                context = f"CP: {cp.cp_id} Mission: {cp.mission}"
-                response = requests.post(
-                    "http://localhost:8084/api/consult",
-                    json={"query": query, "context": context},
-                    timeout=15,
-                )
-                if response.ok:
-                    data = response.json()
-                    return ConsultResult(
-                        summary=data.get("answer", "")[:400],
-                        full_response=data,
-                        source="service_8084",
-                        timestamp=datetime.now(timezone.utc),
+                r = requests.get("http://localhost:8084/health", timeout=3)
+                if r.status_code == 200:
+                    context = self._build_context(query, cp)
+                    response = requests.post(
+                        "http://localhost:8084/api/consult",
+                        json={"query": query, "context": context},
+                        timeout=15,
                     )
-        except Exception as e:
-            logger.warning(f"Local consult API failed: {e}")
+                    if response.ok:
+                        data = response.json()
+                        return ConsultResult(
+                            summary=data.get("answer", "")[:400],
+                            full_response=data,
+                            source="service_8084",
+                            timestamp=datetime.now(timezone.utc),
+                        )
+            except Exception as e:
+                logger.warning(f"Local consult API failed: {e}")
 
         return ConsultResult(
             summary="[Sin IA disponible — aprobación manual OK]",
