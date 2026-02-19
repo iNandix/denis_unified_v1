@@ -10,6 +10,8 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
+from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
 
 from control_plane.ai_consult import AIConsult, ConsultResult
@@ -152,9 +154,13 @@ class ApprovalPopup:
                 ]
             )
             if returncode2 == self.RETURN_APPROVED:
+                cp.human_validated = True
+                cp.validated_by = "human_direct"
+                self._send_webhook(cp, "approved")
                 return "approved", None
             elif returncode2 == 3:
                 return self._handle_edit(cp)
+            self._send_webhook(cp, "rejected")
             return "rejected", None
 
         self._notify("Denis", "🔍 Consultando...", expire=3000)
@@ -180,10 +186,12 @@ class ApprovalPopup:
             cp.human_validated = True
             cp.validated_by = consult_result.source
             self._notify("✅ CP aprobado", f"{cp.repo_name} · {cp.intent}")
+            self._send_webhook(cp, "approved")
             return "approved", consult_result
         elif returncode3 == 3:
             return self.show_cp_approval(cp)
 
+        self._send_webhook(cp, "rejected")
         return "rejected", consult_result
 
     def _handle_edit(self, cp: ContextPack) -> Tuple[str, Optional[ConsultResult]]:
@@ -211,6 +219,32 @@ class ApprovalPopup:
         expired_file = "/tmp/denis_cp_expired.json"
         with open(expired_file, "w") as f:
             json.dump(cp.to_dict(), f, indent=2)
+
+    def _send_webhook(self, cp: ContextPack, decision: str) -> None:
+        """Send webhook notification after approval/rejection."""
+        webhook_url = os.environ.get("DENIS_CP_WEBHOOK")
+        if not webhook_url:
+            return
+
+        payload = {
+            "cp_id": cp.cp_id,
+            "decision": decision,
+            "intent": cp.intent,
+            "repo_name": cp.repo_name,
+            "branch": cp.branch,
+            "validated_by": cp.validated_by or "human",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        def _async_post():
+            try:
+                import requests
+
+                requests.post(webhook_url, json=payload, timeout=5)
+            except Exception as e:
+                logger.warning(f"Webhook failed: {e}")
+
+        threading.Thread(target=_async_post, daemon=True).start()
 
 
 def show_cp_approval(cp: ContextPack) -> Tuple[str, Optional[ConsultResult]]:
