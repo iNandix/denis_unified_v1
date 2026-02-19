@@ -79,21 +79,75 @@ class CPQueue:
         return False
 
     def _persist_to_neo4j(self, cp: ContextPack, decision: str) -> None:
-        """Persist ContextPack to Neo4j."""
+        """Persist ContextPack to Neo4j with full context."""
         try:
             from neo4j import GraphDatabase
 
             driver = GraphDatabase.driver("bolt://127.0.0.1:7687", auth=("neo4j", "Leon1234$"))
             with driver.session() as session:
+                # Get session_id if exists
+                session_id = "unknown"
+                try:
+                    with open("/tmp/denis/session_id.txt") as f:
+                        session_id = f.read().strip()
+                except:
+                    pass
+
+                # Create/merge ContextPack node
                 session.run(
-                    "MERGE (c:ContextPack {id: $cpid}) SET c.mission = $mission, c.decision = $decision, c.risk = $risk, c.intent = $intent, c.repo = $repo, c.timestamp = datetime()",
+                    """
+                    MERGE (cp:ContextPack {id: $cpid})
+                    SET cp.intent = $intent,
+                        cp.mission = $mission,
+                        cp.success = $success,
+                        cp.decision = $decision,
+                        cp.risk = $risk,
+                        cp.repo_id = $repo_id,
+                        cp.repo_name = $repo_name,
+                        cp.branch = $branch,
+                        cp.notes = $notes,
+                        cp.validated_by = $validated_by,
+                        cp.created_at = datetime()
+                    """,
                     cpid=cp.cp_id,
+                    intent=cp.intent,
                     mission=cp.mission[:200],
+                    success=cp.success,
                     decision=decision,
                     risk=cp.risk_level,
-                    intent=cp.intent,
-                    repo=cp.repo_name,
+                    repo_id=cp.repo_id or "",
+                    repo_name=cp.repo_name,
+                    branch=cp.branch,
+                    notes=cp.notes or "",
+                    validated_by=cp.validated_by or "",
                 )
+
+                # Link to YoDenisAgent (canonical identity)
+                session.run(
+                    """
+                    MATCH (y:YoDenisAgent)
+                    WHERE y.agent_id IS NOT NULL
+                    WITH y LIMIT 1
+                    MATCH (cp:ContextPack {id: $cpid})
+                    MERGE (cp)-[:MANAGED_BY]->(y)
+                    """,
+                    cpid=cp.cp_id,
+                )
+
+                # Optional: link to Session
+                if session_id and session_id != "unknown":
+                    session.run(
+                        """
+                        MERGE (s:Session {session_id: $sid})
+                        ON CREATE SET s.created_at = datetime()
+                        WITH s
+                        MATCH (cp:ContextPack {id: $cpid})
+                        MERGE (cp)-[:IN_SESSION]->(s)
+                        """,
+                        sid=session_id,
+                        cpid=cp.cp_id,
+                    )
+
             driver.close()
         except Exception:
             pass
