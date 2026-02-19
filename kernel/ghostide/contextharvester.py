@@ -138,12 +138,46 @@ class ContextHarvester:
             pass
         return "main"
 
+    def harvest_repo(self, workspace: str) -> int:
+        count = 0
+        for root, dirs, files in os.walk(workspace):
+            dirs[:] = [
+                d
+                for d in dirs
+                if not d.startswith(".")
+                and d not in ("__pycache__", "venv", ".venv", "node_modules")
+            ]
+            for f in files:
+                if f.endswith(".py"):
+                    full_path = os.path.join(root, f)
+                    if self.harvest_file(full_path):
+                        count += 1
+        return count
+
+    def start(self, blocking: bool = True) -> None:
+        import threading
+
+        self._watch_thread = threading.Thread(target=self._watch_loop, daemon=not blocking)
+        self._running = True
+        self._watch_thread.start()
+
+    def stop(self) -> None:
+        self._running = False
+
+    def _watch_loop(self) -> None:
+        import time
+
+        while self._running:
+            time.sleep(30)
+
     def get_session_context(self) -> Dict[str, Any]:
         return {
             "session_id": self.session_id,
             "do_not_touch_auto": list(set(self.do_not_touch_auto)),
             "files_harvested": list(self.session_context.keys()),
             "symbol_count": len(self.do_not_touch_auto),
+            "modified_paths": list(self.session_context.keys()),
+            "context_prefilled": {},
         }
 
     def close(self):

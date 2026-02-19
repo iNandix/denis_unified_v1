@@ -1,68 +1,87 @@
 #!/usr/bin/env python3
-import os
-import sys
+import argparse
 import hashlib
-import subprocess
-from datetime import datetime
+import logging
+import os
+import signal
+import sys
+import time
+from datetime import date
 
-sys.path.insert(0, "/media/jotah/SSD_denis/home_jotah/denis_unified_v1")
+_ROOT = "/media/jotah/SSD_denis/home_jotah"
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-from kernel.ghostide.contextharvester import ContextHarvester
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [harvester] %(levelname)s — %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-
-def get_repo_id(repo_path: str) -> str:
-    try:
-        result = subprocess.run(
-            ["git", "remote", "get-url", "origin"], cwd=repo_path, capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            remote_url = result.stdout.strip()
-            return hashlib.sha256(remote_url.encode()).hexdigest()[:12]
-    except:
-        pass
-    return hashlib.sha256(repo_path.encode()).hexdigest()[:12]
-
-
-def get_repo_name(repo_path: str) -> str:
-    return os.path.basename(os.path.abspath(repo_path))
+_SESSION_PATH = "/tmp/denis/sessionid.txt"
+_NODE_ID = os.environ.get("DENIS_NODE_ID", "nodo1")
 
 
-def main():
-    repo_path = os.getcwd()
-    node_id = os.environ.get("NODE_ID", "nodo1")
-    repo_id = get_repo_id(repo_path)
-    repo_name = get_repo_name(repo_path)
-    date_str = datetime.now().isoformat()
+def _compute_session_id(repo_id: str) -> str:
+    raw = f"{date.today().isoformat()}|{_NODE_ID}|{repo_id}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
-    session_id = hashlib.sha256((date_str + node_id + repo_id).encode()).hexdigest()[:12]
 
-    session_info = f"{session_id}|{repo_id}|{repo_name}"
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Denis ContextHarvester daemon")
+    parser.add_argument(
+        "--workspace",
+        default="/media/jotah/SSD_denis/home_jotah/denis_unified_v1",
+        help="Path to Denis workspace root",
+    )
+    args = parser.parse_args()
+    workspace: str = os.path.abspath(args.workspace)
+
+    from kernel.ghostide.repocontext import RepoContext
+    from kernel.ghostide.contextharvester import ContextHarvester
+
+    repo = RepoContext.from_workspace(workspace)
+    repo_id = repo.repo_id
+    repo_name = repo.repo_name
+    branch = repo.branch
+
+    session_id = _compute_session_id(repo_id)
+
     os.makedirs("/tmp/denis", exist_ok=True)
-    with open("/tmp/denis/sessionid.txt", "w") as f:
-        f.write(session_info)
+    with open(_SESSION_PATH, "w") as fh:
+        fh.write(f"{session_id}|{repo_id}|{repo_name}|{branch}")
+    logger.info("Session: %s | repo: %s | branch: %s", session_id, repo_name, branch)
 
-    print(f"Starting Harvester for {repo_name}")
-    print(f"  session_id: {session_id}")
-    print(f"  repo_id: {repo_id}")
-    print(f"  repo_name: {repo_name}")
-
-    harvester = ContextHarvester(session_id=session_id, watch_paths=["."])
-
-    print("\nHarvesting last commits...")
-    result = harvester.harvest_last_commits(repo_path, n=5)
-    print(f"  Indexed {result['symbols_indexed']} symbols from {len(result['commits'])} commits")
-
-    print("\nStarting watch loop...")
-    print("(Ctrl+C to stop)")
+    harvester = ContextHarvester(
+        session_id=session_id,
+        watch_paths=[workspace],
+    )
 
     try:
-        import time
+        n_syms = harvester.harvest_last_commits(workspace, n=10)
+        logger.info("Git history: %d symbols indexed from last 10 commits", n_syms)
+    except Exception as exc:
+        logger.warning("harvestLastCommits failed (skip): %s", exc)
 
-        while True:
-            time.sleep(60)
-    except KeyboardInterrupt:
-        print("\nStopping harvester...")
-        harvester.close()
+    try:
+        harvester.harvest_repo(workspace)
+        logger.info("Initial repo harvest complete")
+    except Exception as exc:
+        logger.warning("harvestRepo failed (skip): %s", exc)
+
+    harvester.start(blocking=False)
+    logger.info("ContextHarvester active — watching %s", workspace)
+
+    def _shutdown(signum, frame):
+        logger.info("Shutting down harvester (signal %s)", signum)
+        harvester.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
+    while True:
+        time.sleep(5)
 
 
 if __name__ == "__main__":
