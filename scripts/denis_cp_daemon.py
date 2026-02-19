@@ -140,11 +140,16 @@ def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
 
                 if decision == "correction" and correction:
                     from control_plane.human_input_processor import process_human_input
+                    from control_plane.cp_queue import CPQueue
 
                     delta = process_human_input(correction, cp)
                     if delta["mission_delta"]:
                         cp.mission += f"\nAJUSTE HUMANO: {delta['mission_delta']}"
                     cp.do_not_touch.extend(delta["new_do_not_touch"])
+
+                    # Persist HumanInput to Neo4j
+                    CPQueue._persist_human_input(delta, cp.cp_id)
+
                     os.makedirs("/tmp/denis", exist_ok=True)
                     with open("/tmp/denis/next_cp.json", "w") as f:
                         json.dump(cp.to_dict(), f, indent=2)
@@ -171,6 +176,7 @@ def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
                 if decision == "adjust" and adj:
                     from control_plane.human_input_processor import process_human_input
                     from control_plane.models import ContextPack
+                    from control_plane.cp_queue import CPQueue
 
                     current_cp_data = data.get("current_cp", {})
                     if current_cp_data:
@@ -179,6 +185,10 @@ def run_daemon(poll_interval: int = POLL_INTERVAL, max_wait: int = 300) -> None:
                         if delta["mission_delta"]:
                             cp.mission += f"\nAJUSTE HUMANO: {delta['mission_delta']}"
                         cp.do_not_touch.extend(delta["new_do_not_touch"])
+
+                        # Persist HumanInput to Neo4j
+                        CPQueue._persist_human_input(delta, cp.cp_id)
+
                         os.makedirs("/tmp/denis", exist_ok=True)
                         with open("/tmp/denis/next_cp.json", "w") as f:
                             json.dump(cp.to_dict(), f, indent=2)
