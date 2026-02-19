@@ -1,23 +1,15 @@
 [Unit]
 Description=Denis Control Plane Daemon - Human-in-the-loop approval
-After=network.target graphical.target
-Requires=graphical.target
+After=network.target
 
 [Service]
 Type=simple
-User=jotah
-Group=jotah
 WorkingDirectory=/media/jotah/SSD_denis/home_jotah/denis_unified_v1
 Environment="PYTHONPATH=/media/jotah/SSD_denis/home_jotah/denis_unified_v1"
 Environment="DISPLAY=:0"
 ExecStart=/usr/bin/python3 /media/jotah/SSD_denis/home_jotah/denis_unified_v1/scripts/denis_cp_daemon.py
 Restart=on-failure
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-# Allow X/GUI interactions
-Environment="XAUTHORITY=/home/jotah/.Xauthority"
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
